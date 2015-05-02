@@ -17,7 +17,7 @@ try
 catch(e)
 {
 	// if we have an error here, it's most likely because we didn't include the library in the preceding statements
-	// the current script might be part of an include by a previously loaded 
+	// the current script might be part of an include by a script loaded beforehand
 
 	// $.level == 0 if the script is run by Photoshop, == 1 if run by ExtendScript ToolKit
 	// if ESTK, then write to console for easier debugging
@@ -51,6 +51,8 @@ catch(e)
 
 // #############  PER-LAYER METADATA FUNCTIONS
 
+// nope -- don't use a string here
+//Pslib.XMPNS = "XMPConst.NS_EXIF"; 
 
 // load XMP
 Pslib.loadXMPLibrary = function()
@@ -118,6 +120,17 @@ Pslib.getXmp = function (layer, createNew)
 		return xmp;
 	}
 	
+};
+
+// an attempt at iterating through available properties
+Pslib.iterate = function (layer)
+{
+	
+	var layer = layer == undefined ? app.activeDocument.activeLayer : layer;
+	var xmp = Pslib.getXmp(layer);
+	
+	var iteration = xmp.iterator(undefined, XMPConst.NS_EXIF, undefined);
+	return iteration;
 };
 
 // set multiple properties
@@ -352,6 +365,7 @@ Pslib.exportLayerMetadata = function (layer, path)
 		   {
 			file.open("w");
 			file.write(layer.xmpMetadata.rawData.toString());
+			file.close();
 		   }
 			catch(e)
 			{
