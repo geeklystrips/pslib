@@ -8,7 +8,31 @@ Pslib = function(){};
 // define default namespace
 Pslib.XMPNAMESPACE = "http://custom/";
 Pslib.XMPNAMESPACEPREFIX = "cstm:";
+Pslib.DEFAULTPROPERTYNAME = "default";
+Pslib.DEFAULTPROPERTYVALUE = "value";
 
+// for replacing huge whitespace chunk in XMP
+var XmpWhitespace = "                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                           ";
 try
 {
 	// load library
@@ -25,7 +49,6 @@ catch(e)
 	// if ExternalObject.AdobeXMPScript not present, hardcode the namespace to exif
 	Pslib.XMPNAMESPACE = "http://ns.adobe.com/exif/1.0/";
 }
-
 
 // load XMP
 Pslib.loadXMPLibrary = function()
@@ -279,6 +302,39 @@ Pslib.clearXmp = function (layer)
 	}
 };
 
+// clear entire namespace
+Pslib.clearNamespace = function (layer, namespace)
+{
+	if(Pslib.loadXMPLibrary())
+	{
+		var layer = layer == undefined ? app.activeDocument.activeLayer : layer;
+		
+		// if metadata not found, return
+		try
+		{
+			var xmp = new XMPMeta(layer.xmpMetadata.rawData);
+			XMPUtils.removeProperties(xmp, namespace, undefined, XMPConst.REMOVE_ALL_PROPERTIES);
+			layer.xmpMetadata.rawData = xmp.serialize();
+			//alert(xmp.serialize());
+		}
+		catch(e)
+		{
+			if($.level) $.writeln("Metadata not found\n" + e);
+			return false;
+		}
+		
+		// if metadata found, replace by empty version
+		//var emptyXmp = new XMPMeta();
+		//layer.xmpMetadata.rawData = emptyXmp.serialize();
+			
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+};
+
 // save metadata to XML file
 Pslib.exportLayerMetadata = function (layer, path, alertMsg)
 {
@@ -368,9 +424,14 @@ function Main()
 {
 	// prepare XMP container
 	var XMPObj = null;
+	var style = ScriptUI.newFont("Arial", "REGULAR", 18);
 
 	// build dialog window
 	var win = new Window('dialog', "Layer Metadata Editor");
+	
+	// background color
+	//win.graphics.backgroundColor = win.graphics.newBrush (win.graphics.BrushType.SOLID_COLOR, [0.05, 0.5, 0.25]);
+
 	win.alignChildren = 'fill';
 	
 	var maingroup = win.add('group');
@@ -380,16 +441,66 @@ function Main()
 	propxmp.orientation = "column";
 	propxmp.alignChildren = 'fill';
 	
+	var layerObjectPanel = propxmp.add('panel', undefined, "Layer Object");
+	layerObjectPanel.alignChildren = 'right';
+	
+	var layerObjectGroup = layerObjectPanel.add('group');
+	var layerNameField =  layerObjectGroup.add('statictext', undefined, "Name:");
+	layerNameField.enabled = false;
+	var layerNameField2 =  layerObjectGroup.add('statictext', undefined, layerInfo.name);
+	layerNameField2.graphics.font = style;
+	layerNameField2.graphics.foregroundColor = layerNameField2.graphics.newPen (win.graphics.PenType.SOLID_COLOR, [0.25, 0.25, 0.6], 1);
+
+	var layerTypeField =  layerObjectGroup.add('statictext', undefined, "Type:");
+	layerTypeField.enabled = false;
+	layerObjectGroup.add('statictext', undefined, layerObject.typename);
+		
+	if(layerInfo.typename != "LayerSet")
+	{
+		var layerKindField =  layerObjectGroup.add('statictext', undefined, "Kind:");
+		layerKindField.enabled = false;
+		layerObjectGroup.add('statictext', undefined, layerInfo.kind);
+	}
+
+	var layerObjectCoordsGroup = layerObjectPanel.add('group');
+	var layerWidthField =  layerObjectCoordsGroup.add('statictext', undefined, "Width:");
+	layerWidthField.enabled = false;
+	layerObjectCoordsGroup.add('statictext', undefined, layerInfo.width);
+	var layerHeightField =  layerObjectCoordsGroup.add('statictext', undefined, "Height:");
+	layerHeightField.enabled = false;
+	layerObjectCoordsGroup.add('statictext', undefined, layerInfo.height);
+	
+	var layerXField =  layerObjectCoordsGroup.add('statictext', undefined, "X:");
+	layerXField.enabled = false;
+	layerObjectCoordsGroup.add('statictext', undefined, layerInfo.x);
+	var layerYField =  layerObjectCoordsGroup.add('statictext', undefined, "Y:");
+	layerYField.enabled = false;
+	layerObjectCoordsGroup.add('statictext', undefined, layerInfo.y);
+	
 	var propertiesPanel = propxmp.add('panel', undefined, "Individual Properties");
-	propertiesPanel.alignChildren = 'left';
+	propertiesPanel.alignChildren = 'right';
 	
 	var propertyGroup = propertiesPanel.add('group');
 	propertyGroup.add('statictext', undefined, "Property:");
-	var property =  propertyGroup.add('edittext', undefined, ""); 
+	var property =  propertyGroup.add('edittext', undefined, Pslib.DEFAULTPROPERTYNAME); 
 	property.characters = 20;
 	propertyGroup.add('statictext', undefined, "Value:");	
-	var propertyValue = propertyGroup.add('edittext', undefined, ""); 
+	var propertyValue = propertyGroup.add('edittext', undefined, Pslib.DEFAULTPROPERTYVALUE ); 
 	propertyValue.characters = 20;
+	
+	var namespacePanel = propxmp.add('panel', undefined, "Namespace");
+	namespacePanel.alignChildren = 'right';
+
+	var namespaceGroup = namespacePanel.add('group');
+	//namespaceGroup.add('statictext', undefined, "Namespace:");
+	var namespace =  namespaceGroup.add('edittext', undefined, Pslib.XMPNAMESPACE); 
+	namespace.characters = 20;
+	namespaceGroup.add('statictext', undefined, "Prefix:");	
+	var namespacePrefix = namespaceGroup.add('edittext', undefined, Pslib.XMPNAMESPACEPREFIX); 
+	namespacePrefix.characters = 20;
+	
+	var registerNamespace = namespaceGroup.add('button', undefined, "Register Namespace"); 
+
 	var propertyDebug = propertiesPanel.add('statictext', undefined, "");
 	propertyDebug.characters = 75;
 	propertyDebug.enabled = false;
@@ -406,21 +517,25 @@ function Main()
 	xmpDisplayPanel.alignChildren = 'left';
 	
 	var xmpDisplayText = xmpDisplayPanel.add("edittext", undefined, XMPObj);
-	xmpDisplayText.characters = 70;
+	xmpDisplayText.characters = 80;
 	xmpDisplayText.multiline = true;
-	xmpDisplayText.preferredSize.height = 300;
-	
+	xmpDisplayText.preferredSize.height = 350;
+	xmpDisplayText.graphics.foregroundColor = xmpDisplayText.graphics.newPen (xmpDisplayText.graphics.PenType.SOLID_COLOR, [1, 1, 1], 1);
+	xmpDisplayText.graphics.backgroundColor = xmpDisplayText.graphics.newBrush (xmpDisplayText.graphics.BrushType.SOLID_COLOR, [0.4, 0.4, 0.4]);
+		
 	var xmpDebug = xmpDisplayPanel.add('statictext', undefined, "");
 	xmpDebug.characters = 75;
 	xmpDebug.enabled = false;
 	
 	var xmpButtonsGroup = xmpDisplayPanel.add('group');
-	var addXMPObject = xmpButtonsGroup.add('button', undefined, "Add"); 
-	var getXMPObject = xmpButtonsGroup.add('button', undefined, "Get"); 
-	var saveToXML = xmpButtonsGroup.add('button', undefined, "Save to XML"); 
+	var addXMPObject = xmpButtonsGroup.add('button', undefined, "Add Empty XMP to Layer"); 
+	var getXMPObject = xmpButtonsGroup.add('button', undefined, "Get XMP from Layer"); 
+//	var iterateXMPObject = xmpButtonsGroup.add('button', undefined, "Iterate"); 
+	var saveToXML = xmpButtonsGroup.add('button', undefined, "Save XMP to XML"); 
 	saveToXML.enabled = exportXML;
 	saveToXML.helpTip = "You should save your document before using this feature.";
-	var removeXMPObject = xmpButtonsGroup.add('button', undefined, "Remove"); 
+//	var removeNamespace = xmpButtonsGroup.add('button', undefined, "Remove Namespace"); 
+//	var removeXMPObject = xmpButtonsGroup.add('button', undefined, "Remove XMP"); 
 	
 	//	
 	// individual properties callbacks
@@ -445,7 +560,7 @@ function Main()
 					propertyValue.text = data != undefined ? data : propertyValue.text;
 					if(data == undefined) propertyDebug.text = "[GET PROPERTY: Property not found]";
 					XMPObj = new XMPMeta( layerObject.xmpMetadata.rawData);
-					xmpDisplayText.text = XMPObj.serialize();
+					xmpDisplayText.text = XMPObj.serialize().replace(XmpWhitespace, "");
 				}
 				else
 				{
@@ -498,7 +613,7 @@ function Main()
 					{
 						propertyDebug.text = "[ADD PROPERTY: Property " + (propertyExists? "updated" : "added") + " successfully]";
 						XMPObj = new XMPMeta( layerObject.xmpMetadata.rawData);	
-						xmpDisplayText.text = XMPObj.serialize();
+						xmpDisplayText.text = XMPObj.serialize().replace(XmpWhitespace, "");
 					}
 					else
 					{
@@ -540,7 +655,7 @@ function Main()
 				{
 					propertyDebug.text = "[REMOVE PROPERTY: Property removed successfully]";
 					XMPObj = new XMPMeta( layerObject.xmpMetadata.rawData);	
-					xmpDisplayText.text = XMPObj.serialize();
+					xmpDisplayText.text = XMPObj.serialize().replace(XmpWhitespace, "");
 				}
 				else
 				{
@@ -564,6 +679,30 @@ function Main()
 		}
 	};
 
+	namespace.onChanging = function()
+	{
+		Pslib.XMPNAMESPACE = namespace.text;
+		propertyDebug.text = "[NAMESPACE: " + Pslib.XMPNAMESPACE + "  PREFIX: " + Pslib.XMPNAMESPACEPREFIX + "]";
+	};
+
+	namespacePrefix.onChanging = function()
+	{
+		Pslib.XMPNAMESPACEPREFIX = namespacePrefix.text;
+		propertyDebug.text = "[NAMESPACE: " + Pslib.XMPNAMESPACE + "  PREFIX: " + Pslib.XMPNAMESPACEPREFIX + "]";
+	};
+
+	registerNamespace.onClick = function()
+	{
+		try
+		{
+			XMPMeta.registerNamespace(Pslib.XMPNAMESPACE, Pslib.XMPNAMESPACEPREFIX);
+			propertyDebug.text = "[REGISTERING NAMESPACE: " + Pslib.XMPNAMESPACE + "  PREFIX: " + Pslib.XMPNAMESPACEPREFIX + " SUCCESS]";
+		}
+		catch(e)
+		{
+			propertyDebug.text = "[ERROR REGISTERING NAMESPACE]";
+		}
+	}
 	//
 	// XMP object callbacks
 	//
@@ -583,14 +722,14 @@ function Main()
 				{
 					XMPObj = new XMPMeta( );
 					layerObject.xmpMetadata.rawData = XMPObj.serialize();
-					xmpDisplayText.text = XMPObj.serialize();
+					xmpDisplayText.text = XMPObj.serialize().replace(XmpWhitespace, "");
 					xmpDebug.text = "[ADD XMP: Current layer XMP object successfully replaced by empty XMP object]";
 				}
 				else
 				{
 					xmpDebug.text = "[ADD XMP: Current layer XMP object preserved]";
 					XMPObj = new XMPMeta( layerObject.xmpMetadata.rawData);
-					xmpDisplayText.text = XMPObj.serialize();
+					xmpDisplayText.text = XMPObj.serialize().replace(XmpWhitespace, "");
 				}
 				
 			}
@@ -599,7 +738,7 @@ function Main()
 			{
 				XMPObj = new XMPMeta();
 				layerObject.xmpMetadata.rawData = XMPObj.serialize();
-				xmpDisplayText.text = XMPObj.serialize();
+				xmpDisplayText.text = XMPObj.serialize().replace(XmpWhitespace, "");
 				xmpDebug.text = "[ADD XMP: XMP object successfully added to layer]";
 			}
 		}
@@ -621,7 +760,7 @@ function Main()
 			{
 				xmpDebug.text = "[GET XMP: Existing XMP object successfully harvested from layer]";
 				XMPObj = new XMPMeta( layerObject.xmpMetadata.rawData);	
-				xmpDisplayText.text = XMPObj.serialize();
+				xmpDisplayText.text = XMPObj.serialize().replace(XmpWhitespace, "");
 			}
 			else
 			{
@@ -638,6 +777,48 @@ function Main()
 		}
 	};
 	
+//~ 	// iterate through XMP properties
+//~ 	iterateXMPObject.onClick = function()
+//~ 	{
+//~ 		if(!layerObject.isBackgroundLayer)
+//~ 		{
+//~ 			// get existing XMP Object
+//~ 			if(Pslib.getXmp(layerObject))
+//~ 			{
+//~ 				xmpDebug.text = "[ITERATE XMP: Existing XMP object successfully harvested from layer]";
+//~ 				XMPObj = new XMPMeta( layerObject.xmpMetadata.rawData);
+//~ 				var iterator = XMPObj.iterator(undefined, Pslib.XMPNAMESPACE, "color"); // ************ ????
+
+//~ 				alert(iterator.next());
+/*				
+next()
+XMPIteratorObj.next ( )
+Retrieves the next item in the metadata.
+Returns an XMPProperty object, or null if there are no more items.
+      skipSiblings()
+XMPIteratorObj.skipSiblings ( )
+Skips the subtree below and the siblings of the current node on the subsequent call to next(). Returns undefined.
+      skipSubtree()
+XMPIteratorObj.skipSubtree ( )
+Skips the subtree below the current node on the subsequent call to next(). Returns undefined.
+		*/		
+//~ 				xmpDisplayText.text = XMPObj.serialize().replace(XmpWhitespace, "");
+//~ 			}
+//~ 			else
+//~ 			{
+//~ 				var msg = "[ITERATE XMP: No XMP object found on layer]";
+//~ 				xmpDebug.text = msg;
+//~ 				xmpDisplayText.text = msg;				
+//~ 			}
+//~ 		}
+//~ 		else
+//~ 		{
+//~ 			var msg = "[ITERATE XMP: A background layer cannot contain an XMP object]";
+//~ 			xmpDebug.text =  msg;
+//~ 			xmpDisplayText.text =  msg;
+//~ 		}
+//~ 	}
+
 	// save XMP object to XML file
 	saveToXML.onClick = function()
 	{
@@ -648,7 +829,7 @@ function Main()
 			{
 				xmpDebug.text = "[SAVE XML: XMP object successfully exported to XML file]";
 				XMPObj = new XMPMeta( layerObject.xmpMetadata.rawData);	
-				xmpDisplayText.text = XMPObj.serialize();
+				xmpDisplayText.text = XMPObj.serialize().replace(XmpWhitespace, "");
 			}
 			else
 			{
@@ -666,45 +847,92 @@ function Main()
 	};
 
 	// remove XMP object from layer (replaces the existing XMP by an empty one)
-	removeXMPObject.onClick = function()
-	{
-		if(!layerObject.isBackgroundLayer)
-		{
-			var testXmp;
-			var clearXMP = Pslib.clearXmp(layerObject);
-			
-			if(clearXMP)
-			{
-				// need one more try/catch block here, because Pslib.clearXmp also returns true when there is no XMP object attached to the layer
-				try
-				{
-					//testXmp = new XMPMeta( layerObject.xmpMetadata.rawData );
-					XMPObj = new XMPMeta( layerObject.xmpMetadata.rawData);
-					layerObject.xmpMetadata.rawData = XMPObj.serialize();
-					xmpDisplayText.text = XMPObj.serialize();
-					xmpDebug.text = "[REMOVE XMP: layer XMP object successfully replaced by empty XMP object]";
-				}
-				catch(e)
-				{
-					var msg = "[REMOVE XMP: No XMP object found on layer]";
-					xmpDisplayText.text = msg;
-					xmpDebug.text = msg;
-				}
-			}
-			else
-			{
-				var msg = "[REMOVE XMP: Error removing XMP object from layer]";
-				xmpDebug.text = msg;
-				xmpDisplayText.text = msg;
-			}
-		}
-		else
-		{
-			var msg = "[REMOVE XMP: A background layer cannot contain metadata]";
-			xmpDebug.text = msg;
-			xmpDisplayText.text = msg;
-		}
-	};
+//~ 	removeXMPObject.onClick = function()
+//~ 	{
+//~ 		if(!layerObject.isBackgroundLayer)
+//~ 		{
+//~ 			var testXmp;
+//~ 			var clearXMP = Pslib.clearXmp(layerObject);
+//~ 			
+//~ 			if(clearXMP)
+//~ 			{
+//~ 				// need one more try/catch block here, because Pslib.clearXmp also returns true when there is no XMP object attached to the layer
+//~ 				try
+//~ 				{
+//~ 					//testXmp = new XMPMeta( layerObject.xmpMetadata.rawData );
+//~ 					XMPObj = new XMPMeta( layerObject.xmpMetadata.rawData);
+//~ 					layerObject.xmpMetadata.rawData = XMPObj.serialize();
+//~ 					xmpDisplayText.text = XMPObj.serialize().replace(XmpWhitespace, "");
+//~ 					xmpDebug.text = "[REMOVE XMP: layer XMP object successfully replaced by empty XMP object]";
+//~ 				}
+//~ 				catch(e)
+//~ 				{
+//~ 					var msg = "[REMOVE XMP: No XMP object found on layer]";
+//~ 					xmpDisplayText.text = msg;
+//~ 					xmpDebug.text = msg;
+//~ 				}
+//~ 			}
+//~ 			else
+//~ 			{
+//~ 				var msg = "[REMOVE XMP: Error removing XMP object from layer]";
+//~ 				xmpDebug.text = msg;
+//~ 				xmpDisplayText.text = msg;
+//~ 			}
+//~ 		}
+//~ 		else
+//~ 		{
+//~ 			var msg = "[REMOVE XMP: A background layer cannot contain metadata]";
+//~ 			xmpDebug.text = msg;
+//~ 			xmpDisplayText.text = msg;
+//~ 		}
+//~ 	};
+
+	// remove specific namespace from XMP object
+//~ 	removeNamespace.onClick = function()
+//~ 	{
+//~ 		if(!layerObject.isBackgroundLayer)
+//~ 		{
+//~ 			var testXmp;
+//~ 			var clearXMP = Pslib.clearXmp(layerObject);
+//~ 			
+//~ 			if(clearXMP)
+//~ 			{
+//~ 				// need one more try/catch block here, because Pslib.clearXmp also returns true when there is no XMP object attached to the layer
+//~ 				try
+//~ 				{					
+//~ 					Pslib.clearNamespace(layerObject, Pslib.XMPNAMESPACE);
+//~ 					XMPObj = new XMPMeta(layerObject.xmpMetadata.rawData);
+//~ 				//	layerObject.xmpMetadata.rawData
+//~ 				//	layerObject.xmpMetadata.rawData = XMPObj.serialize();
+//~ 					xmpDisplayText.text = XMPObj.serialize().replace(XmpWhitespace, "");
+//~ 					
+//~ 					//var xmp = new XMPMeta(layer.xmpMetadata.rawData);
+//~ 					//XMPUtils.removeProperties(xmp, namespace, undefined, XMPConst.REMOVE_ALL_PROPERTIES);
+//~ 					//layer.xmpMetadata.rawData = xmp.serialize();
+//~ 				
+//~ 					xmpDebug.text = "[REMOVE NAMESPACE: successful]";
+//~ 				}
+//~ 				catch(e)
+//~ 				{
+//~ 					var msg = "[REMOVE NAMESPACE: No XMP object found on layer]";
+//~ 					xmpDisplayText.text = msg;
+//~ 					xmpDebug.text = msg;
+//~ 				}
+//~ 			}
+//~ 			else
+//~ 			{
+//~ 				var msg = "[REMOVE NAMESPACE: Error removing XMP object from layer]";
+//~ 				xmpDebug.text = msg;
+//~ 				xmpDisplayText.text = msg;
+//~ 			}
+//~ 		}
+//~ 		else
+//~ 		{
+//~ 			var msg = "[REMOVE NAMESPACE: A background layer cannot contain metadata]";
+//~ 			xmpDebug.text = msg;
+//~ 			xmpDisplayText.text = msg;
+//~ 		}
+//~ 	};
 
 	// load XMP object
 	getXMPObject.onClick();
@@ -722,7 +950,23 @@ if(app.documents.length)
 {
 	var doc = app.activeDocument;
 	var layerObject = doc.activeLayer;
-	var exportXML;	
+	
+	var layerInfo = {};
+			
+	if(layerObject != undefined)
+	{
+		layerInfo.name = layerObject.name;
+		layerInfo.typename = layerObject.typename;
+		layerInfo.kind = layerObject.typename == "LayerSet" ? "LayerSet" :  layerObject.kind;
+		
+		var b = layerObject.bounds;
+		
+		layerInfo.width = b[2].as('px') - b[0].as('px');
+		layerInfo.height = b[3].as('px') - b[1].as('px');
+		layerInfo.x = b[0].as('px');
+		layerInfo.y = b[1].as('px');		
+	}
+	var exportXML;
 	
 	// this is to determine where to save the XML file
 	try
