@@ -2,6 +2,10 @@
 	Pslib: Photoshop JSX Library of frequently-used functions
 	
 	- Per-layer metadata management: access, create, remove... 
+	
+	TODO
+	- Pslib.clearNamespace() doesn't work
+	- Pslib.clearXmp() doesn't work
 
 */
 
@@ -51,8 +55,27 @@ catch(e)
 
 // #############  PER-LAYER METADATA FUNCTIONS
 
-// nope -- don't use a string here
-//Pslib.XMPNS = "XMPConst.NS_EXIF"; 
+// define default namespace
+Pslib.XMPNAMESPACE = "http://custom/";
+Pslib.XMPNAMESPACEPREFIX = "cstm:";
+
+// register custom namespace
+try
+{
+	// load library
+	 if(!ExternalObject.AdobeXMPScript)
+	{
+		ExternalObject.AdobeXMPScript = new ExternalObject('lib:AdobeXMPScript');
+	}
+
+	// register custom namespace
+	XMPMeta.registerNamespace(Pslib.XMPNAMESPACE, Pslib.XMPNAMESPACEPREFIX);
+}
+catch(e)
+{
+	// if ExternalObject.AdobeXMPScript not present, hardcode the namespace to exif
+	Pslib.XMPNAMESPACE = "http://ns.adobe.com/exif/1.0/";
+}
 
 // load XMP
 Pslib.loadXMPLibrary = function()
@@ -63,6 +86,7 @@ Pslib.loadXMPLibrary = function()
 	{
          if($.level) $.writeln("Loading XMP Script Library");
          ExternalObject.AdobeXMPScript = new ExternalObject('lib:AdobeXMPScript');
+	  return true;
       }
 	catch (e)
 	{
@@ -70,7 +94,7 @@ Pslib.loadXMPLibrary = function()
          return false;
       }
    }
-   return true;
+	return true;
 };
 
 // unload XMP
@@ -83,6 +107,7 @@ Pslib.unloadXMPLibrary = function()
 	   if($.level) $.writeln("Unloading XMP Script Library");
          ExternalObject.AdobeXMPScript.unload();
          ExternalObject.AdobeXMPScript = undefined;
+	   return true;
       }
       catch(e)
       {
@@ -90,7 +115,6 @@ Pslib.unloadXMPLibrary = function()
 		return false;
       }
    }
-	return true;
 };
 
 // get layer's existing XMP if present
@@ -119,113 +143,6 @@ Pslib.getXmp = function (layer, createNew)
 	{
 		return xmp;
 	}
-	
-};
-
-// an attempt at iterating through available properties
-Pslib.iterate = function (layer)
-{
-	
-	var layer = layer == undefined ? app.activeDocument.activeLayer : layer;
-	var xmp = Pslib.getXmp(layer);
-	
-	var iteration = xmp.iterator(undefined, XMPConst.NS_EXIF, undefined);
-	return iteration;
-};
-
-// set multiple properties
-// expects a two-dimensional array
-Pslib.setXmpProperties = function (layer, propertiesArray)
-{
-	// make sure XMP lib stuff is available
-	if(Pslib.loadXMPLibrary())
-	{
-		
-		var layer = layer == undefined ? app.activeDocument.activeLayer : layer;
-		var prop;
-		var val;
-		var xmp;
-		
-		// make sure we're not working with a background layer
-		if(layer.isBackgroundLayer)
-		{
-			if($.level) $.writeln("Metadata cannot be placed on a background layer. Aborting.");
-			return false;
-		}
-		
-		// access metadata
-		try{
-		   xmp = new XMPMeta( layer.xmpMetadata.rawData );
-		} catch( e ) {
-			if($.level) $.writeln("XMP metadata could not be found for layer \"" + layer.name + "\"");
-		//   xmp = new XMPMeta();
-		}
-	   
-		// loop through array properties and assign them
-		if($.level) $.writeln("\nLooping through properties...");
-		for (var i = 0; i < propertiesArray.length; i++)
-		{	
-			prop = propertiesArray[i][0];
-			val = propertiesArray[i][1];
-			
-			// modify metadata
-			try
-			{
-				var propertyExists = xmp.doesPropertyExist(XMPConst.NS_EXIF, prop);
-				
-				// this decision statement is for debugging purposes
-				
-				// add new property if not found
-				if(!propertyExists)
-				{
-					//xmpProperty = xmp.getProperty(XMPConst.NS_EXIF, property).toString();
-					xmp.setProperty(XMPConst.NS_EXIF, prop, val);
-					if($.level) $.writeln("\tadding [" + prop + ": " + val +"]  " + typeof val);
-					
-								/*
-			// store type?
-			  XMPConst.STRING
-			   XMPConst.INTEGER
-			   XMPConst.NUMBER
-			   XMPConst.BOOLEAN
-			   XMPConst.XMPDATE
-   */
-				}
-				// if property found and value different, update
-				else if(propertyExists && xmp.getProperty(XMPConst.NS_EXIF, prop).toString() != val.toString() )
-				{
-					xmp.setProperty(XMPConst.NS_EXIF, prop, val);
-					if($.level) $.writeln("\tupdating [" + prop + ": " + val +"]  " + typeof val);
-				}
-				else
-				{
-					if($.level) $.writeln("\tno change to existing property [" + prop + ": " + val +"]  " + typeof val);
-				}
-				
-
-			} 
-			catch( e )
-			{
-				var msg = "Could not place metadata property on provided layer.\n[" + prop + ": " + val +  +"]  " + typeof val + "\n" + e;
-			   if($.level) $.writeln( msg );
-			   else alert(msg);
-			   return false;
-			}
-		}
-
-		// applly and serialize
-		layer.xmpMetadata.rawData = xmp.serialize();
-		if($.level) $.writeln("Provided properties were successfully added to object \"" + layer.name + "\"");
-		
-		// unload library
-		Pslib.unloadXMPLibrary();
-		
-		return true;
-	}
-	else
-	{
-		return false;
-	}
 };
 
 // get property: returns a string
@@ -249,14 +166,14 @@ Pslib.getXmpProperty = function (layer, property)
 		try
 		{
 			xmp = new XMPMeta( layer.xmpMetadata.rawData );
-			value = xmp.getProperty(XMPConst.NS_EXIF, property)
+			value = xmp.getProperty(Pslib.XMPNAMESPACE, property)
 		
 			// unload library
-			Pslib.unloadXMPLibrary();
+		//	Pslib.unloadXMPLibrary();
 			return value;
 		
 		} catch( e ) {
-			if($.level) $.writeln("XMP metadata could not be found for layer \"" + layer.name + "\". Creating new XMP object.");
+			if($.level) $.writeln("XMP metadata could not be found for layer \"" + layer.name + "\"");
 		//   xmp = new XMPMeta();
 			return null
 		}
@@ -267,6 +184,7 @@ Pslib.getXmpProperty = function (layer, property)
 	}
 };
 
+// delete specific property
 Pslib.deleteXmpProperty = function (layer, property)
 {
 	// load library
@@ -277,7 +195,7 @@ Pslib.deleteXmpProperty = function (layer, property)
 		
 		try
 		{
-			xmp.deleteProperty(XMPConst.NS_EXIF, property);
+			xmp.deleteProperty(Pslib.XMPNAMESPACE, property);
 			layer.xmpMetadata.rawData = xmp.serialize();
 			return true;
 		}
@@ -294,6 +212,90 @@ Pslib.deleteXmpProperty = function (layer, property)
 	}
 };
 
+// set multiple properties
+// expects a two-dimensional array
+Pslib.setXmpProperties = function (layer, propertiesArray)
+{
+	// make sure XMP lib stuff is available
+	if(Pslib.loadXMPLibrary())
+	{
+		var layer = layer == undefined ? app.activeDocument.activeLayer : layer;
+		var prop;
+		var val;
+		var xmp;
+		
+		// make sure we're not working with a background layer
+		if(layer.isBackgroundLayer)
+		{
+			if($.level) $.writeln("XMP Metadata cannot be placed on a background layer. Aborting.");
+			return false;
+		}
+		
+		// access metadata
+		try
+		{
+		   xmp = new XMPMeta( layer.xmpMetadata.rawData );
+		   if($.level) $.writeln("XMP Metadata successfully fetched from layer \"" + layer.name + "\"");
+		} catch( e ) 
+		{
+			if($.level) $.writeln("XMP metadata could not be found for layer \"" + layer.name + "\".\nCreating new XMP metadata container.");
+			xmp = new XMPMeta(  );
+		}
+	   
+		// loop through array properties and assign them
+		if($.level) $.writeln("\nLooping through properties...");
+		for (var i = 0; i < propertiesArray.length; i++)
+		{	
+			prop = propertiesArray[i][0];
+			val = propertiesArray[i][1];
+			
+			// modify metadata
+			try
+			{
+				var propertyExists = xmp.doesPropertyExist(Pslib.XMPNAMESPACE, prop);
+				
+				
+				// add new property if not found
+				if(!propertyExists)
+				{
+					xmp.setProperty(Pslib.XMPNAMESPACE, prop, val);
+					if($.level) $.writeln("\tadding [" + prop + ": " + val +"]  " + typeof val);
+				}
+				// if property found and value different, update
+				else if(propertyExists && xmp.getProperty(Pslib.XMPNAMESPACE, prop).toString() != val.toString() )
+				{
+					xmp.setProperty(Pslib.XMPNAMESPACE, prop, val);
+					if($.level) $.writeln("\tupdating [" + prop + ": " + val +"]  " + typeof val);
+				}
+				else
+				{
+					if($.level) $.writeln("\tno change to existing property [" + prop + ": " + val +"]  " + typeof val);
+				}
+			} 
+			catch( e )
+			{
+				var msg = "Could not place metadata property on provided layer.\n[" + prop + ": " + val +  +"]  " + typeof val + "\n" + e;
+			   if($.level) $.writeln( msg );
+			   else alert(msg);
+			   return false;
+			}
+		}
+
+		// applly and serialize
+		layer.xmpMetadata.rawData = xmp.serialize();
+		if($.level) $.writeln("Provided properties were successfully added to object \"" + layer.name + "\"");
+		
+		// unload library
+	//	Pslib.unloadXMPLibrary();
+		
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+};
+
 // clear XMP : current workaround is to replace current data by empty data
 // this is problematic if you actually want to strip the layer from its metadata object entirely 
 Pslib.clearXmp = function (layer)
@@ -301,23 +303,57 @@ Pslib.clearXmp = function (layer)
 	if(Pslib.loadXMPLibrary())
 	{
 		var layer = layer == undefined ? app.activeDocument.activeLayer : layer;
-		//xmp = layerObject.xmpMetadata.rawData;
-		var emptyXmp = new XMPMeta();
 		
+		// if metadata not found, return
+		try
+		{
+			var xmp = new XMPMeta(layer.xmpMetadata.rawData);
+		}
+		catch(e)
+		{
+			//if($.level) $.writeln(msg + "\n" + e);
+			return true;
+		}
+		
+		// if metadata found, replace by empty version
+		var emptyXmp = new XMPMeta();
 		layer.xmpMetadata.rawData = emptyXmp.serialize();
 		
-		/*
-		// delete current XMP -- DOES NOT WORK
-		try{
-			var xmp = Pslib.getXmp(layer);
-			if(xmp) layer.xmpMetadata.rawData = undefined;
-		   return true;
-		} catch( e ) {
-			if($.level) $.writeln("Metadata could not be found for layer \"" + layer.name + "\"");
+		//	Pslib.unloadXMPLibrary();
+			
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+};
+
+// clear entire namespace
+Pslib.clearNamespace = function (layer, namespace)
+{
+	if(Pslib.loadXMPLibrary())
+	{
+		var layer = layer == undefined ? app.activeDocument.activeLayer : layer;
+		
+		// if metadata not found, return
+		try
+		{
+			var xmp = new XMPMeta(layer.xmpMetadata.rawData);
+			XMPUtils.removeProperties(xmp, namespace, undefined, XMPConst.REMOVE_ALL_PROPERTIES);
+			layer.xmpMetadata.rawData = xmp.serialize();
+			//alert(xmp.serialize());
+		}
+		catch(e)
+		{
+			if($.level) $.writeln("Metadata not found\n" + e);
 			return false;
 		}
-		*/
-		Pslib.unloadXMPLibrary();
+		
+		// if metadata found, replace by empty version
+		//var emptyXmp = new XMPMeta();
+		//layer.xmpMetadata.rawData = emptyXmp.serialize();
+			
 		return true;
 	}
 	else
@@ -327,10 +363,33 @@ Pslib.clearXmp = function (layer)
 };
 
 // save metadata to XML file
-Pslib.exportLayerMetadata = function (layer, path)
+Pslib.exportLayerMetadata = function (layer, path, alertMsg)
 {
 	if(Pslib.loadXMPLibrary())
 	{
+		var xmp;
+		
+		// verify that xmp data is available
+		   try
+		   {
+			  var xmp = layer.xmpMetadata.rawData.toString();
+
+			// 
+			if(alertMsg) alert(xmp);
+			//
+		   }
+			catch(e)
+			{
+			   var msg = "";
+			   if(e.message.match("missing") != null)
+			   {	
+				   msg += "There doesn't seem to be any metadata attached to layer \"" + layer.name + "\"";  
+				}
+				if($.level) $.writeln(msg + "\n" + e);
+				else alert(msg + "\n" + e);
+				return false;
+		   }
+	   
 		var path = path == undefined ? File.saveDialog() : path;
 		if(path != null)
 		{
@@ -364,23 +423,20 @@ Pslib.exportLayerMetadata = function (layer, path)
 		   try
 		   {
 			file.open("w");
-			file.write(layer.xmpMetadata.rawData.toString());
+			file.write(xmp);
 			file.close();
 		   }
 			catch(e)
 			{
 			   var msg = "";
-			   if(e.message.match("\'value\' property is missing.") != null)
-			   {	
-				   msg += "There does not seem to be any metadata attached to layer \"" + layer.name + "\"";  
-				}
-				if($.level) $.writeln("Unable to write to file.\n" + e);
+
+				if($.level) $.writeln("Unable to write to file.\n" + msg + "\n" + e);
+				else alert("Unable to write to file.\n" + msg + "\n" + e);
 				return false;
-			
 		   }
 		   file.close();
 		}
-		Pslib.unloadXMPLibrary();
+	//	Pslib.unloadXMPLibrary();
 		return true;
 	}
 	else
@@ -389,34 +445,5 @@ Pslib.exportLayerMetadata = function (layer, path)
 	}
 };
 
-// get date object from layer properties
-// doesn't work yet. Illegal argument?
-Pslib.getLayerChangedDate = function(layer)
-{
-	var doc = app.activeDocument;
-	var layerObj = layer == undefined ? doc.activeLayer : layer;
-	if(doc.activeLayer != layerObj) doc.activeLayer = layerObj;
-
-	if(Pslib.loadXMPLibrary())
-	{
-		var ref = new ActionReference();
-		ref.putProperty( charIDToTypeID( 'Prpr' ), stringIDToTypeID( "metadata" ) );
-		ref.putEnumerated( charIDToTypeID( 'Lyr ' ), charIDToTypeID(' Ordn' ), charIDToTypeID('Trgt') );
-		var desc = executeActionGet( ref );
-	   
-		if ( desc.hasKey( stringIDToTypeID( "metadata" ) ) )
-		{
-			var descMetadata = desc.getObjectValue( metadataStrID );
-			var timeInSeconds = descMetadata.getDouble( stringIDToTypeID("layerTime") );
-			var d = new Date();
-			d.setTime( timeInSeconds * 1000.0 );
-			
-			Pslib.unloadXMPLibrary();
-			
-			return d.toLocaleString();
-		}
-	}
-	return null;
-};
 
 "Pslib successfully loaded";
