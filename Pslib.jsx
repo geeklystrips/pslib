@@ -4,9 +4,17 @@
 	- Per-layer metadata management: access, create, remove... 
 	
 	TODO
-	- Pslib.clearNamespace() doesn't work
-	- Pslib.clearXmp() doesn't work
-
+	- alternative for Pslib.clearXmp() which doesn't work?
+	- working on an advanced version of the layer metadata editor, might end up with separate apps
+	
+	2017-09-11 update
+	- replaced "custom" namespace by geeklystrips.com
+	- added Pslib.getPropertiesArray() function to iterate through and return all present properties and their values for given namespace (knowing property names is not required)
+	- added Pslib.deleteXmpProperties() which also uses Pslib.getPropertiesArray() 
+	
+	Notes: 
+	- turns out you can provide a document object instead of a layer object to most of these functions, and they should still work.. Who knew!
+	- might soon be adding some icons to help with the UX (differentiate between layer XMP anb document XMP)
 */
 
 
@@ -31,33 +39,21 @@ catch(e)
 	//$.writeln("typeof e.message: " + typeof e.message + "\n\ne:\n" + e + "\n\ne.message:\n" + e.message);
 	$.writeln(e);
 	
-	// here's one way to dissect an object
-	// use carefully, especially if you tend to Object.prototype stuff
-//~ 	if($.level)
-//~ 	{
-//~ 		// for every property in the object,
-//~ 		for (var i in e)
-//~ 		{
-//~ 			var val = e[i];
-//~ 			$.writeln("\t" + val + " = " + e[val] + "  [" + (typeof e[val]).toUpperCase() + "]");
-//~ 		}
-//~ 	}
-	
 	// create Pslib as a persistent object 
 	// it will remain accessible across most scopes, which is useful when working with panels & actions
 	// 
 	Pslib = function(){};
 	
 	// these functions are often required when working with code obtained using the ScriptingListener plugin
-	cTID = function(s) {return app.charIDToTypeID(s);}
-	sTID = function(s){return app.stringIDToTypeID(s);}
+	//cTID = function(s) {return app.charIDToTypeID(s);}
+	//sTID = function(s) {return app.stringIDToTypeID(s);}
 }
 
 // #############  PER-LAYER METADATA FUNCTIONS
 
 // define default namespace
-Pslib.XMPNAMESPACE = "http://custom/";
-Pslib.XMPNAMESPACEPREFIX = "cstm:";
+Pslib.XMPNAMESPACE = "http://www.geeklystrips.com/";
+Pslib.XMPNAMESPACEPREFIX = "gs:";
 
 // register custom namespace
 try
@@ -212,6 +208,39 @@ Pslib.deleteXmpProperty = function (layer, property)
 	}
 };
 
+// delete array of properties
+Pslib.deleteXmpProperties = function (layer, propertiesArray)
+{	
+	// load library
+	if(Pslib.loadXMPLibrary())
+	{
+		var layer = layer == undefined ? app.activeDocument.activeLayer : layer;
+		var xmp = Pslib.getXmp(layer);
+		
+		try
+		{
+			for(var i = 0; i < propertiesArray.length; i++)
+			{
+				report += (+ "\t" + propertiesArray[i][1] + "\n");
+				xmp.deleteProperty(Pslib.XMPNAMESPACE, propertiesArray[i][0]);
+			}
+
+			layer.xmpMetadata.rawData = xmp.serialize();
+				
+			return true;
+		}
+		catch( e )
+		{
+			if($.level) $.writeln("Metadata properties could not be removed from layer \"" + layer.name + "\"");
+			return false;
+		}
+	}
+	else
+	{
+		return false;
+	}
+};
+
 // set multiple properties
 // expects a two-dimensional array
 Pslib.setXmpProperties = function (layer, propertiesArray)
@@ -296,8 +325,157 @@ Pslib.setXmpProperties = function (layer, propertiesArray)
 	}
 };
 
+// get multiple properties
+// expects a two-dimensional array, returns an updated copy of that array
+Pslib.getXmpProperties = function (layer, propertiesArray)
+{
+	// make sure XMP lib stuff is available
+	if(Pslib.loadXMPLibrary())
+	{
+		var layer = layer == undefined ? app.activeDocument.activeLayer : layer;
+		var prop;
+		var val;
+		var xmp;
+		var updatedArray = [];
+		
+		// make sure we're not working with a background layer
+		if(layer.isBackgroundLayer)
+		{
+			if($.level) $.writeln("XMP Metadata cannot exist on a background layer. Aborting.");
+			return null;
+		}
+		
+		// access metadata
+		try
+		{
+		   xmp = new XMPMeta( layer.xmpMetadata.rawData );
+		   if($.level) $.writeln("XMP Metadata successfully fetched from layer \"" + layer.name + "\"");
+		} catch( e ) 
+		{
+			if($.level) $.writeln("XMP metadata could not be found for layer \"" + layer.name + "\".\nCreating new XMP metadata container.");
+			xmp = new XMPMeta(  );
+		}
+	   
+		// loop through array properties and assign them
+		if($.level) $.writeln("\nLooping through properties...");
+		for (var i = 0; i < propertiesArray.length; i++)
+		{	
+			prop = propertiesArray[i][0];
+		//	val = propertiesArray[i][1];
+			
+			// modify metadata
+			try
+			{
+				var propertyExists = xmp.doesPropertyExist(Pslib.XMPNAMESPACE, prop);
+				
+				
+				// add new property if not found
+				if(propertyExists)
+				{
+					val = xmp.getProperty(Pslib.XMPNAMESPACE, prop);
+//~ 					alert(i + " " + val);
+					//xmp.setProperty(Pslib.XMPNAMESPACE, prop, val);
+					if($.level) $.writeln("\tgetting property: value [" + prop + ": " + val +"]  " + typeof val);
+					
+					if($.level) $.writeln("\t" + propertiesArray[i][0]+ ": " + val + "\n");
+					updatedArray.push([propertiesArray[i][0], val]);
+				}
+				// if property found and value different, update
+//~ 				else if(propertyExists && xmp.getProperty(Pslib.XMPNAMESPACE, prop).toString() != val.toString() )
+//~ 				{
+//~ 					val = xmp.getProperty(Pslib.XMPNAMESPACE, prop)
+//~ 					//xmp.setProperty(Pslib.XMPNAMESPACE, prop, val);
+//~ 					if($.level) $.writeln("\tupdating [" + prop + ": " + val +"]  " + typeof val);
+//~ 				}
+				else
+				{
+					if($.level) $.writeln("\tProperty not found [" + prop + ": " + val +"]  " + typeof val);
+					updatedArray.push([propertiesArray[i][0], null]);
+				}
+			} 
+			catch( e )
+			{
+				var msg = "Could not fetch metadata property from provided layer.\n[" + prop + ": " + val +  +"]  " + typeof val + "\n" + e;
+			   if($.level) $.writeln( msg );
+			   else alert(msg);
+			   return null;
+			}
+		}
+
+		// applly and serialize
+//~ 		layer.xmpMetadata.rawData = xmp.serialize();
+		if($.level) $.writeln("Provided properties were successfully fetched from object \"" + layer.name + "\"");
+		
+		// unload library
+	//	Pslib.unloadXMPLibrary();
+//~ 		alert(updatedArray);
+		return updatedArray;
+	}
+	else
+	{
+		return null;
+	}
+};
+
+// returns bidimensional array of properties/values present in provided namespace
+// useful for debugging and building UI windows
+Pslib.getPropertiesArray = function (layer)
+{
+	// make sure XMP lib stuff is available
+	if(Pslib.loadXMPLibrary())
+	{
+		var layer = layer == undefined ? app.activeDocument.activeLayer : layer;
+		var xmp;
+		var propsArray = [];
+		var propsReport = "";
+		
+		// make sure we're not working with a background layer
+		if(layer.isBackgroundLayer)
+		{
+			if($.level) $.writeln("XMP Metadata cannot exist on a background layer. Aborting.");
+			return null;
+		}
+		
+		// access metadata
+		try
+		{
+		   xmp = new XMPMeta( layer.xmpMetadata.rawData );
+		   if($.level) $.writeln("XMP Metadata successfully fetched from layer \"" + layer.name + "\"");
+		} catch( e ) 
+		{
+			if($.level) $.writeln("XMP metadata could not be found for layer \"" + layer.name + "\".\nCreating new XMP metadata container.");
+			xmp = new XMPMeta(  );
+		}
+	
+		// XMPConst.ITERATOR_JUST_CHILDREN	XMPConst.ITERATOR_JUST_LEAFNODES	XMPConst.ITERATOR_JUST_LEAFNAMES	XMPConst.ITERATOR_INCLUDE_ALIASES
+		var xmpIter = xmp.iterator(XMPConst.ITERATOR_JUST_CHILDREN, Pslib.XMPNAMESPACE, "");
+		var next = xmpIter.next();
+
+		if($.level) $.writeln("\nGetting list of XMP properties for XMP namespace " + Pslib.XMPNAMESPACEPREFIX + "\n");
+		while (next)
+		{
+//			var propName = prop.path.replace( Pslib.XMPNAMESPACEPREFIX, "" );   
+			var propName = next.path.replace( Pslib.XMPNAMESPACEPREFIX, "" );   
+			propsArray.push([propName, next]);
+			propsReport += (propName + "\t" + next + "\n");
+			next = xmpIter.next();
+		}
+
+		if($.level) $.writeln(propsReport);
+		if($.level) $.writeln("Properties successfully fetched from object \"" + layer.name + "\"");
+		
+		return propsArray;
+	}
+	else
+	{
+		return null;
+	}
+};
+
 // clear XMP : current workaround is to replace current data by empty data
-// this is problematic if you actually want to strip the layer from its metadata object entirely 
+// this is problematic if you actually want to strip the layer from its metadata object entirely
+// Edit: turns out there is no structural difference between document XMP and layer XMP. 
+// Adobe essentially extended the XMP functionality to layers. A document without an XMP container doesn't make sense, therefore...
 Pslib.clearXmp = function (layer)
 {
 	if(Pslib.loadXMPLibrary())
@@ -332,6 +510,7 @@ Pslib.clearXmp = function (layer)
 // clear entire namespace
 Pslib.clearNamespace = function (layer, namespace)
 {
+	/*
 	if(Pslib.loadXMPLibrary())
 	{
 		var layer = layer == undefined ? app.activeDocument.activeLayer : layer;
@@ -360,6 +539,11 @@ Pslib.clearNamespace = function (layer, namespace)
 	{
 		return false;
 	}
+	*/
+
+	// workaround: not friendly on performances, but gets the job done
+	var removePropArray = Pslib.getPropertiesArray();
+	Pslib.deleteXmpProperties(layer, removePropArray);
 };
 
 // save metadata to XML file
