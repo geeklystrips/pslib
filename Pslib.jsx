@@ -6,12 +6,16 @@
 	TODO
 	- alternative for Pslib.clearXmp() which doesn't work?
 	- working on an advanced version of the layer metadata editor, might end up with separate apps
+	- will need a way to copy/move chunks of xmp data from one layer to another layer, and from layer to containing document
 	
 	2017-09 update (0.41)
 	- replaced "custom" namespace by geeklystrips.com
 	- added Pslib.getPropertiesArray() function to iterate through and return all present properties and their values for given namespace (knowing property names is not required)
 	- added Pslib.deleteXmpProperties() which also uses Pslib.getPropertiesArray() 
 	- added Pslib.propertiesToCSV() to dump properties and their values to CSV text file.
+	
+	(0.42)
+	- fixed issue with getXmpProperties() looping routine  
 	
 	Notes: 
 	- turns out you can provide a document object instead of a layer object to most of these functions, and they should still work.. Who knew!
@@ -50,7 +54,7 @@ catch(e)
 	//sTID = function(s) {return app.stringIDToTypeID(s);}
 }
 
-Pslib.version = 0.41;
+Pslib.version = 0.42;
 
 // #############  PER-LAYER METADATA FUNCTIONS
 
@@ -364,7 +368,7 @@ Pslib.getXmpProperties = function (layer, propertiesArray)
 		for (var i = 0; i < propertiesArray.length; i++)
 		{	
 			prop = propertiesArray[i][0];
-		//	val = propertiesArray[i][1];
+			val = undefined;
 			
 			// modify metadata
 			try
