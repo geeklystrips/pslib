@@ -1,14 +1,18 @@
 /*
-	Pslib: Photoshop JSX Library of frequently-used functions
+	Pslib.jsx
+	Photoshop JSX Library of frequently-used functions
+	Source: https://github.com/geeklystrips/pslib
+	
 	
 	- Per-layer metadata management: access, create, remove... 
 	
 	TODO
-	- alternative for Pslib.clearXmp() which doesn't work?
 	- working on an advanced version of the layer metadata editor, might end up with separate apps
-	- will need a way to copy/move chunks of xmp data from one layer to another layer, and from layer to containing document
+	- will eventually need a way to copy/move chunks of xmp data from one layer to another layer, and from layer to containing document
 	
-	2017-09 update (0.41)
+	2017-09 updates 
+	
+	(0.41)
 	- replaced "custom" namespace by geeklystrips.com
 	- added Pslib.getPropertiesArray() function to iterate through and return all present properties and their values for given namespace (knowing property names is not required)
 	- added Pslib.deleteXmpProperties() which also uses Pslib.getPropertiesArray() 
@@ -17,11 +21,20 @@
 	(0.42)
 	- fixed issue with getXmpProperties() looping routine  
 	
-	Notes: 
-	- turns out you can provide a document object instead of a layer object to most of these functions, and they should still work.. Who knew!
-	- might soon be adding some icons to help with the UX (differentiate between layer XMP anb document XMP)	
+	(0.43)
+	- updated LayerMetadataEditor.jsx to support document-level XMP
+	- added DocumentMetadataEditor.jsx (useDoc boolean, includes LayerMetadataEditor.jsx)
+	- restored XmpWhitespace thingie as part of the main library 
+	- added CS6 & CC-specific color references because, why not
+	- added encode/decodeURI routines
+	- activated cTID/sTID functions
+	- added Pslib.getDocumentPath();
+	- added Pslib.isPSCS4andAbove boolean
 */
 
+// these functions are often required when working with code obtained using the ScriptingListener plugin
+cTID = function(s) {return app.charIDToTypeID(s);}
+sTID = function(s) {return app.stringIDToTypeID(s);}
 
 // using and adding functions to Pslib object -- whether or not the library has been loaded
 // this technique makes it easier to create and stabilize additional subfunctions separately before integrating them
@@ -48,19 +61,80 @@ catch(e)
 	// it will remain accessible across most scopes, which is useful when working with panels & actions
 	// 
 	Pslib = function(){};
-	
-	// these functions are often required when working with code obtained using the ScriptingListener plugin
-	//cTID = function(s) {return app.charIDToTypeID(s);}
-	//sTID = function(s) {return app.stringIDToTypeID(s);}
 }
 
-Pslib.version = 0.42;
+// library version, used in tool window titles. Maybe.
+Pslib.version = 0.43;
+Pslib.isPs64bits = BridgeTalk.appVersion.match(/\d\d$/) == '64';
+
+// metadata is only supported by Photoshop CS4+
+Pslib.isPsCS4andAbove = parseInt(app.version.match(/^\d.\./)) >= 11;
+
+// here's some more stuff that can be useful
+Pslib.isPsCCandAbove = parseInt(app.version.match(/^\d.\./)) >= 14; 
+Pslib.isPsCS6 = (app.version.match(/^13\./) != null);
+Pslib.isPsCS5 = (app.version.match(/^12\./) != null);
+Pslib.isPsCS4 = (app.version.match(/^11\./) != null);
+Pslib.isPsCS3 = (app.version.match(/^10\./) != null);
 
 // #############  PER-LAYER METADATA FUNCTIONS
 
 // define default namespace
 Pslib.XMPNAMESPACE = "http://www.geeklystrips.com/";
 Pslib.XMPNAMESPACEPREFIX = "gs:";
+
+// for replacing huge whitespace chunk in XMP
+var XmpWhitespace = "                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                                                                                                    \
+                           ";
+				   
+
+// default colors
+Pslib.dark = [0, 0, 0];
+Pslib.light = [1.0, 1.0, 1.0];
+
+// if Photoshop-version specific colors (I have too much time on my hands!)
+if(Pslib.isPsCS3)
+{
+	Pslib.dark = [0.18823529411765, 0.44705882352941, 0.72549019607843]; //3072b9
+}
+else if(Pslib.isPsCS4)
+{
+	Pslib.dark = [0.07058823529412, 0.49019607843137, 0.78823529411765]; //127dc9
+}
+else if(Pslib.isPsCS5)
+{
+	Pslib.dark = [0.0, 0.39607843137255, 0.72156862745098]; //0065b8
+	Pslib.light = [0.36078431372549, 0.81176470588235, 0.94901960784314];  //5ccff2
+}
+else if(Pslib.isPsCS6)
+{
+	Pslib.dark = [0.16862745098039, 0.13725490196078, 0.43137254901961]; //0c1173
+	Pslib.light = [0.6078431372549, 0.8, 1.0];  //9bccff
+}
+else if(Pslib.isPsCCandAbove)
+{
+	Pslib.dark = [0.0, 0.08627450980392, 0.17647058823529]; //00162d
+	Pslib.light = [0.0, 0.76470588235294, 0.9843137254902]; //00c3fb
+}
 
 // register custom namespace
 try
@@ -169,7 +243,7 @@ Pslib.getXmpProperty = function (layer, property)
 		try
 		{
 			xmp = new XMPMeta( layer.xmpMetadata.rawData );
-			value = xmp.getProperty(Pslib.XMPNAMESPACE, property)
+			value = decodeURI(xmp.getProperty(Pslib.XMPNAMESPACE, property));
 		
 			// unload library
 		//	Pslib.unloadXMPLibrary();
@@ -283,7 +357,7 @@ Pslib.setXmpProperties = function (layer, propertiesArray)
 		for (var i = 0; i < propertiesArray.length; i++)
 		{	
 			prop = propertiesArray[i][0];
-			val = propertiesArray[i][1];
+			val = encodeURI(propertiesArray[i][1]);
 			
 			// modify metadata
 			try
@@ -298,7 +372,7 @@ Pslib.setXmpProperties = function (layer, propertiesArray)
 					if($.level) $.writeln("\tadding [" + prop + ": " + val +"]  " + typeof val);
 				}
 				// if property found and value different, update
-				else if(propertyExists && xmp.getProperty(Pslib.XMPNAMESPACE, prop).toString() != val.toString() )
+				else if(propertyExists && decodeURI(xmp.getProperty(Pslib.XMPNAMESPACE, prop).toString()) != val.toString() )
 				{
 					xmp.setProperty(Pslib.XMPNAMESPACE, prop, val);
 					if($.level) $.writeln("\tupdating [" + prop + ": " + val +"]  " + typeof val);
@@ -356,10 +430,10 @@ Pslib.getXmpProperties = function (layer, propertiesArray)
 		try
 		{
 		   xmp = new XMPMeta( layer.xmpMetadata.rawData );
-		   if($.level) $.writeln("XMP Metadata successfully fetched from layer \"" + layer.name + "\"");
+		   if($.level) $.writeln("XMP Metadata successfully fetched from object \"" + layer.name + "\"");
 		} catch( e ) 
 		{
-			if($.level) $.writeln("XMP metadata could not be found for layer \"" + layer.name + "\".\nCreating new XMP metadata container.");
+			if($.level) $.writeln("XMP metadata could not be found for object \"" + layer.name + "\".\nCreating new XMP metadata container.");
 			xmp = new XMPMeta(  );
 		}
 	   
@@ -375,11 +449,10 @@ Pslib.getXmpProperties = function (layer, propertiesArray)
 			{
 				var propertyExists = xmp.doesPropertyExist(Pslib.XMPNAMESPACE, prop);
 				
-				
 				// add new property if not found
 				if(propertyExists)
 				{
-					val = xmp.getProperty(Pslib.XMPNAMESPACE, prop);
+					val = decodeURI(xmp.getProperty(Pslib.XMPNAMESPACE, prop));
 //~ 					alert(i + " " + val);
 					//xmp.setProperty(Pslib.XMPNAMESPACE, prop, val);
 					if($.level) $.writeln("\tgetting property: value [" + prop + ": " + val +"]  " + typeof val);
@@ -402,7 +475,7 @@ Pslib.getXmpProperties = function (layer, propertiesArray)
 			} 
 			catch( e )
 			{
-				var msg = "Could not fetch metadata property from provided layer.\n[" + prop + ": " + val +  +"]  " + typeof val + "\n" + e;
+				var msg = "Could not fetch metadata property from provided object.\n[" + prop + ": " + val +  +"]  " + typeof val + "\n" + e;
 			   if($.level) $.writeln( msg );
 			   else alert(msg);
 			   return null;
@@ -447,10 +520,10 @@ Pslib.getPropertiesArray = function (layer)
 		try
 		{
 		   xmp = new XMPMeta( layer.xmpMetadata.rawData );
-		   if($.level) $.writeln("XMP Metadata successfully fetched from layer \"" + layer.name + "\"");
+		   if($.level) $.writeln("XMP Metadata successfully fetched from object \"" + layer.name + "\"");
 		} catch( e ) 
 		{
-			if($.level) $.writeln("XMP metadata could not be found for layer \"" + layer.name + "\".\nCreating new XMP metadata container.");
+			if($.level) $.writeln("XMP metadata could not be found for object \"" + layer.name + "\".\nCreating new XMP metadata container.");
 			xmp = new XMPMeta(  );
 		}
 	
@@ -461,13 +534,13 @@ Pslib.getPropertiesArray = function (layer)
 		if($.level) $.writeln("\nGetting list of XMP properties for XMP namespace " + Pslib.XMPNAMESPACEPREFIX + "\n");
 		while (next)
 		{
-//			var propName = prop.path.replace( Pslib.XMPNAMESPACEPREFIX, "" );   
-			var propName = next.path.replace( Pslib.XMPNAMESPACEPREFIX, "" );   
-			propsArray.push([propName, next]);
-			propsReport += (propName + "\t" + next + "\n");
+			var propName = next.path.replace( Pslib.XMPNAMESPACEPREFIX, "" ); 
+			var propValue = decodeURI(next);
+			propsArray.push([propName, propValue]);
+			propsReport += (propName + "\t" + propValue + "\n");
 			next = xmpIter.next();
 		}
-
+	
 		if($.level) $.writeln(propsReport);
 		if($.level) $.writeln("Properties successfully fetched from object \"" + layer.name + "\"");
 		
@@ -517,6 +590,7 @@ Pslib.clearXmp = function (layer)
 // clear entire namespace
 Pslib.clearNamespace = function (layer, namespace)
 {
+	var layer = layer == undefined ? app.activeDocument.activeLayer : layer;
 	/*
 	if(Pslib.loadXMPLibrary())
 	{
@@ -549,7 +623,7 @@ Pslib.clearNamespace = function (layer, namespace)
 	*/
 
 	// workaround: not friendly on performances, but gets the job done
-	var removePropArray = Pslib.getPropertiesArray();
+	var removePropArray = Pslib.getPropertiesArray(layer);
 	Pslib.deleteXmpProperties(layer, removePropArray);
 };
 
@@ -680,4 +754,17 @@ Pslib.propertiesToCSV = function(layer, namespace, uri)
 	}
 };
 
-"Pslib successfully loaded";
+// this returns the full active document path without building a histogram in CS2 (also bypasses the 'document not saved' exception)
+Pslib.getDocumentPath = function(doc)
+{
+	var doc = doc != undefined ? doc : app.activeDocument;
+	if(app.activeDocument != doc) app.activeDocument = doc;
+
+	var ref = new ActionReference();
+    ref.putProperty(cTID('Prpr'), cTID('FilR'));
+    ref.putEnumerated(cTID('Dcmn'), cTID('Ordn'), cTID('Trgt'));
+    var desc = executeActionGet(ref);
+    return desc.hasKey(cTID('FilR')) ? desc.getPath(cTID('FilR')) : undefined;
+};
+
+"\n";
