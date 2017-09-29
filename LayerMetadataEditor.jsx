@@ -322,19 +322,22 @@ function Main()
 		// remove items from list
 		propertyList.removeAll();
 		
-		for(var j = 0; propertyList.items.length < props.length; j++)
-		{  
-			var item = propertyList.add ("item", decodeURI(props[j].toString()));
-						
-			if(currentSelection != null)
-			{
-				if(item.text == currentSelection)
+		if(props != null)
+		{
+			for(var j = 0; propertyList.items.length < props.length; j++)
+			{  
+				var item = propertyList.add ("item", decodeURI(props[j].toString()));
+
+				if(currentSelection != null)
 				{
-					propertyList.selection = item;
-				}
-				else if(propertyList.items.length > currentLength)
-				{
-					propertyList.selection = propertyList.items[props.length-1];
+					if(item.text == currentSelection)
+					{
+						propertyList.selection = item;
+					}
+					else if(propertyList.items.length > currentLength)
+					{
+						propertyList.selection = propertyList.items[props.length-1];
+					}
 				}
 			}
 		}
