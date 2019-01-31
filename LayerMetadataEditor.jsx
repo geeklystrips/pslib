@@ -1,6 +1,14 @@
 /*
 	LayerMetadataEditor.jsx  (XMP operations)
 	Source: https://github.com/geeklystrips/pslib
+	
+	Latest fixes:
+	- re-added iconbutton
+	- fixed multiline texfield issue with CC+ (multiline property seems to be required at creation)
+	- JSUI update for iconbutton support (UI script, 5 states)
+	- general layout 
+	- added function to Load properties/values from CSV file
+	- tooltips
 */
 
 #target photoshop
@@ -9,6 +17,7 @@
 //@include "Pslib.jsx"
 
 var useDoc = useDoc != undefined ? useDoc : false;
+var XMPObj = null;
 
 try
 {
@@ -32,12 +41,12 @@ catch(e)
 function Main()
 {
 	// prepare XMP container
-	var XMPObj = null;
+
 	var propertiesArr = [];
 	var style = ScriptUI.newFont("Arial", "REGULAR", 18);
 
 	// build dialog window
-	var win = new Window('dialog', (useDoc ? "Document" : "Layer") + " Metadata Editor " + "[" + (useDoc ? new File (Pslib.getDocumentPath(doc)).fsName : layerObject.name) + "]  v" + Pslib.version + "  " + (Pslib.isPs64bits ? "x64" : "x32"));
+	var win = new Window('dialog', (useDoc ? "Document" : "Layer") + " Metadata Editor " + "[" + (useDoc ? new File (Pslib.getDocumentPath(doc)).fsName : layerObject.name) + "]  v" + Pslib.version + "  " + (Pslib.isPs64bits ? "x64" : "x32"), undefined, {closeButton: true});
 	win.alignChildren = 'fill';
 	
 	var maingroup = win.add('group');
@@ -47,18 +56,7 @@ function Main()
 	var propxmp = maingroup.add('group');
 	propxmp.orientation = "column";
 	propxmp.alignChildren = 'fill';
-//~ 	
-//~ 	try
-//~ 	{
-//~ 		var imgPath = new File( File($.fileName).parent.parent + "/img/LayerMetadata.png");
-//~ 		var img = propxmp.add('iconbutton', undefined, imgPath);
-//~ 		img.alignment = "right";
-//~ 	}
-//~ 	catch(e)
-//~ 	{
-//~ 		
-//~ 	}
-
+	
 	var layerObjectPanel = propxmp.add('panel', undefined, "Target Object");
 	layerObjectPanel.alignChildren = 'left';
 	
@@ -87,6 +85,17 @@ function Main()
 	layerHeightField.enabled = false;
 	layerObjectCoordsGroup.add('statictext', undefined, layerInfo.height);
 	
+	try
+	{
+		var imgPath = new File( File($.fileName).parent.parent + (useDoc ? "/img/DocMetadata.png" : "/img/LayerMetadata.png"));
+		var img = layerObjectGroup.add('iconbutton', undefined, ScriptUI.newImage(imgPath, imgPath, imgPath, imgPath));
+		img.alignment = "right";
+	}
+	catch(e)
+	{
+		
+	}
+
 	if(!useDoc)
 	{
 		var layerXField =  layerObjectCoordsGroup.add('statictext', undefined, "X:");
@@ -103,14 +112,15 @@ function Main()
 	var namespaceGroup = namespacePanel.add('group');
 	//namespaceGroup.add('statictext', undefined, "Namespace:");
 	var namespace =  namespaceGroup.add('edittext', undefined, Pslib.XMPNAMESPACE); 
-	namespace.characters = 30;
+	namespace.characters = 25;
 	namespaceGroup.add('statictext', undefined, "Prefix:");	
 	var namespacePrefix = namespaceGroup.add('edittext', undefined, Pslib.XMPNAMESPACEPREFIX); 
-	namespacePrefix.characters = 8;
+	namespacePrefix.characters = 4;
 	
 	var registerNamespace = namespaceGroup.add('button', undefined, "Register");
+	registerNamespace.helpTip = "Registers custom namespace";
 	var removeNamespace = namespaceGroup.add('button', undefined, "Clear"); 
-
+	removeNamespace.helpTip = "Removes specific namespace (including all its properties)";
 	var propertiesPanel = propxmp.add('panel', undefined, "Properties");
 	propertiesPanel.alignChildren = 'fill';
 	
@@ -125,7 +135,7 @@ function Main()
 	var propertySubGroup2 = propertyGroup.add('group');
 		propertySubGroup2.add('statictext', undefined, "    Value:");	
 		var propertyValue = propertySubGroup2.add('edittext', undefined, Pslib.DEFAULTPROPERTYVALUE ); 
-		propertyValue.characters = 64;
+		propertyValue.characters = 45;
 	
 	var propertyDebug = propertiesPanel.add('statictext', undefined, "");
 	propertyDebug.characters = 50;
@@ -133,10 +143,22 @@ function Main()
 	
 	var dataButtonsGroup = propertiesPanel.add('group');	
 	var setValue = dataButtonsGroup.add('button', undefined, "Set"); 
+	setValue.helpTip = "Adds/updates property and value";
 	var removeProperty = dataButtonsGroup.add('button', undefined, "Remove"); 
+	removeProperty.helpTip = "Removes property";
+	
+	dataButtonsGroup.add('statictext', undefined, "      ");
+	
+	var saveToCSV = dataButtonsGroup.add('button', undefined, "Export all to CSV"); 
+	saveToCSV.helpTip = "Saves currently active namespace properties/values to a CSV file (two columns)\nYou should save your document before using this feature.";
+	saveToCSV.enabled = docSaved;
+	
+	var loadFromCSV = dataButtonsGroup.add('button', undefined, "Load from CSV"); 
+	loadFromCSV.helpTip = "Loads properties/values to currently active namespace from CSV file (two columns)\nYou should save your document before using this feature.";
+	//loadFromCSV.enabled = docSaved;
 	
 	var propertyList = propertiesPanel.add('listbox', undefined, Pslib.getPropertiesArray(layerObject));
-	propertyList.preferredSize.width = 450;
+	propertyList.preferredSize.width = 440;
 	propertyList.preferredSize.height = 200;
 	
 	var xmpDisplay = maingroup.add('group');
@@ -145,9 +167,8 @@ function Main()
 	var xmpDisplayPanel = xmpDisplay.add('panel', undefined, "XMPMeta Object");
 	xmpDisplayPanel.alignChildren = 'left';
 	
-	var xmpDisplayText = xmpDisplayPanel.add("edittext", undefined, XMPObj);
-	xmpDisplayText.characters = 85;
-	xmpDisplayText.multiline = true;
+	var xmpDisplayText = xmpDisplayPanel.add("edittext", undefined, XMPObj, {multiline:true});
+	xmpDisplayText.characters = 65;
 	xmpDisplayText.preferredSize.height = 500;
 	xmpDisplayText.graphics.foregroundColor = xmpDisplayText.graphics.newPen (xmpDisplayText.graphics.PenType.SOLID_COLOR, useDoc ? Pslib.dark : Pslib.light, 1);
 	xmpDisplayText.graphics.backgroundColor = xmpDisplayText.graphics.newBrush (xmpDisplayText.graphics.BrushType.SOLID_COLOR, useDoc ? Pslib.light : Pslib.dark);
@@ -161,15 +182,13 @@ function Main()
 	if(!useDoc)
 	{
 		var addXMPObject = xmpButtonsGroup.add('button', undefined, "Add Empty XMP to Layer"); 
+		addXMPObject.helpTip = "Adds empty XMP object to current layer";
 	}
 	var getXMPObject = {};
 		
 	var saveToXML = xmpButtonsGroup.add('button', undefined, "Save XMP to XML"); 
-	saveToXML.enabled = exportXML;
+	saveToXML.enabled = docSaved;
 	saveToXML.helpTip = "Saves XMP object XML file. You should save your document before using this feature.";
-	var saveToCSV = xmpButtonsGroup.add('button', undefined, "Properties to CSV"); 
-	saveToCSV.helpTip = "Saves currently active namespace properties/values to a CSV file (two columns)\nYou should save your document before using this feature.";
-//	var removeXMPObject = xmpButtonsGroup.add('button', undefined, "Remove XMP"); 
 
 	// set value for specified property -- creates property if not found
 	setValue.onClick = function()
@@ -231,6 +250,9 @@ function Main()
 					XMPObj = new XMPMeta( layerObject.xmpMetadata.rawData);	
 					xmpDisplayText.text = XMPObj.serialize().replace(XmpWhitespace, "");
 					propertyList.update();
+					
+					property.text = "";
+					propertyValue.text = "";
 				}
 				else
 				{
@@ -327,19 +349,19 @@ function Main()
 			for(var j = 0; propertyList.items.length < props.length; j++)
 			{  
 				var item = propertyList.add ("item", decodeURI(props[j].toString()));
-
-				if(currentSelection != null)
-				{
-					if(item.text == currentSelection)
+							
+					if(currentSelection != null)
 					{
-						propertyList.selection = item;
-					}
-					else if(propertyList.items.length > currentLength)
-					{
-						propertyList.selection = propertyList.items[props.length-1];
+						if(item.text == currentSelection)
+						{
+							propertyList.selection = item;
+						}
+						else if(propertyList.items.length > currentLength)
+						{
+							propertyList.selection = propertyList.items[props.length-1];
+						}
 					}
 				}
-			}
 		}
 	};
 
@@ -393,11 +415,15 @@ function Main()
 					XMPObj = new XMPMeta( );
 					layerObject.xmpMetadata.rawData = XMPObj.serialize();
 					xmpDisplayText.text = XMPObj.serialize().replace(XmpWhitespace, "");
-					xmpDebug.text = "[ADD XMP: Current layer XMP object successfully replaced by empty XMP object]";
+					xmpDebug.text = "[ADD XMP: Current " + (useDoc ? "document" : "layer") +" XMP object successfully replaced by empty XMP object]";
+					
+					propertyList.update();
+					property.text = "";
+					propertyValue.text = "";
 				}
 				else
 				{
-					xmpDebug.text = "[ADD XMP: Current layer XMP object preserved]";
+					xmpDebug.text = "[ADD XMP: Current " + (useDoc ? "document" : "layer") +" XMP object preserved]";
 					XMPObj = new XMPMeta( layerObject.xmpMetadata.rawData);
 					xmpDisplayText.text = XMPObj.serialize().replace(XmpWhitespace, "");
 				}
@@ -409,7 +435,7 @@ function Main()
 				XMPObj = new XMPMeta();
 				layerObject.xmpMetadata.rawData = XMPObj.serialize();
 				xmpDisplayText.text = XMPObj.serialize().replace(XmpWhitespace, "");
-				xmpDebug.text = "[ADD XMP: XMP object successfully added to layer]";
+				xmpDebug.text = "[ADD XMP: XMP object successfully added to " + (useDoc ? "document" : "layer") +"]";
 			}
 		};
 	}
@@ -420,16 +446,18 @@ function Main()
 		// get existing XMP Object
 		if(Pslib.getXmp(layerObject))
 		{
-			xmpDebug.text = "[GET XMP: Existing XMP object successfully harvested from layer]";
+			xmpDebug.text = "[GET XMP: Existing XMP object successfully harvested from " + (useDoc ? "document" : "layer") +"]";
 			XMPObj = new XMPMeta( layerObject.xmpMetadata.rawData);
 			
 			propertiesArr = Pslib.getPropertiesArray(layerObject);
-			
+
 			xmpDisplayText.text = XMPObj.serialize().replace(XmpWhitespace, "");
+			
+//~ 			updateDialogUI();
 		}
 		else
 		{
-			var msg = "[GET XMP: No XMP object found on layer]";
+			var msg = "[GET XMP: No XMP object found on " + (useDoc ? "document" : "layer") +"]";
 			xmpDebug.text = msg;
 			xmpDisplayText.text = msg;				
 		}
@@ -449,7 +477,7 @@ function Main()
 			}
 			else
 			{
-				var msg = "[SAVE XML: No XMP object found on layer]";
+				var msg = "[SAVE XML: No XMP object found on " + (useDoc ? "document" : "layer") +"]";
 				xmpDebug.text = msg;
 				xmpDisplayText.text = msg;
 			}
@@ -465,6 +493,19 @@ function Main()
 	// save active namespace to bidimensional property/value CSV file
 	saveToCSV.onClick = function()
 	{
+		var testFolder;
+		
+		try
+		{
+			testFolder = new Folder(doc.path);
+			if($.level) $.writeln("Browsing for file. Default path: " + testFolder.fsName);
+		}
+		catch(e)
+		{
+			alert("This document should be saved to disk before proceeding.");
+			return;
+		}
+		
 		if(!layerObject.isBackgroundLayer)
 		{ 
 			if(Pslib.propertiesToCSV(layerObject, Pslib.XMPNAMESPACE , doc.path + "/" + doc.name + (useDoc ? "" : "_" + layerObject.name) + ".csv"))
@@ -473,7 +514,7 @@ function Main()
 			}
 			else
 			{
-				var msg = "[SAVE CSV: No XMP object found on layer]";
+				var msg = "[SAVE CSV: No XMP object found on " + (useDoc ? "document" : "layer") +"]";
 				xmpDebug.text = msg;
 				xmpDisplayText.text = msg;
 			}
@@ -484,7 +525,85 @@ function Main()
 			xmpDebug.text = msg;
 			xmpDisplayText.text = msg;
 		}
+		return;
 	};
+
+	// load properties from CSV
+	loadFromCSV.onClick = function()
+	{
+		if(!layerObject.isBackgroundLayer)
+		{ 
+			// prompt user for CSV file location
+			var csvFileURI;
+			var testFolder;
+			
+			try
+			{
+				testFolder = new Folder(doc.path);
+				if($.level) $.writeln("Browsing for file. Default path: " + testFolder.fsName);
+			}
+			catch(e)
+			{
+				testFolder = new Folder("~");
+				alert("This document should be saved to disk before proceeding.");
+				return;
+			}
+
+			if(File.myDefaultSave)
+			{
+			   Folder.current = File.myDefaultSave;
+			}
+
+			var chosenFile = File.openDialog("Prompt", "*.csv"); 
+
+			if(chosenFile != null)
+			{
+				File.myDefaultSave = chosenFile.parent;
+				
+				xmpDebug.text = "chosenFile: " + chosenFile.fsName + "\n[ exists: " + chosenFile.exists + " ]";
+				csvFileURI = chosenFile;
+			}
+					
+			if(csvFileURI != null)
+			{
+				if(Pslib.propertiesFromCSV(layerObject, Pslib.XMPNAMESPACE, csvFileURI))
+				{
+					xmpDebug.text = "[LOAD CSV: Properties/values successfully imported from CSV file]";
+
+					XMPObj = new XMPMeta( layerObject.xmpMetadata.rawData);	
+					xmpDisplayText.text = XMPObj.serialize().replace(XmpWhitespace, "");
+					
+					propertyList.update();
+					property.text = "";
+					propertyValue.text = "";
+					
+//~ 					updateDialogUI();
+				}
+				else
+				{
+					var msg = "[LOAD CSV: No XMP object found on " + (useDoc ? "document" : "layer") +"]";
+					xmpDebug.text = msg;
+					xmpDisplayText.text = msg;
+				}
+			}
+		
+		}
+		else
+		{
+			var msg = "[LOAD CSV: A background layer cannot contain an XMP object]";
+			xmpDebug.text = msg;
+			xmpDisplayText.text = msg;
+		}
+	};
+
+//~ 	updateDialogUI = function()
+//~ 	{
+//~ 		hasXMP = XMPObj != null;
+//~ 		
+//~ 		loadFromCSV.enabled = hasXMP;
+//~ 		saveToCSV.enabled = docSaved && hasXMP;
+//~ 		saveToXML.enabled = docSaved && hasXMP;
+//~ 	};
 
 	// load XMP object
 	getXMPObject.onClick();
@@ -528,20 +647,25 @@ if(Pslib.isPsCS4andAbove && app.documents.length)
 			layerInfo.height = doc.height.as('px');
 		}
 	}
-	var exportXML;
+
+	var docSaved;
+	var hasXMP = XMPObj != null;
 	
-	// this is to determine where to save the XML file
+	// this is to determine if the current document has been saved to disk (XML & CSV output functions require an existing path)
 	try
 	{
 		var docpath = doc.path;
-		exportXML = true;
+		docSaved = true;
 	}
 	catch(e)
 	{
-		exportXML = false;
+		docSaved = false;
 	}
 	
 	Main();
+	
+	// workaround for a variable persistence issue (feature?) with Photoshop CC+ and HTML5 panels context
+	useDoc = false;
 }
 else
 {
