@@ -30,6 +30,13 @@
 	- activated cTID/sTID functions
 	- added Pslib.getDocumentPath();
 	- added Pslib.isPSCS4andAbove boolean
+	
+	(0.44)
+	- updated LayerMetadataEditor.jsx:
+		- added default close button to dialog window declaration
+		- added icons for relevant functions
+		- propertylist and property/value fields now update properly when XMP object is removed from layer.
+		- added "Load from CSV" function
 */
 
 // these functions are often required when working with code obtained using the ScriptingListener plugin
@@ -64,7 +71,7 @@ catch(e)
 }
 
 // library version, used in tool window titles. Maybe.
-Pslib.version = 0.43;
+Pslib.version = 0.44;
 Pslib.isPs64bits = BridgeTalk.appVersion.match(/\d\d$/) == '64';
 
 // metadata is only supported by Photoshop CS4+
@@ -720,6 +727,7 @@ Pslib.propertiesToCSV = function(layer, namespace, uri)
 
 	if(propertiesArray != null && propertiesArray.length)
 	{
+		// adding a specific separator on the first line (allows MS Excel to know what to do with the CSV content)
 		report += "sep=\t\n";
 		try
 		{
@@ -752,6 +760,54 @@ Pslib.propertiesToCSV = function(layer, namespace, uri)
 			return false;
 		}
 	}
+};
+
+// save properties/values to CSV
+Pslib.propertiesFromCSV = function(layer, namespace, uri)
+{	
+	var layer = layer == undefined ? app.activeDocument.activeLayer : layer;
+
+	var csv = new File(uri);
+	var pairs = [];
+	var propertiesArray = [];
+	var success = false;
+	
+	// open CSV file, read lines
+	if(csv.exists)
+	{
+		csv.open('r');
+
+		while (!csv.eof)
+		{
+			pairs.push(csv.readln());
+		}
+		csv.close();
+	}
+
+	// loop through lines array and build 
+	if(pairs.length)
+	{
+		var propertiesArray = new Array();
+
+		// loop through lines to harvest info
+		for(var i = 0; i < pairs.length; i++)
+		{
+			// skip first line if separator
+			if(pairs[i] == "sep=\t")
+			{
+				continue;
+			}		
+			var pair = pairs[i].split('\t');
+			if($.level) $.writeln("Adding: " + pair[0] + "," + pair[1]);
+			propertiesArray.push([pair[0], pair[1] ]);
+		}
+	}
+	
+	if(propertiesArray.length)
+	{
+		success = Pslib.setXmpProperties(layer, propertiesArray);
+	}
+	return success;
 };
 
 // this returns the full active document path without building a histogram in CS2 (also bypasses the 'document not saved' exception)
