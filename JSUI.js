@@ -3,9 +3,10 @@
 	Framework by geeklystrips@github
 		
 	0.5.5: renamed from UI to JSUI to avoid namespace conflicts
-	0.6.2: fix for disappearing iconbutton images: ScriptUI.newImage(imgPath, imgPath, imgPath, imgPath)
+	0.6.2: fix for disappearing iconbutton images: ScriptUI.newImage(ubiMaxLogoImgPath, ubiMaxLogoImgPath, ubiMaxLogoImgPath, ubiMaxLogoImgPath)
 	0.8: better support for iconbutton states (radiobutton/checkbox) + up/over/down button image states
 	0.85: improved JSUI.debug() behavior, fixed issues with addToggleIconButton update method, added JSUI.autoSave feature
+	0.87: adding dark UI support for Photoshop CS6
 
 	UPDATES: 
 	disabledImgFileOver and disabledImgFileDown states are never actually used.
@@ -32,11 +33,12 @@
 JSUI = function(){};
 
 /* version	*/
-JSUI.version = "0.85";
+JSUI.version = "0.87";
 
 // do some of the stuff differently if operating UI dialogs from ESTK
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
 JSUI.isPhotoshop = app.name == "Adobe Photoshop";
+JSUI.isCS6 = JSUI.isPhotoshop ? app.version.match(/^13\./) != null : false;
 
 /*	 system properties	*/
 JSUI.isWindows = $.os.match(/windows/i) == "Windows";
@@ -74,7 +76,10 @@ JSUI.populateINI = function()
 /* INI prefs framework	*/
 JSUI.PREFS = {};
 
+/*  Layout and graphics  */
 JSUI.SPACING = (JSUI.isWindows ? 3 : 1);
+JSUI.dark = [0.2, 0.2, 0.2];
+JSUI.light = [0.8, 0.8, 0.8];
 
 /* failsafe for cases where the UI framework is used without a debugTxt dialog component	
  if this variable is not replaced, calls by regular functions to modify its state should not cause problems	*/
@@ -228,6 +233,34 @@ JSUI.zeropad = function(str)
 /* supercharge object type to store interface element functions (hi X! )	*/
 Object.prototype.Components = new Array(); 
 
+/* Graphics treatment for CS6 (Dialog Window)*/
+Object.prototype.dialogDarkMode = function()
+{
+	if(JSUI.isCS6)
+	{
+		this.graphics.foregroundColor = this.graphics.newPen (this.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
+		// this.graphics.backgroundColor = this.graphics.newBrush (this.graphics.PenType.SOLID_COLOR, [0.33, 0.33, 0.33], 1);
+		this.graphics.backgroundColor = this.graphics.newBrush (this.graphics.PenType.SOLID_COLOR, [0.15, 0.15, 0.15], 1);
+	}
+};
+
+/* Graphics treatment for CS6 */
+Object.prototype.darkMode = function()
+{
+	if(JSUI.isCS6)
+	{
+		this.graphics.foregroundColor = this.graphics.newPen (this.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
+		try
+		{
+			this.graphics.backgroundColor = this.graphics.newBrush (this.graphics.PenType.SOLID_COLOR, JSUI.dark, 1);
+		}
+		catch(e)
+		{
+
+		}
+	}
+};
+
 /* group component	*/
 Object.prototype.addGroup = function(obj)
 {
@@ -315,6 +348,11 @@ Object.prototype.addPanel = function(obj)
 	if(obj.width) c.preferredSize.width = obj.width;
 	if(obj.height) c.preferredSize.height = obj.height;
 	if(obj.alignment) c.alignment = obj.alignment;
+
+	if(JSUI.isCS6)
+	{
+		c.graphics.foregroundColor = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
+	}
 	
 	this.Components[obj.name] = c; 
 	/*	return this.Components[obj.name];	*/
@@ -335,6 +373,11 @@ Object.prototype.addTabbedPanel = function(obj)
 	if(obj.width) c.preferredSize.width = obj.width;
 	if(obj.height) c.preferredSize.height = obj.height;
 
+	if(JSUI.isCS6) c.darkMode();
+	// {
+	// 	c.graphics.foregroundColor = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
+	// }
+
 	return c;
 };
 
@@ -350,6 +393,11 @@ Object.prototype.addTab = function(obj)
 	if(obj.spacing) c.spacing = obj.spacing;
 	if(obj.margins) c.margins = obj.margins;
 
+	if(JSUI.isCS6) c.darkMode();
+	// {
+	// 	c.graphics.foregroundColor = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
+	// }
+
 	return c;
 };
 
@@ -361,6 +409,11 @@ Object.prototype.addDivider = function(obj)
 	c.alignChildren = 'fill';
 	c.orientation = obj.orientation ? obj.orientation : 'row';
 
+	if(JSUI.isCS6) c.darkMode();
+	// {
+	// 	c.graphics.foregroundColor = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
+	// }
+
 	return c;
 };
 
@@ -370,6 +423,11 @@ Object.prototype.addCheckBox = function(propName, obj)
 	if(!obj) return;
 	var c = this.add('checkbox', undefined, obj.label ? obj.label : "Default Checkbox Text", {name: obj.name});
 	c.value = obj.value != undefined ? obj.value : JSUI.PREFS[propName];
+
+	if(JSUI.isCS6) c.darkMode();
+	// {
+	// 	c.graphics.foregroundColor = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
+	// }
 
 	if(obj.helpTip != undefined) c.helpTip = obj.helpTip;
 
@@ -390,134 +448,6 @@ Object.prototype.addCheckBox = function(propName, obj)
 	this.Components[obj.name] = c; 
 	return c;
 };
-
-/* image checkbox component	*/
-Object.prototype.addImageCheckBox = function(propName, obj)
-{
-	if(!obj) return;
-	//var obj = obj != undefined ? obj : {};
-	
-	if(obj.imgFile)
-	{
-		var testImage;
-
-		// if not a valid file URI, attempt to make it a file object
-		if( !(obj.imgFile instanceof File) )
-		{
-			testImage = new File(obj.imgFile);
-
-			// if still not valid, add absolute path for parent script
-			if(!testImage.exists)
-			{
-				// this will make it work if obj.imgFile parameter was something like "/img/file.png" or "file.png"
-				testImage = new File(JSUI.URI + (obj.imgFile.toString()[0] == "/" ? "" : "/") + obj.imgFile);
-				if(testImage.exists)
-				{
-					obj.imgFile = testImage;
-				}
-				else
-				{
-					// placeholder object
-					obj.imgFile = { exists: false};
-				}
-			}
-			else
-			{
-				// placeholder object
-				obj.imgFile = { exists: false};
-			}
-		}
-		
-		// add buttonImage support
-		if(obj.imgFile.exists)
-		{
-			var imgFileUp = new File(obj.imgFile.toString().replace(/\.(png)$/i, "_up.png"));
-			var imgFileOver = new File(obj.imgFile.toString().replace(/\.(png)$/i, "_over.png"));
-			var imgFileDown = new File(obj.imgFile.toString().replace(/\.(png)$/i, "_down.png"));
-			var c = this.add('iconbutton', undefined, ScriptUI.newImage(obj.imgFile, imgFileUp.exists ? imgFileUp : obj.imgFile, imgFileDown.exists ? imgFileDown : obj.imgFile, imgFileOver.exists ? imgFileOver : obj.imgFile));
-		}
-		// fallback in case image does not exist
-		else
-		{
-			var c = this.add('button', undefined, "[Invalid URL: " + obj.imgFile + "]");
-		}
-	}
-	else 
-	{
-		if(obj.name != undefined)
-		{
-			var c = this.add('button', undefined, obj.label ? obj.label : "Default Button Text", {name: obj.name});
-		}
-		else
-		{
-			var c = this.add('button', undefined, obj.label ? obj.label : "Default Button Text");
-		}
-	}
-
-	// if not using as a button image, treat like regular checkbox
-	if(!obj.imgFile.exists)
-	{
-		c.onClick = function()
-		{ 
-			JSUI.PREFS[propName] = c.value;
-			
-	//		alert("c.value: " + c.value +"\nJSUI.PREFS["+propName+"]: " + JSUI.PREFS[propName]);
-			JSUI.debug(propName + ": " + c.value); 
-
-			if(JSUI.autoSave) JSUI.saveIniFile();
-		}
-	}
-
-	// else treat as on/off image button
-	else if(obj.imgFile.exists)
-	{
-		c.onClick = function()
-		{ 
-			c.visible = !c.visible;	
-			JSUI.PREFS[propName] = c.visible;
-			
-			if(disabledImgFile.exists)
-			{
-				cd.visible = !c.visible;
-			}
-		
-			JSUI.debug(propName + ": " + c.visible); 
-//~ 		alert("Clicked "+ propName + "  " + c.visible);
-		}
-	
-		if(disabledImgFile.exists)
-		{
-			cd.onClick = function()
-			{ 
-				cd.visible = !cd.visible;
-				c.visible = !cd.visible;
-				JSUI.PREFS[propName] = c.visible;
-				
-				JSUI.debug(propName + ": " + c.visible);
-//~ 			alert("Clicked "+ propName + "  " + c.visible);
-			}
-		}
-	}
-	else
-	{
-		alert("ERROR! Verify that the iconbutton specs are properly set up");
-	}
-
-	// update 
-	c.update = function()
-	{
-		if(obj.imgFile.exists)
-		{
-			c.visible = JSUI.PREFS[propName];
-			cd.visible = !c.visible;
-			JSUI.PREFS[propName] = c.visible;
-		}
-	////	alert("checkbox "+propName+" updated!");
-	}
-	
-	return c;
-};
-
 
 /* 
 	addToggleIconButton
@@ -590,7 +520,7 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 			}
 		}
 
-		// find out if there's a [imgFile] _up.png/_down.png/_disabled.png/_disabled_up.png/_disabled_down.png present
+		// find out whether a [imgFile] _up.png/_down.png/_disabled.png/_disabled_up.png is present
 		// prepare image file URIs accordingly
 		if(obj.imgFile.exists)
 		{
@@ -616,23 +546,24 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 		}
 	}
 
-	// at this point, if imgFile does not exist, fallback to checkbox or radiobutton component 
-	if(!obj.imgFile.exists)
-	{
-		if($.level) $.writeln("Fallback: " + (obj.array ? 'radiobutton' : 'checkbox') + "\n");
-		return obj.array ? this.addRadioButton(propName, obj) : this.addCheckBox(propName, obj);
-	}
-
 	// if image file is found, add iconbutton
 	if(obj.imgFile.exists)
 	{
 		if($.level) $.writeln("Adding [" + propName + "] toggle iconbutton" + (obj.array ? ' with radiobutton behavior' : '') + "\n");
 		var c = this.add('iconbutton', undefined, ScriptUI.newImage(obj.imgFile, imgFileUp.exists ? imgFileUp : obj.imgFile, imgFileDown.exists ? imgFileDown : obj.imgFile, imgFileOver.exists ? imgFileOver : obj.imgFile));
 	}
+	// at this point, if imgFile does not exist, fallback to checkbox or radiobutton component 
+	else
+	{
+		if($.level) $.writeln("Fallback: " + (obj.array ? 'radiobutton' : 'checkbox') + "\n");
+		return (obj.array ? this.addRadioButton(propName, obj) : this.addCheckBox(propName, obj) );
+	}
 
 	if(obj.width != undefined) c.preferredSize.width = obj.width;
 	if(obj.height != undefined) c.preferredSize.height = obj.height;
+
 	if(obj.alignment != undefined) c.alignment = obj.alignment;
+
 	if(obj.helpTip != undefined) c.helpTip = obj.helpTip;
 	if(obj.disabled != undefined) c.enabled = !obj.disabled;
 	
@@ -643,7 +574,7 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 	
 	c.onClick = function()
 	{ 
-		if(obj.array)
+		if(obj.array != undefined)
 		{ 
 			for(var i = 0; i < obj.array.length; i++)
 			{
@@ -654,10 +585,10 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 				// update preferences
 				JSUI.PREFS[ obj.array[i] ] = isCurrentComponent;
 				
-				//
+				// update visuals
 				this.Components[obj.array[i]].update();
 			}
-			//if($.level) JSUI.debug(propName + ": " + JSUI.PREFS[propName]); 
+			if($.level) JSUI.debug(propName + " prout : " + JSUI.PREFS[propName]); 
 		}
 		else
 		{
@@ -674,19 +605,21 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 				var bool = JSUI.PREFS[ obj.array[i] ];
 				str += "  " + obj.array[i] + ": " + (bool ? bool.toString().toUpperCase() : bool);
 			}
-			if($.level) JSUI.debug((str ? "[" + str + " ]" : "")); 
+			if($.level) JSUI.debug((str ? "[" + str + " ]" : "") + "\n" + propName + ": " + JSUI.PREFS[propName] + "\ncomponent.image: " + c.image); 
 		}
-
 		if(JSUI.autoSave) JSUI.saveIniFile();
-
 		if(obj.onClickFunction) obj.onClickFunction();
 	}
 	
 	// update callback: only updates the UI based on the state of preferences object
 	c.update = function()
 	{
-		c.image = JSUI.PREFS[propName] ? ScriptUI.newImage(obj.imgFile, imgFileUp.exists ? imgFileUp : obj.imgFile, imgFileDown.exists ? imgFileDown : obj.imgFile, imgFileOver.exists ? imgFileOver : obj.imgFile) : ScriptUI.newImage(disabledImgFile, disabledImgFileUp.exists ? disabledImgFileUp : disabledImgFile, imgFileDown.exists ? imgFileDown : obj.imgFile, imgFileOver.exists ? imgFileOver : obj.imgFile);
+		var value = JSUI.PREFS[propName];
+		c.image = value ? ScriptUI.newImage(obj.imgFile, imgFileUp.exists ? imgFileUp : obj.imgFile, imgFileDown.exists ? imgFileDown : obj.imgFile, imgFileOver.exists ? imgFileOver : obj.imgFile) : ScriptUI.newImage(disabledImgFile, disabledImgFileUp.exists ? disabledImgFileUp : disabledImgFile, imgFileDown.exists ? imgFileDown : obj.imgFile, imgFileOver.exists ? imgFileOver : obj.imgFile);
+		JSUI.debug(propName + ": " + value + "\ncomponent.image: " + c.image);
 	};
+
+	c.update();
 
 	return c;
 };
@@ -712,6 +645,12 @@ Object.prototype.addRadioButton = function(propName, obj)
 	if(obj.alignment) c.alignment = obj.alignment;
 	if(obj.helpTip) c.helpTip = obj.helpTip;
 	if(obj.disabled) c.enabled = !obj.disabled;
+
+	if(JSUI.isCS6) c.darkMode();
+	// {
+	// 	c.graphics.foregroundColor = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
+	// }
+
 	
 	this.Components[propName] = c;
 
@@ -781,13 +720,18 @@ Object.prototype.addStaticText = function(obj)
 	if(obj.disabled) c.enabled = !obj.disabled;
 	
 	if(obj.justify) c.justify = obj.justify;
-	if(obj.style)
+
+	if(JSUI.isCS6) c.darkMode();
+	// {
+	// 	c.graphics.foregroundColor = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
+	// }
+
+	if(obj.style && JSUI.isCS6)
 	{
 		try
 		{
 			c.graphics.font = obj.style;
 		}
-	// force default specs in case of a fail
 		catch(e)
 		{
 			c.graphics.font = ScriptUI.newFont("Arial", "REGULAR", 14);
@@ -798,8 +742,6 @@ Object.prototype.addStaticText = function(obj)
 		if(JSUI.STYLE)
 		c.graphics.font = JSUI.STYLE;
 	}
-
-	//c.text = obj.text ? obj.text : 'Default Text';
 
 	return c;
 };
@@ -895,6 +837,8 @@ Object.prototype.addEditText = function(propName, obj)
 	{
 		var c = this.add('edittext', undefined, obj.text != undefined ? decodeURI (obj.text) : propName, {multiline:obj.multiline});
 	}
+
+	if(JSUI.isCS6) c.dialogDarkMode();
 	
 
 	// if source/target file/folder needs an 'exists' indication, add read-only checkbox as an indicator next to the edittext component
@@ -963,7 +907,6 @@ Object.prototype.addEditText = function(propName, obj)
 			}	
 		
 			this.Components[propName+'BrowseButton'] = b;
-	//		b = this.Components[propName+'BrowseButton'];
 			
 			// preconfigured button callback
 			b.onClick = function()
@@ -1040,6 +983,12 @@ Object.prototype.addEditText = function(propName, obj)
 	if(obj.alignment) c.alignment = obj.alignment;
 	if(obj.helpTip) c.helpTip = obj.helpTip;
 	if(obj.disabled) c.enabled = !obj.disabled;
+
+	if(JSUI.isCS6) c.darkMode();
+	// {
+	// 	// c.graphics.foregroundColor = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
+	// 	// c.graphics.backgroundColor = c.graphics.newBrush (c.graphics.PenType.SOLID_COLOR, JSUI.dark, 1);
+	// }
 	
 	// filter for File/Folder Object
 	if( obj.text != undefined ) 
@@ -1499,6 +1448,7 @@ Object.prototype.addSlider = function(propName, obj)
 	
 		var text = this.add('edittext', undefined, obj.value != undefined ? obj.value : JSUI.PREFS[propName]);
 		text.characters = obj.specs.characters != undefined ? obj.specs.characters : 6;
+		if(JSUI.isCS6) text.darkMode();
 		
 		this.Components[propName+"Text"] = text;
 		
@@ -1906,8 +1856,14 @@ JSUI.componentsFromObject = function (obj, container, array, preferRadiobuttons)
 						{
 							var cName = property + "_radiobutton_" + i;
 							
-							c = container.addRadioButton(value[i]);		
-							
+							c = container.addRadioButton(value[i]);
+
+							if(JSUI.isCS6)
+							{
+								// c.graphics.foregroundColor = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
+								c.darkMode();
+							}
+													
 							// auto-add boolean value to prefs object
 						//	JSUI.PREFS[cName] 
 							
@@ -2254,7 +2210,7 @@ JSUI.writeIniFile = function(fptr, obj, header)
 JSUI.saveIniFile = function()
 {
 	JSUI.writeIniFile(JSUI.INIFILE, JSUI.PREFS, "# " + JSUI.TOOLNAME + " Settings [jsuiLib v" + JSUI.version + "]\n");
-	JSUI.debug("Settings stored successfully.");
+	if($.level) $.writeln("Settings stored successfully.");
 };
 
 JSUI.deleteIniFile = function()
