@@ -3,7 +3,7 @@
 	Framework by geeklystrips@github
 		
 	0.5.5: renamed from UI to JSUI to avoid namespace conflicts
-	0.6.2: fix for disappearing iconbutton images: ScriptUI.newImage(ubiMaxLogoImgPath, ubiMaxLogoImgPath, ubiMaxLogoImgPath, ubiMaxLogoImgPath)
+	0.6.2: fix for disappearing iconbutton images: ScriptUI.newImage(imgPath, imgPath, imgPath, imgPath)
 	0.8: better support for iconbutton states (radiobutton/checkbox) + up/over/down button image states
 	0.85: improved JSUI.debug() behavior, fixed issues with addToggleIconButton update method, added JSUI.autoSave feature
 	0.87: adding dark UI support for Photoshop CS6
