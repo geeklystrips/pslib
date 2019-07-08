@@ -7,14 +7,9 @@
 	0.8: better support for iconbutton states (radiobutton/checkbox) + up/over/down button image states
 	0.85: improved JSUI.debug() behavior, fixed issues with addToggleIconButton update method, added JSUI.autoSave feature
 	0.87: adding dark UI support for Photoshop CS6
-
-	UPDATES: 
-	disabledImgFileOver and disabledImgFileDown states are never actually used.
-
+	0.88: using custombutton type + mouseevents to better control ScriptUI iconbutton visuals in CS6, added onClickFunction support for addCheckBox & addRadioButton
 
 	*/
-
-	
 
 /*
 	Uses functions adapted from Xbytor's Stdlib.js
@@ -33,7 +28,7 @@
 JSUI = function(){};
 
 /* version	*/
-JSUI.version = "0.87";
+JSUI.version = "0.88";
 
 // do some of the stuff differently if operating UI dialogs from ESTK
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -78,8 +73,8 @@ JSUI.PREFS = {};
 
 /*  Layout and graphics  */
 JSUI.SPACING = (JSUI.isWindows ? 3 : 1);
-JSUI.dark = [0.2, 0.2, 0.2];
-JSUI.light = [0.8, 0.8, 0.8];
+JSUI.dark = [0.33, 0.33, 0.33];
+JSUI.light = [0.86, 0.86, 0.86];
 
 /* failsafe for cases where the UI framework is used without a debugTxt dialog component	
  if this variable is not replaced, calls by regular functions to modify its state should not cause problems	*/
@@ -239,8 +234,14 @@ Object.prototype.dialogDarkMode = function()
 	if(JSUI.isCS6)
 	{
 		this.graphics.foregroundColor = this.graphics.newPen (this.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
-		// this.graphics.backgroundColor = this.graphics.newBrush (this.graphics.PenType.SOLID_COLOR, [0.33, 0.33, 0.33], 1);
-		this.graphics.backgroundColor = this.graphics.newBrush (this.graphics.PenType.SOLID_COLOR, [0.15, 0.15, 0.15], 1);
+		try
+		{
+			this.graphics.backgroundColor = this.graphics.newBrush (this.graphics.PenType.SOLID_COLOR, [0.27, 0.27, 0.27], 1);
+		}
+		catch(e)
+		{
+
+		}
 	}
 };
 
@@ -437,6 +438,7 @@ Object.prototype.addCheckBox = function(propName, obj)
 		JSUI.debug(propName + ": " + c.value); 
 
 		if(JSUI.autoSave) JSUI.saveIniFile();
+		if(obj.onClickFunction) obj.onClickFunction();
 	};
 
 	c.update = function()
@@ -486,7 +488,9 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 	// abort if no object provided
 	if(!obj) return;
 
-	var testImage, imgFileOver, imgFileUp, imgFileDown, disabledImgFile, disabledImgFileUp; //, disabledImgFileDown;
+	var testImage, imgFileUp, imgFileOver, imgFileDown, disabledImgFile, disabledImgFileUp, disabledImgFileOver;
+	var imgFileUpExists, imgFileOverExists, imgFileDownExists, disabledImgFileExists, disabledImgFileOver = false;
+	var normalState, overState, downState = null;
 
 	if(obj.imgFile != undefined)
 	{
@@ -529,19 +533,24 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 			imgFileDown = new File(obj.imgFile.toString().replace(/\.(png)$/i, "_down.png"));
 			
 			disabledImgFile = new File(obj.imgFile.toString().replace(".png", "_disabled.png") );
-			disabledImgFileUp = new File(disabledImgFile.toString().replace(/\.(png)$/i, "_up.png"));
-			// disabledImgFileDown = new File(disabledImgFile.toString().replace(/\.(png)$/i, "_down.png"));
+			disabledImgFileOver = new File(disabledImgFile.toString().replace(/\.(png)$/i, "_over.png"));
+
+			imgFileUpExists = imgFileUp.exists;
+			imgFileOverExists = imgFileOver.exists;
+			imgFileDownExists = imgFileDown.exists;
+
+			disabledImgFileExists = disabledImgFile.exists;
+			disabledImgFileOverExists = disabledImgFileOver.exists;
 
 			if($.level)
 			{
 				$.writeln( (obj.imgFile.exists ? "    Found: " : "NOT FOUND: ") + obj.imgFile.name);
-				$.writeln( (imgFileUp.exists ? "    Found: " : "NOT FOUND: ") + imgFileUp.name);
-				$.writeln( (imgFileOver.exists ? "    Found: " : "NOT FOUND: ") + imgFileOver.name);
-				$.writeln( (imgFileDown.exists ? "    Found: " : "NOT FOUND: ") + imgFileDown.name);				
+				$.writeln( (imgFileUpExists ? "    Found: " : "NOT FOUND: ") + imgFileUp.name);
+				$.writeln( (imgFileOverExists ? "    Found: " : "NOT FOUND: ") + imgFileOver.name);
+				$.writeln( (imgFileDownExists ? "    Found: " : "NOT FOUND: ") + imgFileDown.name);				
 
-				$.writeln( (disabledImgFile.exists ? "    Found: " : "NOT FOUND: ") + disabledImgFile.name);
-				$.writeln( (disabledImgFileUp.exists ? "    Found: " : "NOT FOUND: ") + disabledImgFileUp.name);
-				// $.writeln( (disabledImgFileDown.exists ? "    Found: " : "NOT FOUND: ") + disabledImgFileDown.name);				
+				$.writeln( (disabledImgFileExists ? "    Found: " : "NOT FOUND: ") + disabledImgFile.name);
+				$.writeln( (disabledImgFileOverExists ? "    Found: " : "NOT FOUND: ") + disabledImgFileOver.name);
 			}
 		}
 	}
@@ -551,6 +560,7 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 	{
 		if($.level) $.writeln("Adding [" + propName + "] toggle iconbutton" + (obj.array ? ' with radiobutton behavior' : '') + "\n");
 		var c = this.add('iconbutton', undefined, ScriptUI.newImage(obj.imgFile, imgFileUp.exists ? imgFileUp : obj.imgFile, imgFileDown.exists ? imgFileDown : obj.imgFile, imgFileOver.exists ? imgFileOver : obj.imgFile));
+		//var c = this.add('iconbutton', undefined, ScriptUI.newImage(obj.imgFile, obj.imgFile, obj.imgFile, obj.imgFile));
 	}
 	// at this point, if imgFile does not exist, fallback to checkbox or radiobutton component 
 	else
@@ -567,28 +577,88 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 	if(obj.helpTip != undefined) c.helpTip = obj.helpTip;
 	if(obj.disabled != undefined) c.enabled = !obj.disabled;
 	
-	c.image = JSUI.PREFS[propName] ? ScriptUI.newImage(obj.imgFile, imgFileUp.exists ? imgFileUp : obj.imgFile, imgFileDown.exists ? imgFileDown : obj.imgFile, imgFileOver.exists ? imgFileOver : obj.imgFile) : ScriptUI.newImage(disabledImgFile, disabledImgFileUp.exists ? disabledImgFileUp : disabledImgFile, imgFileDown.exists ? imgFileDown : obj.imgFile, imgFileOver.exists ? imgFileOver : obj.imgFile);
-
 	// manually assign new component to dialog's variable list
 	this.Components[propName] = c;
+
+	// fix for unwanted borders and outlines (CS6 & CC+) -- requires onDraw + eventListener
+	if(JSUI.isCS6)
+	{
+		var refImage = ScriptUI.newImage(obj.imgFile);
+
+		// temporary assignment
+		c.image = refImage;
+		c.size = refImage.size;
+
+		normalState, overState, downState = ScriptUI.newImage(obj.imgFile);
+
+		c.onDraw = function (state)
+		{  
+			c.graphics.drawImage(c.image,0,0);  
+		}  
+
+		// mouse events
+		var mouseEventHandler = function(event)
+		{
+			switch (event.type)
+			{  
+				case 'mouseover':   
+					event.target.image = overState;  
+					break;  
+				case 'mouseout':   
+					event.target.image = normalState;  
+					break;  
+				case 'mousedown':   
+					event.target.image = downState;  
+					break;  
+				case 'mouseup':   
+					event.target.image = overState;  
+					break;  
+				default:   
+					event.target.image = normalState;  
+			}  
+			event.target.notify("onDraw");  
+		}  
 	
+		// event listeners
+		c.addEventListener('mouseover', mouseEventHandler, false);  
+		c.addEventListener('mouseout', mouseEventHandler, false);  
+		c.addEventListener('mousedown', mouseEventHandler, false);  
+		c.addEventListener('mouseup', mouseEventHandler, false);  
+	}
+
 	c.onClick = function()
 	{ 
+		var currentValue = JSUI.PREFS[ propName ];
+
 		if(obj.array != undefined)
 		{ 
-			for(var i = 0; i < obj.array.length; i++)
+			//in the case where the initial value of the clicked object is true, skip the whole thing
+			if(currentValue)
 			{
-				// determine if the current array index matches the current component
-				var component = this.Components[obj.array[i]];
-				var isCurrentComponent = (component == c);
 
-				// update preferences
-				JSUI.PREFS[ obj.array[i] ] = isCurrentComponent;
-				
-				// update visuals
-				this.Components[obj.array[i]].update();
 			}
-			if($.level) JSUI.debug(propName + " prout : " + JSUI.PREFS[propName]); 
+			else
+			{
+				for(var i = 0; i < obj.array.length; i++)
+				{
+					// determine if the current array index matches the current component
+					var component = this.Components[obj.array[i]];
+					var isCurrentComponent = (component == c); 
+
+					// store current component value
+					//var currentComponentValue = JSUI.PREFS[ obj.array[i] ];
+
+					// update preferences value ONLY if different
+					if(JSUI.PREFS[ obj.array[i] ] != isCurrentComponent) JSUI.PREFS[ obj.array[i] ] = isCurrentComponent;
+					
+					// update visuals only if value changed
+					// if(currentValue != JSUI.PREFS[ obj.array[i] ]) this.Components[obj.array[i]].update();
+					// if(currentValue != currentComponentValue) this.Components[obj.array[i]].update();
+
+					this.Components[obj.array[i]].update();	
+				}
+				if($.level) JSUI.debug(propName + ": " + JSUI.PREFS[propName]); 
+			}
 		}
 		else
 		{
@@ -605,18 +675,31 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 				var bool = JSUI.PREFS[ obj.array[i] ];
 				str += "  " + obj.array[i] + ": " + (bool ? bool.toString().toUpperCase() : bool);
 			}
-			if($.level) JSUI.debug((str ? "[" + str + " ]" : "") + "\n" + propName + ": " + JSUI.PREFS[propName] + "\ncomponent.image: " + c.image); 
+			if($.level) JSUI.debug((str ? "\n[" + str + " ]" : "") + "\n" + propName + ": " + JSUI.PREFS[propName] + "\ncomponent.image: " + c.image); 
 		}
 		if(JSUI.autoSave) JSUI.saveIniFile();
 		if(obj.onClickFunction) obj.onClickFunction();
 	}
 	
-	// update callback: only updates the UI based on the state of preferences object
+	// update callback: update the UI based on the state of preferences object
 	c.update = function()
 	{
-		var value = JSUI.PREFS[propName];
-		c.image = value ? ScriptUI.newImage(obj.imgFile, imgFileUp.exists ? imgFileUp : obj.imgFile, imgFileDown.exists ? imgFileDown : obj.imgFile, imgFileOver.exists ? imgFileOver : obj.imgFile) : ScriptUI.newImage(disabledImgFile, disabledImgFileUp.exists ? disabledImgFileUp : disabledImgFile, imgFileDown.exists ? imgFileDown : obj.imgFile, imgFileOver.exists ? imgFileOver : obj.imgFile);
-		JSUI.debug(propName + ": " + value + "\ncomponent.image: " + c.image);
+		if(JSUI.isCS6)
+		{
+			// update ScriptUI images used by mouseevents
+			normalState = ScriptUI.newImage( JSUI.PREFS[propName] ? obj.imgFile : (disabledImgFileExists ? disabledImgFile : obj.imgFile) );
+			overState = ScriptUI.newImage( JSUI.PREFS[propName] ? (imgFileOverExists ? imgFileOver : obj.imgFile) : (disabledImgFileOverExists ? disabledImgFileOver : obj.imgFile) );
+			downState = ScriptUI.newImage( imgFileDownExists ? imgFileDown : obj.imgFile );
+			//$.writeln( (disabledImgFileOverExists ? "    Found: " : "NOT FOUND: ") + disabledImgFileOver.name);
+
+			if(c.image != normalState) c.image = normalState;
+		
+			JSUI.debug("\n\t" + propName + ": update() " + JSUI.PREFS[propName] + "\n\tcomponent.image: " + c.image + "\n");//  + "\t\tnormalState: " + normalState + "\n\t\toverState:" + overState + "\n\t\tdownState: " + downState);
+		}
+		else
+		{
+			c.image = JSUI.PREFS[propName] ? ScriptUI.newImage(obj.imgFile, imgFileUpExists ? imgFileUp : obj.imgFile, imgFileDownExists ? imgFileDown : obj.imgFile, imgFileOverExists ? imgFileOver : obj.imgFile) : ScriptUI.newImage(disabledImgFile, disabledImgFile, imgFileDownExists ? imgFileDown : obj.imgFile, disabledImgFileOverExists ? disabledImgFileOver : obj.imgFile);	
+		}
 	};
 
 	c.update();
@@ -628,10 +711,11 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 /* radiobutton component	*/
 /* 
 	var radiobuttons = win.add('group');	
-	var rb1, rb2, rb3
-	rb1 = radiobuttons.addRadioButton ( 'rb1', { label:'Radiobutton 1', value:prefs.rb1, prefs:prefs, array:['rb1', 'rb2', 'rb3'] } );
-	rb2 = radiobuttons.addRadioButton ( 'rb2', { label:'Radiobutton 2', value:prefs.rb2, prefs:prefs, array:['rb1', 'rb2', 'rb3'] } );
-	rb3 = radiobuttons.addRadioButton ( 'rb3', { label:'Radiobutton 3', value:prefs.rb3, prefs:prefs, array:['rb1', 'rb2', 'rb3'] } );
+	var array = ['rb1', 'rb2', 'rb3'];
+
+	var rb1 = radiobuttons.addRadioButton ( 'rb1', { label:'Radiobutton 1', value:prefs.rb1, prefs:prefs, array:['rb1', 'rb2', 'rb3'] } );
+	var rb2 = radiobuttons.addRadioButton ( 'rb2', { label:'Radiobutton 2', value:prefs.rb2, prefs:prefs, array:['rb1', 'rb2', 'rb3'] } );
+	var rb3 = radiobuttons.addRadioButton ( 'rb3', { label:'Radiobutton 3', value:prefs.rb3, prefs:prefs, array:['rb1', 'rb2', 'rb3'] } );
 */
 Object.prototype.addRadioButton = function(propName, obj)
 {
@@ -684,6 +768,7 @@ Object.prototype.addRadioButton = function(propName, obj)
 			}
 			JSUI.debug(propName + ": " + c.value + (str ? "\n[" + str + " ]" : "")); 
 		}
+		if(obj.onClickFunction) obj.onClickFunction();
 	}
 
 
@@ -1233,8 +1318,6 @@ Object.prototype.addButton = function(obj)
 		{
 			testImage = new File(obj.imgFile);
 
-			//obj.imgFile = new File(obj.imgFile);
-
 			// if still not valid, add absolute path for parent script
 			if(!testImage.exists)
 			{
@@ -1253,7 +1336,61 @@ Object.prototype.addButton = function(obj)
 			var imgFileUp = new File(obj.imgFile.toString().replace(/\.(png)$/i, "_up.png"));
 			var imgFileOver = new File(obj.imgFile.toString().replace(/\.(png)$/i, "_over.png"));
 			var imgFileDown = new File(obj.imgFile.toString().replace(/\.(png)$/i, "_down.png"));
+
 			var c = this.add('iconbutton', undefined, ScriptUI.newImage(obj.imgFile, imgFileUp.exists ? imgFileUp : obj.imgFile, imgFileDown.exists ? imgFileDown : obj.imgFile, imgFileOver.exists ? imgFileOver : obj.imgFile));
+			
+			if(JSUI.isCS6)
+			{
+				var refImage = ScriptUI.newImage(obj.imgFile);
+
+				// temporary assignment
+				c.image = refImage;
+				c.size = refImage.size;
+
+				// fix for unwanted borders and outlines (CS6 & CC+) -- requires onDraw + eventListener
+				var normalState, overState, downState = ScriptUI.newImage(obj.imgFile);
+
+				// update ScriptUI images used by mouseevents
+				normalState = ScriptUI.newImage( obj.imgFile );
+				overState = ScriptUI.newImage( imgFileOver.exists ? imgFileOver : obj.imgFile );
+				downState = ScriptUI.newImage( imgFileDown.exists ? imgFileDown : obj.imgFile );
+
+				if(c.image != normalState) c.image = normalState;
+
+				c.onDraw = function (state)
+				{  
+					c.graphics.drawImage(c.image,0,0);  
+				}  
+
+				// mouse events
+				var mouseEventHandler = function(event)
+				{
+					switch (event.type)
+					{  
+						case 'mouseover':   
+							event.target.image = overState;  
+							break;  
+						case 'mouseout':   
+							event.target.image = normalState;  
+							break;  
+						case 'mousedown':   
+							event.target.image = downState;  
+							break;  
+						case 'mouseup':   
+							event.target.image = overState;  
+							break;  
+						default:   
+							event.target.image = normalState;  
+					}  
+					event.target.notify("onDraw");  
+				}  
+			
+				// event listeners
+				c.addEventListener('mouseover', mouseEventHandler, false);  
+				c.addEventListener('mouseout', mouseEventHandler, false);  
+				c.addEventListener('mousedown', mouseEventHandler, false);  
+				c.addEventListener('mouseup', mouseEventHandler, false);  
+			}
 		}
 		// fallback in case image does not exist
 		else 
@@ -1280,7 +1417,6 @@ Object.prototype.addButton = function(obj)
 	if(obj.disabled) c.enabled = !obj.disabled;
 	
 	this.Components[obj.name] = c;
-//~ 	c = this.Components[obj.name];
 	
 	// if button has "browse" attribute...
 	if(obj.specs)
@@ -2199,10 +2335,10 @@ JSUI.writeIniFile = function(fptr, obj, header)
 	var str = header?header:'';
 	str += JSUI.toIniString(obj);
 	
-	if($.level)
-	{
-		JSUI.reflectProperties(obj, "\n[WRITING TO INI STRING:]");
-	}
+ 	if($.level)
+ 	{
+ 		JSUI.reflectProperties(obj, "\n[WRITING TO INI STRING:]");
+ 	}
 	JSUI.writeToFile(fptr,str);
 //	alert(fptr);
 };
