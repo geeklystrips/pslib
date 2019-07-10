@@ -8,7 +8,7 @@
 	0.85: improved JSUI.debug() behavior, fixed issues with addToggleIconButton update method, added JSUI.autoSave feature
 	0.87: adding dark UI support for Photoshop CS6
 	0.88: using custombutton type + mouseevents to better control ScriptUI iconbutton visuals in CS6, added onClickFunction support for addCheckBox & addRadioButton
-
+	0.89: fixed a bug with dropdownlist component, becase JSUI.fromIniString() was returning the index value as a string
 	*/
 
 /*
@@ -28,7 +28,7 @@
 JSUI = function(){};
 
 /* version	*/
-JSUI.version = "0.88";
+JSUI.version = "0.89";
 
 // do some of the stuff differently if operating UI dialogs from ESTK
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -731,10 +731,6 @@ Object.prototype.addRadioButton = function(propName, obj)
 	if(obj.disabled) c.enabled = !obj.disabled;
 
 	if(JSUI.isCS6) c.darkMode();
-	// {
-	// 	c.graphics.foregroundColor = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
-	// }
-
 	
 	this.Components[propName] = c;
 
@@ -768,7 +764,8 @@ Object.prototype.addRadioButton = function(propName, obj)
 			}
 			JSUI.debug(propName + ": " + c.value + (str ? "\n[" + str + " ]" : "")); 
 		}
-		if(obj.onClickFunction) obj.onClickFunction();
+
+		if(obj.onClickFunction)	obj.onClickFunction();
 	}
 
 
@@ -1250,7 +1247,7 @@ Object.prototype.addDropDownList = function(propName, obj)
 		{
 			c.add("item", obj.list[i]);
 		}
-	
+		
 		c.selection = obj.selection != undefined ? obj.selection : JSUI.PREFS[propName];
 	}
 	
@@ -1497,34 +1494,70 @@ Object.prototype.addImage = function(obj)
 		return c;
 	}
 
-	if(obj.imgFile)
+	var testImage, imgFileUp;
+	var imgFileUpExists = false;
+	
+	if(obj.imgFile != undefined)
 	{
-		// if not a file object, force conversion
-		if( !(obj.imgFile instanceof File)) obj.imgFile = new File(obj.imgFile);
-		
-		if(obj.imgFile.exists)
+		// if not a valid file URI, attempt to make it a file object
+		if( !(obj.imgFile instanceof File)) 
 		{
-			var c = this.add('image', undefined, obj.imgFile);
-		}
-		else
-		{
-			//alert(obj.imgFile);
-			var c = this.add('image', undefined, "[Invalid URL: " + obj.imgFile + "]");
+			testImage = new File(obj.imgFile);
+
+			if(!testImage.exists)
+			{
+				// this will make it support cases where obj.imgFile parameter is passed as "/img/file.png" or "file.png"
+				testImage = new File(JSUI.URI + (obj.imgFile.toString()[0] == "/" ? "" : "/") + obj.imgFile);
+
+				if(testImage.exists)
+				{
+					obj.imgFile = testImage;
+				}
+				else
+				{
+					// placeholder object property
+					obj.imageFile = {};
+					obj.imgFile.exists = false;
+				}
+			}
+			else
+			{
+				// placeholder object property
+				obj.imageFile = {};
+				obj.imgFile.exists = false;
+			}
+
+			// find out whether a [imgFile] _up.png is present
+			if(obj.imgFile.exists)
+			{
+				imgFileUp = new File(obj.imgFile.toString().replace(/\.(png)$/i, "_up.png"));
+				imgFileUpExists = imgFileUp.exists;
+
+				if($.level)
+				{
+					$.writeln( (obj.imgFile.exists ? "    Found: " : "NOT FOUND: ") + obj.imgFile.name);
+					$.writeln( (imgFileUpExists ? "    Found: " : "NOT FOUND: ") + imgFileUp.name);
+				}
+			}
+
+			if(obj.imgFile.exists)
+			{
+				var c = this.add('image', undefined, ScriptUI.newImage(obj.imgFile, imgFileUp.exists ? imgFileUp : obj.imgFile, obj.imgFile));
+			}
+			else
+			{
+				
+				// fallback in case image does not exist
+				var c = this.add('statictext', undefined, "[Invalid URI: " + obj.imgFile + "]");
+			}
 		}
 	}
 	else return;
 
-	// fallback in case image does not exist
-
-	
 	if(obj.width) c.preferredSize.width = obj.width;
 	if(obj.height) c.preferredSize.height = obj.height;
 	if(obj.alignment) c.alignment = obj.alignment;
 	if(obj.helpTip) c.helpTip = obj.helpTip;
-	if(obj.disabled) c.enabled = !obj.disabled;
-	
-	this.Components[obj.name] = c;
-	c = this.Components[obj.name];
 	
 	return c;
 };
@@ -1554,7 +1587,6 @@ Object.prototype.addSlider = function(propName, obj)
 	c.value = obj.value != undefined ? JSUI.clampValue(obj.value, obj.minvalue, obj.maxvalue) : JSUI.clampValue(JSUI.PREFS[propName], obj.minvalue, obj.maxvalue);
 	
 	this.Components[propName] = c;
-	//c = this.Components[obj.name];
 	
 	var round = false;
 
@@ -1744,10 +1776,9 @@ Object.prototype.addListBox = function(propName, obj)
 //~ 	c.selection = obj.selection != undefined ? (typeof obj.selection == "number" ? [obj.selection] : obj.selection) : JSUI.PREFS[propName];
 //~ alert(selection + " " + typeof selection + "  typeof null: " + typeof null )
 	c.selection = selection;
-//~ 	c.selection = null;
+
 		
 	this.Components[propName] = c;
-//~ 	c = this.Components[obj.name];
 
 	// update UI based on current JSUI.PREFS[propName] array
 	c.update = function()
@@ -1843,7 +1874,6 @@ Object.prototype.addProgressBar = function(obj)
 	c.isDone = false;
 	
 	this.Components[obj.name] = c;
-	c = this.Components[obj.name];
 
 	c.onCancel = function()
 	{
@@ -2184,10 +2214,11 @@ JSUI.fromIniString=function(str,obj, type)
 {
 	var type = type != undefined ? type : false;
 	
-	if(!obj)
-	{	obj={} }
+	if(!obj) { obj = {} };
+
 	var lines=str.split(/\r|\n/);
 	var rexp=new RegExp(/([^:]+):(.*)$/);
+
 	for(var i=0;i<lines.length;i++)
 	{
 		var line=lines[i].trim();
@@ -2203,10 +2234,7 @@ JSUI.fromIniString=function(str,obj, type)
 		// assign variables
 		var prop = ar[1].trim();
 		var value = ar[2].trim();
-		
-		// this piece always results in typeof string
-		// No it doesn"t. You were just not using the "type" parameter when using readIni() until now. 
-		// I hope you enjoyed all these hours debugging your stuff.
+
 		if(!type)
 		{
 			obj[prop] = value;
@@ -2217,7 +2245,6 @@ JSUI.fromIniString=function(str,obj, type)
 			// empty string? leave as is
 			if(value == '')
 			{
-//~ 				alert("zero!");
 				obj[prop] = value;
 			}
 			
@@ -2232,15 +2259,7 @@ JSUI.fromIniString=function(str,obj, type)
 			{
 				obj[prop] = null;
 			}
-/*		
-			// case for Arrays...?
-			else if( value.split(',').length > 0)
-			{
-				// mmmh... this won't work for arrays with just one piece
-				obj[prop] = value.split(',');
-				
-			}
-*/		
+	
 			// case for Arrays: if first and last characters are brackets...
 			else if( value[0] == "[" && value[value.length-1] == "]")
 			{			
@@ -2263,18 +2282,21 @@ JSUI.fromIniString=function(str,obj, type)
 				// then number or string was meant to keep its exact present form 
 				if(value.length > 1 && ( (value[0] == "0" || value[0] == ".") && (value[1] != "." || value[1].toLowerCase() != "x") ) )  obj[prop] = value;
 
-				//workaround for hex denomination format
-				else if(value != 0)
+				//workaround for hex denomination format (also keep as string)
+				else if(Number(value) != 0)
 				{
 					if(value[0] == "0" && value[1].toLowerCase() == "x") obj[prop] = value;
+					else obj[prop] = Number(value);
 				}
 
 				
 				// else do force number
-				else obj[prop] = Number(value);
-				// there, I fixed it!
+				else
+				{
+					obj[prop] = Number(value);
+				}
 			}
-			
+	
 			// otherwise just leave as String
 			else 
 			{
@@ -2284,7 +2306,6 @@ JSUI.fromIniString=function(str,obj, type)
 					obj[prop] = value;
 				}
 			}
-			
 			// report!
 		//	if($.level) $.writeln("obj." + prop + " = " + value + "\t [" + typeof obj[prop] + "]");
 		}
@@ -2298,9 +2319,6 @@ JSUI.readIniFile = function(obj, fptr, type)
 {
 	var fptr = fptr != undefined ? fptr : JSUI.INIFILE;
 	var obj = obj != undefined ? obj : JSUI.PREFS;
-	
-	// huh! who would have thought.
-//~ 	var type = type != undefined ? type : JSUI.TOOLNAME;
 	var type = type != undefined ? type : true;
 	
 	if(!obj)
@@ -2316,8 +2334,9 @@ JSUI.readIniFile = function(obj, fptr, type)
 	}
 
 	var str = JSUI.readFromFile(fptr,type);
-		
-	return JSUI.fromIniString(str,obj,type);
+	var nObj = JSUI.fromIniString(str,obj,type);
+
+	return nObj;
 };
 
 JSUI.writeIniFile = function(fptr, obj, header)
