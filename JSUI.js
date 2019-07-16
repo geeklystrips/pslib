@@ -9,6 +9,7 @@
 	0.87: adding dark UI support for Photoshop CS6
 	0.88: using custombutton type + mouseevents to better control ScriptUI iconbutton visuals in CS6, added onClickFunction support for addCheckBox & addRadioButton
 	0.89: fixed a bug with dropdownlist component, becase JSUI.fromIniString() was returning the index value as a string
+	0.90: Added JSUI.getScriptUIStates() amd JSUI.addImageGrid()
 	*/
 
 /*
@@ -28,7 +29,7 @@
 JSUI = function(){};
 
 /* version	*/
-JSUI.version = "0.89";
+JSUI.version = "0.90";
 
 // do some of the stuff differently if operating UI dialogs from ESTK
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -224,7 +225,124 @@ JSUI.zeropad = function(str)
 	/* padding string with zeroes	*/
 	return (str.length < 2 ? "000" + str :  (str.length < 3 ? "00" + str : (str.length < 4 ? "0" + str : (str) ) ) ); // 40 becomes "0040"
 };
+/*
+	
+	JSUI additions
+	
+	- prepare ScriptUI image states
+	
+	- build grid component
+	
+*/
 
+// standalone logic for ScriptUI image states to use with simple dual true/false logic
+// function should accept both strings and file objects
+// include optional value and use object as document holder?
+//
+// usage: 
+// var scriptUIObj = JSUI.getScriptUIStates( { imgFile: "image.png"} );
+//
+JSUI.getScriptUIStates = function( obj )
+{		
+	if(obj == undefined) return;
+		
+	var testImage, imgFileUp, imgFileOver, imgFileDown, disabledImgFile, disabledImgFileOver;
+	var imgFileUpExists, imgFileOverExists, imgFileDownExists, disabledImgFileExists, disabledImgFileOver = false;
+
+	if(obj.imgFile != undefined)
+	{
+		// if not a valid file URI, attempt to make it a file object
+		if( !(obj.imgFile instanceof File) )
+		{
+			testImage = new File(obj.imgFile);
+
+			// if still not valid, add absolute path for parent script
+			if(!testImage.exists)
+			{
+				// this will make it support cases where obj.imgFile parameter is passed as "/img/file.png" or "file.png"
+				testImage = new File(JSUI.URI + (obj.imgFile.toString()[0] == "/" ? "" : "/") + obj.imgFile);
+
+				if(testImage.exists)
+				{
+					obj.imgFile = testImage;
+				}
+				else
+				{
+					// placeholder object property
+					obj.imageFile = {};
+					obj.imgFile.exists = false;
+				}
+			}
+			else
+			{
+				// placeholder object property
+				obj.imageFile = {};
+				obj.imgFile.exists = false;
+			}
+		}
+
+		// find out whether a [imgFile] _up.png/_down.png/_disabled.png/_disabled_up.png is present
+		// prepare image file URIs accordingly
+		if(obj.imgFile.exists)
+		{
+			imgFileUp = new File(obj.imgFile.toString().replace(/\.(png)$/i, "_up.png"));
+			imgFileOver = new File(obj.imgFile.toString().replace(/\.(png)$/i, "_over.png"));
+			imgFileDown = new File(obj.imgFile.toString().replace(/\.(png)$/i, "_down.png"));
+			
+			disabledImgFile = new File(obj.imgFile.toString().replace(".png", "_disabled.png") );
+			disabledImgFileOver = new File(disabledImgFile.toString().replace(/\.(png)$/i, "_over.png"));
+
+			imgFileUpExists = imgFileUp.exists;
+			imgFileOverExists = imgFileOver.exists;
+			imgFileDownExists = imgFileDown.exists;
+
+			disabledImgFileExists = disabledImgFile.exists;
+			disabledImgFileOverExists = disabledImgFileOver.exists;
+
+			if($.level)
+			{
+				$.writeln( (obj.imgFile.exists ? "Found: " : "*** NOT FOUND: ") + obj.imgFile.name);
+				$.writeln( (imgFileUpExists ? "Found: " : "***" + imgFileUp.name + " NOT FOUND--instead using ") + (imgFileUpExists ? imgFileUp.name : obj.imgFile.name) );
+				$.writeln( (imgFileOverExists ? "Found: " : "***" + imgFileOver.name + " NOT FOUND--instead using ") + (imgFileOverExists ? imgFileOver.name : obj.imgFile.name) );
+				$.writeln( (imgFileDownExists ? "Found: " : "***" + imgFileDown.name + " NOT FOUND--instead using ") + (imgFileDownExists ? imgFileDown.name : obj.imgFile.name) );				
+
+				$.writeln( (disabledImgFileExists ? "Found: " : "***" + disabledImgFile.name + " NOT FOUND--instead using ") + (disabledImgFileExists ? disabledImgFile.name : obj.imgFile.name) );
+				$.writeln( (disabledImgFileOverExists ? "Found: " : "***" + disabledImgFileOver.name + " NOT FOUND--instead using ") + (disabledImgFileOverExists ? disabledImgFileOver.name : obj.imgFile.name) );
+			}
+
+			// extra sanitization layer
+			imgFileUp = imgFileUpExists ? imgFileUp : obj.imgFile;
+			imgFileOver = imgFileOverExists ? imgFileOver : obj.imgFile;
+			imgFileDown = imgFileDownExists ? imgFileDown : obj.imgFile;
+
+			disabledImgFile = disabledImgFileExists ? disabledImgFile : obj.imgFile;
+			disabledImgFileOver = disabledImgFileOverExists ? disabledImgFileOver : obj.imgFile;
+		}
+	}
+	else
+	{
+		return;
+	}
+
+	// ScriptUI.newImage (normal, disabled, pressed, rollover);
+	obj.active = ScriptUI.newImage(obj.imgFile, imgFileUp, imgFileDown, imgFileOver);
+	obj.inactive = ScriptUI.newImage(disabledImgFile, disabledImgFile, imgFileDown, disabledImgFileOver);
+
+	// these are for CS6 mouseover states
+	if(JSUI.isCS6)
+	{
+		obj.normalState = ScriptUI.newImage( obj.imgFile );
+		obj.overState = ScriptUI.newImage( imgFileOver );
+		obj.downState = ScriptUI.newImage( imgFileDown );
+
+		obj.normalStateInactive = ScriptUI.newImage( disabledImgFile );
+		obj.overStateInactive = ScriptUI.newImage( disabledImgFileOver );
+	}
+	
+	return obj;
+};
+
+ 
 /* supercharge object type to store interface element functions (hi X! )	*/
 Object.prototype.Components = new Array(); 
 
@@ -233,9 +351,9 @@ Object.prototype.dialogDarkMode = function()
 {
 	if(JSUI.isCS6)
 	{
-		this.graphics.foregroundColor = this.graphics.newPen (this.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
 		try
 		{
+			this.graphics.foregroundColor = this.graphics.newPen (this.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
 			this.graphics.backgroundColor = this.graphics.newBrush (this.graphics.PenType.SOLID_COLOR, [0.27, 0.27, 0.27], 1);
 		}
 		catch(e)
@@ -250,9 +368,9 @@ Object.prototype.darkMode = function()
 {
 	if(JSUI.isCS6)
 	{
-		this.graphics.foregroundColor = this.graphics.newPen (this.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
 		try
 		{
+			this.graphics.foregroundColor = this.graphics.newPen (this.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
 			this.graphics.backgroundColor = this.graphics.newBrush (this.graphics.PenType.SOLID_COLOR, JSUI.dark, 1);
 		}
 		catch(e)
@@ -287,7 +405,7 @@ Object.prototype.addGroup = function(obj)
 	if(obj.margins) c.margins = obj.margins;
 	
 	this.Components[obj.name] = c; 
-	/*	return this.Components[obj.name];	*/
+
 	return c;
 };
 
@@ -356,7 +474,7 @@ Object.prototype.addPanel = function(obj)
 	}
 	
 	this.Components[obj.name] = c; 
-	/*	return this.Components[obj.name];	*/
+
 	return c;
 };
 
@@ -375,9 +493,6 @@ Object.prototype.addTabbedPanel = function(obj)
 	if(obj.height) c.preferredSize.height = obj.height;
 
 	if(JSUI.isCS6) c.darkMode();
-	// {
-	// 	c.graphics.foregroundColor = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
-	// }
 
 	return c;
 };
@@ -395,9 +510,6 @@ Object.prototype.addTab = function(obj)
 	if(obj.margins) c.margins = obj.margins;
 
 	if(JSUI.isCS6) c.darkMode();
-	// {
-	// 	c.graphics.foregroundColor = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
-	// }
 
 	return c;
 };
@@ -411,9 +523,6 @@ Object.prototype.addDivider = function(obj)
 	c.orientation = obj.orientation ? obj.orientation : 'row';
 
 	if(JSUI.isCS6) c.darkMode();
-	// {
-	// 	c.graphics.foregroundColor = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
-	// }
 
 	return c;
 };
@@ -426,9 +535,6 @@ Object.prototype.addCheckBox = function(propName, obj)
 	c.value = obj.value != undefined ? obj.value : JSUI.PREFS[propName];
 
 	if(JSUI.isCS6) c.darkMode();
-	// {
-	// 	c.graphics.foregroundColor = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
-	// }
 
 	if(obj.helpTip != undefined) c.helpTip = obj.helpTip;
 
@@ -486,83 +592,20 @@ Object.prototype.addCheckBox = function(propName, obj)
 Object.prototype.addToggleIconButton = function(propName, obj)
 {
 	// abort if no object provided
-	if(!obj) return;
+	if(obj == undefined) return;
 
-	var testImage, imgFileUp, imgFileOver, imgFileDown, disabledImgFile, disabledImgFileUp, disabledImgFileOver;
-	var imgFileUpExists, imgFileOverExists, imgFileDownExists, disabledImgFileExists, disabledImgFileOver = false;
-	var normalState, overState, downState = null;
-
-	if(obj.imgFile != undefined)
-	{
-		// if not a valid file URI, attempt to make it a file object
-		if( !(obj.imgFile instanceof File) )
-		{
-			testImage = new File(obj.imgFile);
-
-			// if still not valid, add absolute path for parent script
-			if(!testImage.exists)
-			{
-				// this will make it support cases where obj.imgFile parameter is passed as "/img/file.png" or "file.png"
-				testImage = new File(JSUI.URI + (obj.imgFile.toString()[0] == "/" ? "" : "/") + obj.imgFile);
-
-				if(testImage.exists)
-				{
-					obj.imgFile = testImage;
-				}
-				else
-				{
-					// placeholder object property
-					obj.imageFile = {};
-					obj.imgFile.exists = false;
-				}
-			}
-			else
-			{
-				// placeholder object property
-				obj.imageFile = {};
-				obj.imgFile.exists = false;
-			}
-		}
-
-		// find out whether a [imgFile] _up.png/_down.png/_disabled.png/_disabled_up.png is present
-		// prepare image file URIs accordingly
-		if(obj.imgFile.exists)
-		{
-			imgFileUp = new File(obj.imgFile.toString().replace(/\.(png)$/i, "_up.png"));
-			imgFileOver = new File(obj.imgFile.toString().replace(/\.(png)$/i, "_over.png"));
-			imgFileDown = new File(obj.imgFile.toString().replace(/\.(png)$/i, "_down.png"));
-			
-			disabledImgFile = new File(obj.imgFile.toString().replace(".png", "_disabled.png") );
-			disabledImgFileOver = new File(disabledImgFile.toString().replace(/\.(png)$/i, "_over.png"));
-
-			imgFileUpExists = imgFileUp.exists;
-			imgFileOverExists = imgFileOver.exists;
-			imgFileDownExists = imgFileDown.exists;
-
-			disabledImgFileExists = disabledImgFile.exists;
-			disabledImgFileOverExists = disabledImgFileOver.exists;
-
-			if($.level)
-			{
-				$.writeln( (obj.imgFile.exists ? "    Found: " : "NOT FOUND: ") + obj.imgFile.name);
-				$.writeln( (imgFileUpExists ? "    Found: " : "NOT FOUND: ") + imgFileUp.name);
-				$.writeln( (imgFileOverExists ? "    Found: " : "NOT FOUND: ") + imgFileOver.name);
-				$.writeln( (imgFileDownExists ? "    Found: " : "NOT FOUND: ") + imgFileDown.name);				
-
-				$.writeln( (disabledImgFileExists ? "    Found: " : "NOT FOUND: ") + disabledImgFile.name);
-				$.writeln( (disabledImgFileOverExists ? "    Found: " : "NOT FOUND: ") + disabledImgFileOver.name);
-			}
-		}
-	}
+	var scriptUIstates = JSUI.getScriptUIStates( obj );
 
 	// if image file is found, add iconbutton
-	if(obj.imgFile.exists)
+	if(obj.imgFile != undefined && scriptUIstates.active != undefined)
 	{
 		if($.level) $.writeln("Adding [" + propName + "] toggle iconbutton" + (obj.array ? ' with radiobutton behavior' : '') + "\n");
-		var c = this.add('iconbutton', undefined, ScriptUI.newImage(obj.imgFile, imgFileUp.exists ? imgFileUp : obj.imgFile, imgFileDown.exists ? imgFileDown : obj.imgFile, imgFileOver.exists ? imgFileOver : obj.imgFile));
-		//var c = this.add('iconbutton', undefined, ScriptUI.newImage(obj.imgFile, obj.imgFile, obj.imgFile, obj.imgFile));
+		var c = this.add('iconbutton', undefined, scriptUIstates.active);
+
+		// let's add a .value container property, it makes everything so much easier
+		c.value = JSUI.PREFS[propName] != undefined ? (typeof JSUI.PREFS[propName] == "boolean" ? JSUI.PREFS[propName] : false) : false;
 	}
-	// at this point, if imgFile does not exist, fallback to checkbox or radiobutton component 
+	// if imgFile does not exist, fallback to checkbox or radiobutton component 
 	else
 	{
 		if($.level) $.writeln("Fallback: " + (obj.array ? 'radiobutton' : 'checkbox') + "\n");
@@ -580,20 +623,27 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 	// manually assign new component to dialog's variable list
 	this.Components[propName] = c;
 
+	// add scriptuistates object container
+	c.scriptUIstates = scriptUIstates; 
+
 	// fix for unwanted borders and outlines (CS6 & CC+) -- requires onDraw + eventListener
 	if(JSUI.isCS6)
 	{
-		var refImage = ScriptUI.newImage(obj.imgFile);
+		var refImage = c.scriptUIstates.normalState;
 
 		// temporary assignment
 		c.image = refImage;
 		c.size = refImage.size;
 
-		normalState, overState, downState = ScriptUI.newImage(obj.imgFile);
+		c.states = {};
+
+		c.states.normalState = c.value ? c.scriptUIstates.normalState : c.scriptUIstates.normalStateInactive;
+		c.states.overState = c.value ? c.scriptUIstates.overState : c.scriptUIstates.overStateInactive;
+		c.states.downState = c.scriptUIstates.downState;
 
 		c.onDraw = function (state)
 		{  
-			c.graphics.drawImage(c.image,0,0);  
+			c.graphics.drawImage(c.image, 0, 0); 
 		}  
 
 		// mouse events
@@ -602,19 +652,19 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 			switch (event.type)
 			{  
 				case 'mouseover':   
-					event.target.image = overState;  
+					event.target.image = c.states.overState;  
 					break;  
 				case 'mouseout':   
-					event.target.image = normalState;  
+					event.target.image = c.states.normalState;  
 					break;  
 				case 'mousedown':   
-					event.target.image = downState;  
+					event.target.image = c.states.downState;  
 					break;  
 				case 'mouseup':   
-					event.target.image = overState;  
+					event.target.image = c.states.overState;  
 					break;  
 				default:   
-					event.target.image = normalState;  
+					event.target.image = c.states.normalState;  
 			}  
 			event.target.notify("onDraw");  
 		}  
@@ -626,46 +676,45 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 		c.addEventListener('mouseup', mouseEventHandler, false);  
 	}
 
+	// UI callbacks & events
+
 	c.onClick = function()
 	{ 
-		var currentValue = JSUI.PREFS[ propName ];
-
 		if(obj.array != undefined)
 		{ 
 			//in the case where the initial value of the clicked object is true, skip the whole thing
-			if(currentValue)
-			{
-
-			}
-			else
+			var currentValue = JSUI.PREFS[ propName ] != undefined ? JSUI.PREFS[ propName ] : false;
+			if(!currentValue)
 			{
 				for(var i = 0; i < obj.array.length; i++)
 				{
-					// determine if the current array index matches the current component
-					var component = this.Components[obj.array[i]];
-					var isCurrentComponent = (component == c); 
+					var component = this.Components[ obj.array[i] ];
+					var isCurrentComponent = (component == this); 
 
-					// store current component value
-					//var currentComponentValue = JSUI.PREFS[ obj.array[i] ];
+					if(component != undefined)
+					{
+						// this doesn't work!
+						// component.value = !component.value;
 
-					// update preferences value ONLY if different
-					if(JSUI.PREFS[ obj.array[i] ] != isCurrentComponent) JSUI.PREFS[ obj.array[i] ] = isCurrentComponent;
-					
-					// update visuals only if value changed
-					// if(currentValue != JSUI.PREFS[ obj.array[i] ]) this.Components[obj.array[i]].update();
-					// if(currentValue != currentComponentValue) this.Components[obj.array[i]].update();
-
-					this.Components[obj.array[i]].update();	
+						component.value = isCurrentComponent ? !component.value : false;
+						if(JSUI.PREFS[ propName ] != undefined)
+						{
+							JSUI.PREFS[ obj.array[i] ] = component.value;
+						}
+						$.writeln("  ****  updating conmponent " + obj.array[i] + "  value:" + component.value);
+						component.update( );	
+					}
 				}
-				if($.level) JSUI.debug(propName + ": " + JSUI.PREFS[propName]); 
 			}
 		}
 		else
 		{
-			JSUI.PREFS[propName] = !JSUI.PREFS[propName];
-			c.update();
+			this.value = !this.value;
+			JSUI.PREFS[ propName ] = this.value;
+			this.update();
+			if($.level) JSUI.debug("\n" + propName + ": " + JSUI.PREFS[propName] + "\nthis.image: " + c.image); 
 		}
-		
+
 		// debug display only
 		if(obj.array && $.level)
 		{
@@ -681,32 +730,135 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 		if(obj.onClickFunction) obj.onClickFunction();
 	}
 	
-	// update callback: update the UI based on the state of preferences object
-	c.update = function()
+	// update callback: update the UI based on the true/false value
+	c.update = function( )
 	{
 		if(JSUI.isCS6)
 		{
 			// update ScriptUI images used by mouseevents
-			normalState = ScriptUI.newImage( JSUI.PREFS[propName] ? obj.imgFile : (disabledImgFileExists ? disabledImgFile : obj.imgFile) );
-			overState = ScriptUI.newImage( JSUI.PREFS[propName] ? (imgFileOverExists ? imgFileOver : obj.imgFile) : (disabledImgFileOverExists ? disabledImgFileOver : obj.imgFile) );
-			downState = ScriptUI.newImage( imgFileDownExists ? imgFileDown : obj.imgFile );
-			//$.writeln( (disabledImgFileOverExists ? "    Found: " : "NOT FOUND: ") + disabledImgFileOver.name);
+			this.states.normalState = this.value ? this.scriptUIstates.normalState : this.scriptUIstates.normalStateInactive;
+			this.states.overState = this.value ? this.scriptUIstates.overState : this.scriptUIstates.overStateInactive;
+			this.states.downState = this.scriptUIstates.downState;
 
-			if(c.image != normalState) c.image = normalState;
+			if(this.image != this.states.normalState) this.image = this.states.normalState;
 		
-			JSUI.debug("\n\t" + propName + ": update() " + JSUI.PREFS[propName] + "\n\tcomponent.image: " + c.image + "\n");//  + "\t\tnormalState: " + normalState + "\n\t\toverState:" + overState + "\n\t\tdownState: " + downState);
+			JSUI.debug("\n\t" + propName + ": update() " + JSUI.PREFS[propName] + "\n\tcomponent.image: " + this.image + "\n" + "\t\tnormalState: " + this.states.normalState + "\n\t\toverState:" + this.states.overState + "\n\t\tdownState: " + this.states.downState);
 		}
 		else
 		{
-			c.image = JSUI.PREFS[propName] ? ScriptUI.newImage(obj.imgFile, imgFileUpExists ? imgFileUp : obj.imgFile, imgFileDownExists ? imgFileDown : obj.imgFile, imgFileOverExists ? imgFileOver : obj.imgFile) : ScriptUI.newImage(disabledImgFile, disabledImgFile, imgFileDownExists ? imgFileDown : obj.imgFile, disabledImgFileOverExists ? disabledImgFileOver : obj.imgFile);	
+			this.image = this.value ? this.scriptUIstates.active : this.scriptUIstates.inactive;	
+			$.writeln("\timage: "+ this.image);
 		}
+
 	};
 
-	c.update();
+	if(JSUI.PREFS[ propName ] != undefined) c.update();
 
 	return c;
 };
 
+
+// custom set of components for replacing legacy radiobutton grid
+// var propertyName = container.addImageGrid( "propertyName", { strArray: [ "0", "1", "2", "3", "4", "5", "6", "7", "8" ]], imgFile: "image.png", rows: 3, columns: 3 } );
+Object.prototype.addImageGrid = function(propName, obj)
+{
+	/*
+		expected properties
+		
+		// array of strings for storing as selection
+		obj.strArray = [ anchorPosition.TOPLEFT,  anchorPosition.TOPLCENTER, anchorPosition.TOPRIGHT ];
+		
+		// object with active+inactive ScriptUI images)
+		obj.states = JSUI.getScriptUIStates() 
+		// if obj.states.length == strArray.length, assume a grid which uses a different set of ScriptUI images for each component
+		
+	*/
+
+	// check if indexes matches before proceeding
+	if (obj.rows * obj.columns != obj.strArray.length)
+	{
+		return;
+	}
+
+	// if obj.imgFile has a length, and is NOT a string, assume we're working with an array of ScriptUI state objects
+//	var usingMultipleStateObjects = (typeof obj.imgFile != "string" && obj.imgFile.length && obj.imgFile.length == obj.strArray.length);
+
+	//var scriptUIstates = JSUI.getScriptUIStates( { imgFile: obj.imgFile } );
+
+	var jsuiStrArr = [];
+	var jsuiComponentArr = [];
+
+	// begin by adding main group
+	var grid = this.addColumn();
+
+	// You've got time!
+	// first pass: build array
+	for(var row = 0; row < obj.rows; row++)
+	{
+		for(var item = 0; item < obj.columns; item++)
+		{
+			var itemName = propName + "Row" + row + "Id" + item;
+			jsuiStrArr.push( itemName );
+		}
+	}
+
+	// second pass: now create actual components and feed them the array
+	for(var row = 0; row < obj.rows; row++)
+	{
+		var r = grid.addRow();
+
+		for(var item = 0; item < obj.columns; item++)
+		{
+			var itemName = propName + "Row" + row + "Id" + item;
+			var iconbutton = r.addToggleIconButton(itemName, { imgFile: obj.imgFile, array: jsuiStrArr, helpTip: obj.strArray[(row+item)] });
+			jsuiComponentArr.push(iconbutton);
+
+			// override onClick event
+			iconbutton.onClick = function()
+			{
+				for(var i = 0; i < obj.strArray.length; i++)
+				{
+					// determine if the current array index matches the current component
+					var component = jsuiComponentArr[i];
+					var isCurrentComponent = (component == this); 
+
+				// this doesn't work!
+				//	component.value = isCurrentComponent ? !component.value : false;
+
+					// update prefs
+					if(isCurrentComponent)
+					{
+						component.value = !component.value;
+						JSUI.PREFS[propName] = obj.strArray[i];
+					}
+					else
+					{
+						component.value = false;
+					}
+
+					// update visual state
+					component.update();
+				}
+
+				JSUI.debug(propName + ": " + JSUI.PREFS[propName]); 
+
+				if(JSUI.autoSave) JSUI.saveIniFile();
+			};
+		}
+	}
+
+	// update visual state for initial display
+	if(JSUI.PREFS[propName] != undefined)
+	{
+		for(var u = 0; u < obj.strArray.length; u++)
+		{
+			var isActive = (JSUI.PREFS[propName] == obj.strArray[u]);
+
+			jsuiComponentArr[u].value = isActive ? !jsuiComponentArr[u].value : false;
+            jsuiComponentArr[u].update();
+		}
+	}
+};
 
 /* radiobutton component	*/
 /* 
@@ -1486,7 +1638,7 @@ Object.prototype.addButton = function(obj)
 Object.prototype.addImage = function(obj)
 {
 	// if no object is passed, return as simple image placeholder
-	if(!obj)
+	if(obj == undefined)
 	{
 		var c = this.add('image', undefined, undefined);
 		c.preferredSize.width = 100;
@@ -1494,65 +1646,17 @@ Object.prototype.addImage = function(obj)
 		return c;
 	}
 
-	var testImage, imgFileUp;
-	var imgFileUpExists = false;
-	
-	if(obj.imgFile != undefined)
+	var scriptUIstates = JSUI.getScriptUIStates( obj );
+
+	if(scriptUIstates.active != undefined)
 	{
-		// if not a valid file URI, attempt to make it a file object
-		if( !(obj.imgFile instanceof File)) 
-		{
-			testImage = new File(obj.imgFile);
-
-			if(!testImage.exists)
-			{
-				// this will make it support cases where obj.imgFile parameter is passed as "/img/file.png" or "file.png"
-				testImage = new File(JSUI.URI + (obj.imgFile.toString()[0] == "/" ? "" : "/") + obj.imgFile);
-
-				if(testImage.exists)
-				{
-					obj.imgFile = testImage;
-				}
-				else
-				{
-					// placeholder object property
-					obj.imageFile = {};
-					obj.imgFile.exists = false;
-				}
-			}
-			else
-			{
-				// placeholder object property
-				obj.imageFile = {};
-				obj.imgFile.exists = false;
-			}
-
-			// find out whether a [imgFile] _up.png is present
-			if(obj.imgFile.exists)
-			{
-				imgFileUp = new File(obj.imgFile.toString().replace(/\.(png)$/i, "_up.png"));
-				imgFileUpExists = imgFileUp.exists;
-
-				if($.level)
-				{
-					$.writeln( (obj.imgFile.exists ? "    Found: " : "NOT FOUND: ") + obj.imgFile.name);
-					$.writeln( (imgFileUpExists ? "    Found: " : "NOT FOUND: ") + imgFileUp.name);
-				}
-			}
-
-			if(obj.imgFile.exists)
-			{
-				var c = this.add('image', undefined, ScriptUI.newImage(obj.imgFile, imgFileUp.exists ? imgFileUp : obj.imgFile, obj.imgFile));
-			}
-			else
-			{
-				
-				// fallback in case image does not exist
-				var c = this.add('statictext', undefined, "[Invalid URI: " + obj.imgFile + "]");
-			}
-		}
+		var c = this.add('image', undefined, scriptUIstates.active);
 	}
-	else return;
+	else
+	{		
+		// fallback in case image does not exist
+		var c = this.add('statictext', undefined, "[Invalid URI: " + obj.imgFile + "]");
+	}
 
 	if(obj.width) c.preferredSize.width = obj.width;
 	if(obj.height) c.preferredSize.height = obj.height;
