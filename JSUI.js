@@ -9,10 +9,10 @@
 	0.87: adding dark UI support for Photoshop CS6
 	0.88: using custombutton type + mouseevents to better control ScriptUI iconbutton visuals in CS6, added onClickFunction support for addCheckBox & addRadioButton
 	0.89: fixed a bug with dropdownlist component, becase JSUI.fromIniString() was returning the index value as a string
-	0.90: Added JSUI.getScriptUIStates() amd JSUI.addImageGrid()
-	*/
+	0.90: Added JSUI.getScriptUIStates() and JSUI.addImageGrid()
+	0.902: fixed bug with JSUI.addBrowseForFolder() / JSUI.addBrowseForFile()
+	
 
-/*
 	Uses functions adapted from Xbytor's Stdlib.js
 	
 	throwFileError
@@ -29,7 +29,7 @@
 JSUI = function(){};
 
 /* version	*/
-JSUI.version = "0.90";
+JSUI.version = "0.902";
 
 // do some of the stuff differently if operating UI dialogs from ESTK
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -42,6 +42,7 @@ JSUI.isWin7 = $.os.match(/windows/i) == "Windows" ? $.os.match(" 6.1 Service Pac
 JSUI.isWin10 = $.os.match(/windows/i) == "Windows" ? $.os.match(" 6.2 Service Pack ") != null : false;
 
 JSUI.TOOLNAME = "DEFAULTNAME";	
+
 /*	This kind of data is frequently stored in ~/Library/Application Support.
 	User-specific settings are frequently stored in ~/Library/Preferences
 	Folder.appData = global, system preferences on OSX. Depending on user rights, applications might have trouble writing to this location.	
@@ -76,6 +77,7 @@ JSUI.PREFS = {};
 JSUI.SPACING = (JSUI.isWindows ? 3 : 1);
 JSUI.dark = [0.33, 0.33, 0.33];
 JSUI.light = [0.86, 0.86, 0.86];
+JSUI.yellow = [1.0, 0.78, 0.04];
 
 /* failsafe for cases where the UI framework is used without a debugTxt dialog component	
  if this variable is not replaced, calls by regular functions to modify its state should not cause problems	*/
@@ -701,7 +703,6 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 						{
 							JSUI.PREFS[ obj.array[i] ] = component.value;
 						}
-						$.writeln("  ****  updating conmponent " + obj.array[i] + "  value:" + component.value);
 						component.update( );	
 					}
 				}
@@ -746,8 +747,10 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 		}
 		else
 		{
+		//alert(propName + " checkbox:  " + this.value);
+
 			this.image = this.value ? this.scriptUIstates.active : this.scriptUIstates.inactive;	
-			$.writeln("\timage: "+ this.image);
+		//	this.image = JSUI.PREFS[ propName ] ? this.scriptUIstates.active : this.scriptUIstates.inactive;	
 		}
 
 	};
@@ -1013,15 +1016,16 @@ Object.prototype.addEditText = function(propName, obj)
 //~ 	{
 		if(obj.specs)
 		{
-			isFileObject = obj.specs.browseFile;
-			isFolderObject = obj.specs.browseFolder;
+			isFileObject = obj.specs.browseFile != undefined ? obj.specs.browseFile : false;
+			isFolderObject = obj.specs.browseFolder != undefined ? obj.specs.browseFolder : false;
 			//alert(isFileObject + "   " + isFolderObject);
 			//alert(obj.text + "  isFileObject: " + isFileObject + " instanceof File: " + (File(obj.text) instanceof File) +"\n" + obj.text + "  isFolderObject: " + isFolderObject+ " instanceof Folder: " + (Folder(obj.text) instanceof Folder) );
-			addIndicator = obj.specs.addIndicator;
-			addBrowseButton = obj.specs.addBrowseButton;
-			useGroup = obj.specs.useGroup;
-			hasImage = obj.specs.hasImage;
-			if(hasImage && obj.specs.imgFile)
+			addIndicator = obj.specs.addIndicator != undefined ? obj.specs.addIndicator : false;
+			addBrowseButton = obj.specs.addBrowseButton != undefined ? obj.specs.addBrowseButton : false;
+			useGroup = obj.specs.useGroup != undefined ? obj.specs.useGroup : false;
+			hasImage = obj.specs.hasImage != undefined ? obj.specs.hasImage : false;
+
+			if(hasImage && obj.specs.imgFile != undefined)
 			{
 				imgFile = new File(obj.specs.imgFile);
 				imgFileExists = imgFile.exists;
@@ -1211,7 +1215,7 @@ Object.prototype.addEditText = function(propName, obj)
 	// oh that's right, this is still technically an edittext component
 	/*c.characters = obj.characters != undefined ? obj.characters : JSUI.CHARLENGTH;*/
 	if(obj.characters) c.characters = obj.characters;
-	
+
 	if(obj.width) c.preferredSize.width = obj.width;
 	if(obj.height) c.preferredSize.height = obj.height;
 	if(obj.alignment) c.alignment = obj.alignment;
@@ -1219,10 +1223,6 @@ Object.prototype.addEditText = function(propName, obj)
 	if(obj.disabled) c.enabled = !obj.disabled;
 
 	if(JSUI.isCS6) c.darkMode();
-	// {
-	// 	// c.graphics.foregroundColor = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
-	// 	// c.graphics.backgroundColor = c.graphics.newBrush (c.graphics.PenType.SOLID_COLOR, JSUI.dark, 1);
-	// }
 	
 	// filter for File/Folder Object
 	if( obj.text != undefined ) 
@@ -1313,24 +1313,23 @@ Object.prototype.addEditText = function(propName, obj)
 };
 
 /* add browse for folder edittext+browsebutton combo
-	var browseFolder = win.addBrowseForFolder("browseFolder");
+	var browseFolder = win.addBrowseForFolder( "browseFolder", { characters: 30} );
 */
 Object.prototype.addBrowseForFolder = function(propName, obj)
 {
 	var obj = obj != undefined ? obj : {};
-	var c = this.addEditText(propName, { text: obj.text != undefined ? obj.text : new Folder(JSUI.PREFS[propName].fsName), label:obj.label, specs:{ browseFolder:true, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{alignment:'right'}, characters: obj.characters ? obj.characters : 50}} );
+	var c = this.addEditText(propName, { text: obj.text != undefined ? obj.text : new Folder(JSUI.PREFS[propName]).fsName, label:obj.label, characters: obj.characters ? obj.characters : 45, specs:{ browseFolder:true, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{alignment:'right'}} } );
 
 	return c;
 };
 
 /* add browse for folder edittext+browsebutton combo
-	var browseFile = win.addBrowseForFile("browseFile");
+	var browseFile = win.addBrowseForFile("browseFile", { characters: 40} );
 */
 Object.prototype.addBrowseForFile = function(propName, obj)
 {
 	var obj = obj != undefined ? obj : {};
-	var c = this.addEditText(propName, { text: obj.text != undefined ? obj.text : JSUI.PREFS[propName], label:obj.label, specs:{ browseFile:true, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{alignment:'right'}, hasImage:true, imgFile: (JSUI.URI + "/img/BrowseForFile.png") }, characters: obj.characters != undefined ? obj.characters : 75} );
-//~ 	var browseForFile = destinationPanel.addEditText("browseForFile", { text: browseForFile, label:"FILE:", specs:{ browseFile:true, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{alignment:'right'} }, characters:75} );
+	var c = this.addEditText(propName, { text: obj.text != undefined ? obj.text : new File(JSUI.PREFS[propName]).fsName, label:obj.label, characters: obj.characters ? obj.characters : 45, specs:{ browseFile:true, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{alignment:'right'}, hasImage:false/*, imgFile: (JSUI.URI + "/img/BrowseForFile.png") */}, } );
 
 	return c;
 };
@@ -1456,117 +1455,113 @@ Object.prototype.addDropDownList = function(propName, obj)
 */
 Object.prototype.addButton = function(obj)
 {
-	if(!obj) return;
+	if(obj == undefined) return;
+
+	var scriptUIstates = JSUI.getScriptUIStates( obj );
 	
-	if(obj.imgFile)
+	if(obj.imgFile != undefined && scriptUIstates.active != undefined)
 	{
-		var testImage;
-
-		// if not a valid file URI, attempt to make it a file object
-		if( !(obj.imgFile instanceof File) )
-		{
-			testImage = new File(obj.imgFile);
-
-			// if still not valid, add absolute path for parent script
-			if(!testImage.exists)
-			{
-				// this will make it work if obj.imgFile parameter was something like "/img/file.png" or "file.png"
-				testImage = new File(JSUI.getScriptFolder() + (obj.imgFile.toString()[0] == "/" ? "" : "/") + obj.imgFile);
-				if(testImage.exists)
-				{
-					obj.imgFile = testImage;
-				}
-			}
-		}
-		
-		// add buttonImage support
-		if(obj.imgFile.exists)
-		{
-			var imgFileUp = new File(obj.imgFile.toString().replace(/\.(png)$/i, "_up.png"));
-			var imgFileOver = new File(obj.imgFile.toString().replace(/\.(png)$/i, "_over.png"));
-			var imgFileDown = new File(obj.imgFile.toString().replace(/\.(png)$/i, "_down.png"));
-
-			var c = this.add('iconbutton', undefined, ScriptUI.newImage(obj.imgFile, imgFileUp.exists ? imgFileUp : obj.imgFile, imgFileDown.exists ? imgFileDown : obj.imgFile, imgFileOver.exists ? imgFileOver : obj.imgFile));
-			
-			if(JSUI.isCS6)
-			{
-				var refImage = ScriptUI.newImage(obj.imgFile);
-
-				// temporary assignment
-				c.image = refImage;
-				c.size = refImage.size;
-
-				// fix for unwanted borders and outlines (CS6 & CC+) -- requires onDraw + eventListener
-				var normalState, overState, downState = ScriptUI.newImage(obj.imgFile);
-
-				// update ScriptUI images used by mouseevents
-				normalState = ScriptUI.newImage( obj.imgFile );
-				overState = ScriptUI.newImage( imgFileOver.exists ? imgFileOver : obj.imgFile );
-				downState = ScriptUI.newImage( imgFileDown.exists ? imgFileDown : obj.imgFile );
-
-				if(c.image != normalState) c.image = normalState;
-
-				c.onDraw = function (state)
-				{  
-					c.graphics.drawImage(c.image,0,0);  
-				}  
-
-				// mouse events
-				var mouseEventHandler = function(event)
-				{
-					switch (event.type)
-					{  
-						case 'mouseover':   
-							event.target.image = overState;  
-							break;  
-						case 'mouseout':   
-							event.target.image = normalState;  
-							break;  
-						case 'mousedown':   
-							event.target.image = downState;  
-							break;  
-						case 'mouseup':   
-							event.target.image = overState;  
-							break;  
-						default:   
-							event.target.image = normalState;  
-					}  
-					event.target.notify("onDraw");  
-				}  
-			
-				// event listeners
-				c.addEventListener('mouseover', mouseEventHandler, false);  
-				c.addEventListener('mouseout', mouseEventHandler, false);  
-				c.addEventListener('mousedown', mouseEventHandler, false);  
-				c.addEventListener('mouseup', mouseEventHandler, false);  
-			}
-		}
-		// fallback in case image does not exist
-		else 
-		{
-			var c = this.add('button', undefined, "[Invalid URL: " + obj.imgFile + "]");
-		}
+		if($.level) $.writeln("Adding iconbutton" + "\n");
+		// var c = this.add('iconbutton', undefined, ScriptUI.newImage(obj.imgFile, imgFileUp.exists ? imgFileUp : obj.imgFile, imgFileDown.exists ? imgFileDown : obj.imgFile, imgFileOver.exists ? imgFileOver : obj.imgFile));
+		var c = this.add('iconbutton', undefined, scriptUIstates.active);
 	}
-	else 
+	else
 	{
-		if(obj.name != undefined)
-		{
-			var c = this.add('button', undefined, obj.label ? obj.label : "Default Button Text", {name: obj.name});
-		}
-		else
-		{
-			var c = this.add('button', undefined, obj.label ? obj.label : "Default Button Text");
-		}
+		if($.level) $.writeln("Fallback: standard text button.\n");
+		scriptUIstates = null;
+		var c = this.add('button', undefined, obj.label ? obj.label : "Default Button Text", {name: obj.name});
 	}
-	
+
 	if(obj.width) c.preferredSize.width = obj.width;
 	if(obj.height) c.preferredSize.height = obj.height;
 	if(obj.alignment) c.alignment = obj.alignment;
 	if(obj.helpTip) c.helpTip = obj.helpTip;
 	if(obj.disabled) c.enabled = !obj.disabled;
 	
-	this.Components[obj.name] = c;
+	// manually assign new component to dialog's variable list
+	if(obj.name != undefined) this.Components[obj.name] = c;
+
+if(scriptUIstates != null)
+{
+	// add scriptuistates object container
+	c.scriptUIstates = scriptUIstates; 
+
+
+	// fix for unwanted borders and outlines (CS6 & CC+) -- requires onDraw + eventListener
+	if(JSUI.isCS6 )
+	{
+		var refImage = c.scriptUIstates.normalState;
+
+		// temporary assignment
+		c.image = refImage;
+		c.size = refImage.size;
+
+		c.states = {};
+
+		c.states.normalState = c.value ? c.scriptUIstates.normalState : c.scriptUIstates.normalStateInactive;
+		c.states.overState = c.value ? c.scriptUIstates.overState : c.scriptUIstates.overStateInactive;
+		c.states.downState = c.scriptUIstates.downState;
+
+		c.onDraw = function (state)
+		{  
+			c.graphics.drawImage(c.image, 0, 0); 
+		}  
+
+		// mouse events
+		var mouseEventHandler = function(event)
+		{
+			switch (event.type)
+			{  
+				case 'mouseover':   
+					event.target.image = c.states.overState;  
+					break;  
+				case 'mouseout':   
+					event.target.image = c.states.normalState;  
+					break;  
+				case 'mousedown':   
+					event.target.image = c.states.downState;  
+					break;  
+				case 'mouseup':   
+					event.target.image = c.states.overState;  
+					break;  
+				default:   
+					event.target.image = c.states.normalState;  
+			}  
+			event.target.notify("onDraw");  
+		}  
 	
+		// event listeners
+		c.addEventListener('mouseover', mouseEventHandler, false);  
+		c.addEventListener('mouseout', mouseEventHandler, false);  
+		c.addEventListener('mousedown', mouseEventHandler, false);  
+		c.addEventListener('mouseup', mouseEventHandler, false);  
+	}
+
+	// update callback: update UI state basd on provided scriptUIstates object
+	c.update = function( scriptUIStatesObj )
+	{
+		if(scriptUIStatesObj == undefined) return;
+
+		if(JSUI.isCS6)
+		{
+			// update ScriptUI images used by mouseevents
+			this.states.normalState = this.enabled ? scriptUIStatesObj.normalState : scriptUIStatesObj.normalStateInactive;
+			this.states.overState = this.enabled ? scriptUIStatesObj.overState : scriptUIStatesObj.overStateInactive;
+			this.states.downState = scriptUIStatesObj.downState;
+
+			if(this.image != scriptUIStatesObj.normalState) this.image = scriptUIStatesObj.normalState;
+		
+		//	JSUI.debug("\n\t" + propName + ": update() " + JSUI.PREFS[propName] + "\n\tcomponent.image: " + this.image + "\n" + "\t\tnormalState: " + this.states.normalState + "\n\t\toverState:" + this.states.overState + "\n\t\tdownState: " + this.states.downState);
+		}
+		else
+		{
+		//alert(propName + " checkbox:  " + this.value);
+
+			this.image = this.enabled ? scriptUIStatesObj.active : scriptUIStatesObj.inactive;	
+		}
+
+	};
+}
 	// if button has "browse" attribute...
 	if(obj.specs)
 	{
