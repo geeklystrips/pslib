@@ -12,7 +12,7 @@
 	0.90: Added JSUI.getScriptUIStates() and JSUI.addImageGrid()
 	0.902: fixed bug with JSUI.addBrowseForFolder() / JSUI.addBrowseForFile()
 	0.91: added open file / save file logic + file type filter option to JSUI.addBrowseForFile(), added 'grid' variable to container's list of variables in JSUI.addImageGrid(), added JSUI.addBrowseForFileReplace();
-
+	0.92: improved placeholder object specs behavior
 	
 	Uses functions adapted from Xbytor's Stdlib.js
 	
@@ -27,10 +27,10 @@
 */
 
 /* persistent namespace	*/
-JSUI = function(){};
+JSUI = function(){}; 
 
 /* version	*/
-JSUI.version = "0.91";
+JSUI.version = "0.92";
 
 // do some of the stuff differently if operating UI dialogs from ESTK
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -533,8 +533,12 @@ Object.prototype.addDivider = function(obj)
 /* checkbox image component	*/
 Object.prototype.addCheckBox = function(propName, obj)
 {
-	if(!obj) return;
-	var c = this.add('checkbox', undefined, obj.label ? obj.label : "Default Checkbox Text", {name: obj.name});
+	//if(!obj) return;
+	var obj = obj != undefined ? obj : {};
+
+	var c = this.add('checkbox', undefined, obj.label ? obj.label : propName, {name: obj.name});
+	this.Components[obj.name] = c; 
+
 	c.value = obj.value != undefined ? obj.value : JSUI.PREFS[propName];
 
 	if(JSUI.isCS6) c.darkMode();
@@ -556,7 +560,6 @@ Object.prototype.addCheckBox = function(propName, obj)
 		c.value = JSUI.PREFS[propName];
 	};
 
-	this.Components[obj.name] = c; 
 	return c;
 };
 
@@ -1333,7 +1336,7 @@ Object.prototype.addEditText = function(propName, obj)
 Object.prototype.addBrowseForFolder = function(propName, obj)
 {
 	var obj = obj != undefined ? obj : {};
-	var c = this.addEditText(propName, { text: obj.text != undefined ? obj.text : new Folder(JSUI.PREFS[propName]).fsName, label:obj.label, characters: obj.characters ? obj.characters : 45, specs:{ browseFolder:true, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{alignment:'right'}} } );
+	var c = this.addEditText(propName, { text: obj.text != undefined ? obj.text : new Folder(JSUI.PREFS[propName]).fsName, label:obj.label, characters: obj.characters ? obj.characters : 45, specs:{ browseFolder:true, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{ alignment: obj.alignment != undefined ? obj.alignment : 'right'}} } );
 
 	return c;
 };
@@ -1344,7 +1347,7 @@ Object.prototype.addBrowseForFolder = function(propName, obj)
 Object.prototype.addBrowseForFile = function(propName, obj)
 {
 	var obj = obj != undefined ? obj : {};
-	var c = this.addEditText(propName, { text: obj.text != undefined ? obj.text : new File(JSUI.PREFS[propName]).fsName, label:obj.label, characters: obj.characters ? obj.characters : 45, specs:{ browseFile:true, openFile: obj.openFile != undefined ? obj.openFile : true, filter:obj.filter, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{ alignment: obj.alignment != undefined ? obj.alignment : 'right', spacing: obj.spacing}, hasImage:false/*, imgFile: (JSUI.URI + "/img/BrowseForFile.png") */}, } );
+	var c = this.addEditText(propName, { label:obj.label, /*text: obj.text != undefined ? obj.text : new File(JSUI.PREFS[propName]).fsName,*/ characters: obj.characters ? obj.characters : 45, specs:{ browseFile:true, openFile: obj.openFile != undefined ? obj.openFile : true, filter:obj.filter, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{ alignment: obj.alignment != undefined ? obj.alignment : 'right', spacing: obj.spacing}, hasImage:false/*, imgFile: (JSUI.URI + "/img/BrowseForFile.png") */}, } );
 
 	/*
 			// example: get file types from array
@@ -1387,8 +1390,9 @@ Object.prototype.addBrowseForFile = function(propName, obj)
 Object.prototype.addBrowseForFileReplace = function(propName, obj)
 {
 	var obj = obj != undefined ? obj : {};
+	
 	// var c = this.addEditText(propName, { text: obj.text != undefined ? obj.text : new File(JSUI.PREFS[propName]).fsName, label:obj.label, characters: obj.characters ? obj.characters : 45, specs:{ browseFile:true, openFile: false, filter:obj.filter, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{ alignment: obj.alignment != undefined ? obj.alignment : 'right', spacing: obj.spacing}, hasImage:false/*, imgFile: (JSUI.URI + "/img/BrowseForFile.png") */}, } );
-	var c = this.addBrowseForFile(propName, { characters: obj.characters != undefined ? obj.characters : 40, filter: obj.filter, open: false} );
+	var c = this.addBrowseForFile(propName, { label:obj.label, characters: obj.characters != undefined ? obj.characters : 40, filter: obj.filter, open: false} );
 	
 	return c;
 };
@@ -1858,6 +1862,7 @@ Object.prototype.addListBox = function(propName, obj)
 	}
 
 	var c = this.add('listbox', undefined, obj.list, { multiselect: obj.multiselect != undefined ? obj.multiselect : true});
+	this.Components[propName] = c;
 		
 	if(obj.width) c.preferredSize.width = obj.width;
 	if(obj.height) c.preferredSize.height = obj.height;
@@ -1936,9 +1941,6 @@ Object.prototype.addListBox = function(propName, obj)
 //~ 	c.selection = obj.selection != undefined ? (typeof obj.selection == "number" ? [obj.selection] : obj.selection) : JSUI.PREFS[propName];
 //~ alert(selection + " " + typeof selection + "  typeof null: " + typeof null )
 	c.selection = selection;
-
-		
-	this.Components[propName] = c;
 
 	// update UI based on current JSUI.PREFS[propName] array
 	c.update = function()
@@ -2074,9 +2076,10 @@ Object.prototype.addProgressBar = function(obj)
 
 // COMBOS
 
-Object.prototype.addDeleteINIButton = function()
+Object.prototype.addDeleteINIButton = function( obj )
 {
-	var c = this.addButton( { name:"deleteinifile", label: "[DEL]", helpTip: "Remove current settings file from system"} );
+	var obj = obj != undefined ? obj : {};
+	var c = this.addButton( { name:"deleteinifile", label: obj.label != undefined ? obj.label : "[DEL]", helpTip: "Remove current settings file from system"} );
 			
 	c.onClick = function()
 	{
@@ -2086,9 +2089,10 @@ Object.prototype.addDeleteINIButton = function()
 	return c;
 };
 
-Object.prototype.addOpenINILocationButton = function()
+Object.prototype.addOpenINILocationButton = function( obj )
 {
-	var c = this.addButton( { name:"openinifilelocation", label: "[OPEN]", helpTip: "Reveal settings file location in " + (JSUI.isWindows ? "Windows Explorer" : "Finder")} );
+	var obj = obj != undefined ? obj : {};
+	var c = this.addButton( { name:"openinifilelocation", label: obj.label != undefined ? obj.label : "[OPEN]", helpTip: "Reveal settings file location in " + (JSUI.isWindows ? "Windows Explorer" : "Finder") + "\n" + JSUI.INIFILE.fsName } );
 			
 	c.onClick = function()
 	{
@@ -2098,9 +2102,10 @@ Object.prototype.addOpenINILocationButton = function()
 	return c;
 };
 
-Object.prototype.addSaveSettingsButton = function()
+Object.prototype.addSaveSettingsButton = function( obj )
 {
-	var c = this.addButton( { name:"saveinifile", label: "Save Settings", imgFile: "/img/SaveSettings.png", helpTip: "Save current settings" } );
+	var obj = obj != undefined ? obj : {};
+	var c = this.addButton( { name:"saveinifile", label: obj.label != undefined ? obj.label : "Save Settings", imgFile: "/img/SaveSettings.png", helpTip: "Save current settings" } );
 			
 	c.onClick = function()
 	{
