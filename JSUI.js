@@ -11,8 +11,9 @@
 	0.89: fixed a bug with dropdownlist component, becase JSUI.fromIniString() was returning the index value as a string
 	0.90: Added JSUI.getScriptUIStates() and JSUI.addImageGrid()
 	0.902: fixed bug with JSUI.addBrowseForFolder() / JSUI.addBrowseForFile()
-	
+	0.91: added open file / save file logic + file type filter option to JSUI.addBrowseForFile(), added 'grid' variable to container's list of variables in JSUI.addImageGrid(), added JSUI.addBrowseForFileReplace();
 
+	
 	Uses functions adapted from Xbytor's Stdlib.js
 	
 	throwFileError
@@ -29,7 +30,7 @@
 JSUI = function(){};
 
 /* version	*/
-JSUI.version = "0.902";
+JSUI.version = "0.91";
 
 // do some of the stuff differently if operating UI dialogs from ESTK
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -861,6 +862,9 @@ Object.prototype.addImageGrid = function(propName, obj)
             jsuiComponentArr[u].update();
 		}
 	}
+
+	// tentative
+	this.Components[propName] = grid;
 };
 
 /* radiobutton component	*/
@@ -998,11 +1002,15 @@ Object.prototype.addEditText = function(propName, obj)
 	
 		*/
 	
-	var obj = obj != undefined ? obj : {};
+//	var obj = obj != undefined ? obj : {};
 	obj.text = obj.text != undefined ? obj.text : JSUI.PREFS[propName];
 	
 	// setup
 	var isFileObject = false;
+	var openFile = false;
+	var saveFile = false;
+	var filter = "*";
+
 	var isFolderObject = false;
 	var addIndicator = false;
 	var addBrowseButton = false;
@@ -1012,27 +1020,26 @@ Object.prototype.addEditText = function(propName, obj)
 	var useGroup = false;
 	
 // check for file/folder URI input instructions
-//~ 	if(obj != undefined)
-//~ 	{
-		if(obj.specs)
+	if(obj.specs)
+	{
+		// open vs save file logic
+		isFileObject = obj.specs.browseFile != undefined ? obj.specs.browseFile : false;
+		openFile = obj.specs.openFile != undefined ? obj.specs.openFile : true;
+		filter = obj.specs.filter != undefined ? obj.specs.filter : "*";
+
+		isFolderObject = obj.specs.browseFolder != undefined ? obj.specs.browseFolder : false;
+		addIndicator = obj.specs.addIndicator != undefined ? obj.specs.addIndicator : false;
+		addBrowseButton = obj.specs.addBrowseButton != undefined ? obj.specs.addBrowseButton : false;
+		useGroup = obj.specs.useGroup != undefined ? obj.specs.useGroup : false;
+		hasImage = obj.specs.hasImage != undefined ? obj.specs.hasImage : false;
+
+		if(hasImage && obj.specs.imgFile != undefined)
 		{
-			isFileObject = obj.specs.browseFile != undefined ? obj.specs.browseFile : false;
-			isFolderObject = obj.specs.browseFolder != undefined ? obj.specs.browseFolder : false;
-			//alert(isFileObject + "   " + isFolderObject);
-			//alert(obj.text + "  isFileObject: " + isFileObject + " instanceof File: " + (File(obj.text) instanceof File) +"\n" + obj.text + "  isFolderObject: " + isFolderObject+ " instanceof Folder: " + (Folder(obj.text) instanceof Folder) );
-			addIndicator = obj.specs.addIndicator != undefined ? obj.specs.addIndicator : false;
-			addBrowseButton = obj.specs.addBrowseButton != undefined ? obj.specs.addBrowseButton : false;
-			useGroup = obj.specs.useGroup != undefined ? obj.specs.useGroup : false;
-			hasImage = obj.specs.hasImage != undefined ? obj.specs.hasImage : false;
-
-			if(hasImage && obj.specs.imgFile != undefined)
-			{
-				imgFile = new File(obj.specs.imgFile);
-				imgFileExists = imgFile.exists;
-			}		
-		}
-//~ 	}
-
+			imgFile = new File(obj.specs.imgFile);
+			imgFileExists = imgFile.exists;
+		}		
+	}
+		
 	// create group (optional)
 	if(useGroup)
 	{
@@ -1042,6 +1049,7 @@ Object.prototype.addEditText = function(propName, obj)
 		{
 			if(obj.specs.groupSpecs.alignment) g.alignment = obj.specs.groupSpecs.alignment;
 			if(obj.specs.groupSpecs.orientation) g.orientation = obj.specs.groupSpecs.orientation;
+			if(obj.specs.groupSpecs.spacing) g.spacing = obj.specs.groupSpecs.spacing;
 		}
 		
 		this.Components[propName+'Group'] = g;
@@ -1134,6 +1142,7 @@ Object.prototype.addEditText = function(propName, obj)
 				{
 					var b = this.add('button', undefined, '...', {name:"browse"});
 				}
+				b.preferredSize.width = 44;
 			}
 		
 			b.helpTip = obj.specs.browseFolder ? "Browse for location URI" :  "Browse for file URI";
@@ -1164,13 +1173,13 @@ Object.prototype.addEditText = function(propName, obj)
 						JSUI.debug("chosenFolder: " + chosenFolder.fsName + "\n[ exists: " + chosenFolder.exists + " ]");
 						JSUI.PREFS[propName] = encodeURI (chosenFolder) ;
 						c.text = chosenFolder.fsName;
+						if(JSUI.autoSave) JSUI.saveIniFile();
 					}
 					else
 					{
 						/*	user either closed the window or pointed to an invalid location/special folder
 							*/
 						JSUI.debug("User either closed the browse dialog without chosing a target folder, or pointed to an invalid resource"); 
-											
 					}
 				}
 				// if browsing for file
@@ -1178,7 +1187,7 @@ Object.prototype.addEditText = function(propName, obj)
 				{
 					var defaultFile = c.text;
 					var testFile = new File(c.text);
-					if($.level) $.writeln("Browsing for file. Default path: " + testFile.parent.fsName);
+					if($.level) $.writeln("Browsing for file to " + (openFile ? "open" : "save over") + ". Default path: " + testFile.parent.fsName);
 					if(!testFile.exists) defaultFile = "~";
 
 					if(File.myDefaultSave)
@@ -1186,7 +1195,12 @@ Object.prototype.addEditText = function(propName, obj)
 					   Folder.current = File.myDefaultSave;
 					}
 
-					var chosenFile = File.saveDialog("Prompt", "*.*"); 
+					// file types
+					// var chosenFile = File.saveDialog("Prompt", "*.*"); 
+					var chosenFile = openFile ? new File(c.text).openDlg("Select " + ( filter == "*" ? "" : ("." + filter.toUpperCase() ) + " file to open"), ("*." + filter)) : new File(c.text).saveDlg("Select " + ( filter == "*" ? "" : ("." + filter.toUpperCase() ) + " file to save over"), ("*." + filter));
+			//		File.openDialog();
+			//		var chosenFile = new File(sourceImgPath.text).openDlg("Select .png file", "*.png");
+
 					if(chosenFile)
 					{
 					   File.myDefaultSave = chosenFile.parent;
@@ -1197,6 +1211,7 @@ Object.prototype.addEditText = function(propName, obj)
 						JSUI.debug("chosenFile: " + chosenFile.fsName + "\n[ exists: " + chosenFile.exists + " ]");
 						JSUI.PREFS[propName] = encodeURI (chosenFile) ;
 						c.text = chosenFile.fsName;
+						if(JSUI.autoSave) JSUI.saveIniFile();
 					}
 				}
 				// use onChanging callback so "exists" indicator is properly refreshed after selecting file or folder.
@@ -1324,15 +1339,60 @@ Object.prototype.addBrowseForFolder = function(propName, obj)
 };
 
 /* add browse for folder edittext+browsebutton combo
-	var browseFile = win.addBrowseForFile("browseFile", { characters: 40} );
+	var browseFile = win.addBrowseForFile("browseFile", { characters: 40, filter: "png", open: true} ); // open: false for saveDlg
 */
 Object.prototype.addBrowseForFile = function(propName, obj)
 {
 	var obj = obj != undefined ? obj : {};
-	var c = this.addEditText(propName, { text: obj.text != undefined ? obj.text : new File(JSUI.PREFS[propName]).fsName, label:obj.label, characters: obj.characters ? obj.characters : 45, specs:{ browseFile:true, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{alignment:'right'}, hasImage:false/*, imgFile: (JSUI.URI + "/img/BrowseForFile.png") */}, } );
+	var c = this.addEditText(propName, { text: obj.text != undefined ? obj.text : new File(JSUI.PREFS[propName]).fsName, label:obj.label, characters: obj.characters ? obj.characters : 45, specs:{ browseFile:true, openFile: obj.openFile != undefined ? obj.openFile : true, filter:obj.filter, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{ alignment: obj.alignment != undefined ? obj.alignment : 'right', spacing: obj.spacing}, hasImage:false/*, imgFile: (JSUI.URI + "/img/BrowseForFile.png") */}, } );
+
+	/*
+			// example: get file types from array
+			var imgTypes = [];
+			var imgTypesStr = null;
+			
+			imgTypes.push("psd");
+			imgTypes.push("png");
+			imgTypes.push("tga");
+			imgTypes.push("jpg");
+			imgTypes.push("bmp");
+			imgTypes.push("gif");
+
+			// 
+			if(imgTypes.length)
+			{
+				imgTypesStr = "/\\.(";
+				
+				for(var i = 0; i < imgTypes.length; i++)
+				{
+					imgTypesStr += imgTypes[i] + (i < imgTypes.length-1 ? "|" : "");
+				}
+				imgTypesStr += ")$/i";
+			}
+			
+			if(imgTypes.length)
+			{
+				eval("images = imgFolder.getFiles(" + imgTypesStr + ");");
+			}
+			// fallback to all types with eval()
+			else
+			{
+				images = imgFolder.getFiles(/\.(jpg|psd|png|tga|bmp|gif)$/i);
+			}
+	*/
 
 	return c;
 };
+
+Object.prototype.addBrowseForFileReplace = function(propName, obj)
+{
+	var obj = obj != undefined ? obj : {};
+	// var c = this.addEditText(propName, { text: obj.text != undefined ? obj.text : new File(JSUI.PREFS[propName]).fsName, label:obj.label, characters: obj.characters ? obj.characters : 45, specs:{ browseFile:true, openFile: false, filter:obj.filter, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{ alignment: obj.alignment != undefined ? obj.alignment : 'right', spacing: obj.spacing}, hasImage:false/*, imgFile: (JSUI.URI + "/img/BrowseForFile.png") */}, } );
+	var c = this.addBrowseForFile(propName, { characters: obj.characters != undefined ? obj.characters : 40, filter: obj.filter, open: false} );
+	
+	return c;
+};
+
 
 // dropdownlist component
 // 	var ddlist = container.addDropDownList( { prefs:prefsObj, name:"ddlist", list:["Zero", "One", "Two"] , label:"Choose a number:"} );
@@ -1355,9 +1415,10 @@ Object.prototype.addDropDownList = function(propName, obj)
 		var g = this.add('group');
 		if(obj.specs.groupSpecs)
 		{
-		
+			if(obj.specs.groupSpecs.alignChildren) g.alignChildren = obj.specs.groupSpecs.alignChildren;
 			if(obj.specs.groupSpecs.alignment) g.alignment = obj.specs.groupSpecs.alignment;
 			if(obj.specs.groupSpecs.orientation) g.orientation = obj.specs.groupSpecs.orientation;
+			if(obj.specs.groupSpecs.spacing) g.spacing = obj.specs.groupSpecs.spacing;
 		}
 	}
 
