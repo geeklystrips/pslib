@@ -14,6 +14,7 @@
 	0.91: added open file / save file logic + file type filter option to JSUI.addBrowseForFile(), added 'grid' variable to container's list of variables in JSUI.addImageGrid(), added JSUI.addBrowseForFileReplace();
 	0.92: improved placeholder object specs behavior
 	0.93: added support for updating toggleIcon states from usage context, made ReadingFrom/WritingTo INIstring print output optional
+	0.94: added JSUI.matchObjectArrayIndex()
 		
 	Uses functions adapted from Xbytor's Stdlib.js
 	
@@ -31,7 +32,7 @@
 JSUI = function(){}; 
 
 /* version	*/
-JSUI.version = "0.93";
+JSUI.version = "0.94";
 
 // do some of the stuff differently if operating UI dialogs from ESTK
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -870,6 +871,36 @@ Object.prototype.addImageGrid = function(propName, obj)
 
 	// tentative
 	this.Components[propName] = grid;
+};
+
+// this will match a string OR object with an index from an object array (ideally without using an eval() hack)
+JSUI.matchObjectArrayIndex = function(value, objArr, defaultValue) 
+{
+	for(var i = 0; i < objArr.length; i++)
+	{
+		if(typeof value == 'string')
+		{
+			if(value.toString() == objArr[i].toString())
+			{
+				value = objArr[i];
+				break;
+			}
+		}
+		else if(typeof value == 'object')
+		{
+			if(value == objArr[i]);
+			{
+				value = objArr[i];
+				break;
+			}
+		}
+	}
+
+	if(typeof value != 'object')
+	{
+		value = defaultValue;
+	}
+	return value;
 };
 
 /* radiobutton component	*/
