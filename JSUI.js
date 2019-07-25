@@ -13,7 +13,8 @@
 	0.902: fixed bug with JSUI.addBrowseForFolder() / JSUI.addBrowseForFile()
 	0.91: added open file / save file logic + file type filter option to JSUI.addBrowseForFile(), added 'grid' variable to container's list of variables in JSUI.addImageGrid(), added JSUI.addBrowseForFileReplace();
 	0.92: improved placeholder object specs behavior
-	
+	0.93: added support for updating toggleIcon states from usage context, made ReadingFrom/WritingTo INIstring print output optional
+		
 	Uses functions adapted from Xbytor's Stdlib.js
 	
 	throwFileError
@@ -30,7 +31,7 @@
 JSUI = function(){}; 
 
 /* version	*/
-JSUI.version = "0.92";
+JSUI.version = "0.93";
 
 // do some of the stuff differently if operating UI dialogs from ESTK
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -64,6 +65,7 @@ JSUI.USERPREFSFOLDER = Folder.userData;
 JSUI.TOOLSPREFSFOLDERNAME = "pslib";
 JSUI.INIFILE = JSUI.USERPREFSFOLDER + "/" + JSUI.TOOLSPREFSFOLDERNAME + "/" + JSUI.TOOLNAME + ".ini";
 JSUI.autoSave = false;
+JSUI.PrintINIstringInfo = false;
 
 JSUI.populateINI = function()
 {
@@ -736,27 +738,30 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 	}
 	
 	// update callback: update the UI based on the true/false value
-	c.update = function( )
+	c.update = function( scriptUIStatesObj )
 	{
+		if(scriptUIStatesObj == undefined)
+		{
+			var scriptUIStatesObj = this.scriptUIstates;
+		}
+
+		if($.level) $.writeln(propName + ": Using " + scriptUIStatesObj.active);
+
 		if(JSUI.isCS6)
 		{
 			// update ScriptUI images used by mouseevents
-			this.states.normalState = this.value ? this.scriptUIstates.normalState : this.scriptUIstates.normalStateInactive;
-			this.states.overState = this.value ? this.scriptUIstates.overState : this.scriptUIstates.overStateInactive;
-			this.states.downState = this.scriptUIstates.downState;
+			this.states.normalState = this.value ? scriptUIStatesObj.normalState : scriptUIStatesObj.normalStateInactive;
+			this.states.overState = this.value ? scriptUIStatesObj.overState : scriptUIStatesObj.overStateInactive;
+			this.states.downState = scriptUIStatesObj.downState;
 
 			if(this.image != this.states.normalState) this.image = this.states.normalState;
-		
-			JSUI.debug("\n\t" + propName + ": update() " + JSUI.PREFS[propName] + "\n\tcomponent.image: " + this.image + "\n" + "\t\tnormalState: " + this.states.normalState + "\n\t\toverState:" + this.states.overState + "\n\t\tdownState: " + this.states.downState);
+			JSUI.debug("\n\t" + propName + ".update() " + JSUI.PREFS[propName] + "\n\timage:\t" + this.image + "\n\t\tnormalState:\t" + this.states.normalState + "\n\t\toverState:\t" + this.states.overState + "\n\t\tdownState:\t" + this.states.downState);
 		}
 		else
 		{
-		//alert(propName + " checkbox:  " + this.value);
-
-			this.image = this.value ? this.scriptUIstates.active : this.scriptUIstates.inactive;	
-		//	this.image = JSUI.PREFS[ propName ] ? this.scriptUIstates.active : this.scriptUIstates.inactive;	
+			this.image = this.value ? scriptUIStatesObj.active : scriptUIStatesObj.inactive;
+			JSUI.debug("\n\t" + propName + ".update() " + JSUI.PREFS[propName] + "\n\timage:\t" + this.image + "\n\t\tactive:\t" + scriptUIStatesObj.active + "\n\t\tinactive:\t" + scriptUIStatesObj.inactive);
 		}
-
 	};
 
 	if(JSUI.PREFS[ propName ] != undefined) c.update();
@@ -828,9 +833,6 @@ Object.prototype.addImageGrid = function(propName, obj)
 					// determine if the current array index matches the current component
 					var component = jsuiComponentArr[i];
 					var isCurrentComponent = (component == this); 
-
-				// this doesn't work!
-				//	component.value = isCurrentComponent ? !component.value : false;
 
 					// update prefs
 					if(isCurrentComponent)
@@ -1532,7 +1534,7 @@ Object.prototype.addButton = function(obj)
 	}
 	else
 	{
-		if($.level) $.writeln("Fallback: standard text button.\n");
+		if($.level) $.writeln("Adding standard text button.");
 		scriptUIstates = null;
 		var c = this.add('button', undefined, obj.label ? obj.label : "Default Button Text", {name: obj.name});
 	}
@@ -1546,87 +1548,84 @@ Object.prototype.addButton = function(obj)
 	// manually assign new component to dialog's variable list
 	if(obj.name != undefined) this.Components[obj.name] = c;
 
-if(scriptUIstates != null)
-{
-	// add scriptuistates object container
-	c.scriptUIstates = scriptUIstates; 
-
-
-	// fix for unwanted borders and outlines (CS6 & CC+) -- requires onDraw + eventListener
-	if(JSUI.isCS6 )
+	if(scriptUIstates != null)
 	{
-		var refImage = c.scriptUIstates.normalState;
+		// add scriptuistates object container
+		c.scriptUIstates = scriptUIstates; 
 
-		// temporary assignment
-		c.image = refImage;
-		c.size = refImage.size;
 
-		c.states = {};
-
-		c.states.normalState = c.value ? c.scriptUIstates.normalState : c.scriptUIstates.normalStateInactive;
-		c.states.overState = c.value ? c.scriptUIstates.overState : c.scriptUIstates.overStateInactive;
-		c.states.downState = c.scriptUIstates.downState;
-
-		c.onDraw = function (state)
-		{  
-			c.graphics.drawImage(c.image, 0, 0); 
-		}  
-
-		// mouse events
-		var mouseEventHandler = function(event)
+		// fix for unwanted borders and outlines (CS6 & CC+) -- requires onDraw + eventListener
+		if(JSUI.isCS6 )
 		{
-			switch (event.type)
+			var refImage = c.scriptUIstates.normalState;
+
+			// temporary assignment
+			c.image = refImage;
+			c.size = refImage.size;
+
+			c.states = {};
+
+			c.states.normalState = c.value ? c.scriptUIstates.normalState : c.scriptUIstates.normalStateInactive;
+			c.states.overState = c.value ? c.scriptUIstates.overState : c.scriptUIstates.overStateInactive;
+			c.states.downState = c.scriptUIstates.downState;
+
+			c.onDraw = function (state)
 			{  
-				case 'mouseover':   
-					event.target.image = c.states.overState;  
-					break;  
-				case 'mouseout':   
-					event.target.image = c.states.normalState;  
-					break;  
-				case 'mousedown':   
-					event.target.image = c.states.downState;  
-					break;  
-				case 'mouseup':   
-					event.target.image = c.states.overState;  
-					break;  
-				default:   
-					event.target.image = c.states.normalState;  
+				c.graphics.drawImage(c.image, 0, 0); 
 			}  
-			event.target.notify("onDraw");  
-		}  
-	
-		// event listeners
-		c.addEventListener('mouseover', mouseEventHandler, false);  
-		c.addEventListener('mouseout', mouseEventHandler, false);  
-		c.addEventListener('mousedown', mouseEventHandler, false);  
-		c.addEventListener('mouseup', mouseEventHandler, false);  
+
+			// mouse events
+			var mouseEventHandler = function(event)
+			{
+				switch (event.type)
+				{  
+					case 'mouseover':   
+						event.target.image = c.states.overState;  
+						break;  
+					case 'mouseout':   
+						event.target.image = c.states.normalState;  
+						break;  
+					case 'mousedown':   
+						event.target.image = c.states.downState;  
+						break;  
+					case 'mouseup':   
+						event.target.image = c.states.overState;  
+						break;  
+					default:   
+						event.target.image = c.states.normalState;  
+				}  
+				event.target.notify("onDraw");  
+			}  
+		
+			// event listeners
+			c.addEventListener('mouseover', mouseEventHandler, false);  
+			c.addEventListener('mouseout', mouseEventHandler, false);  
+			c.addEventListener('mousedown', mouseEventHandler, false);  
+			c.addEventListener('mouseup', mouseEventHandler, false);  
+		}
+
+		// update callback: update UI state basd on provided scriptUIstates object
+		c.update = function( scriptUIStatesObj )
+		{
+			if(scriptUIStatesObj == undefined) return;
+
+			if(JSUI.isCS6)
+			{
+				// update ScriptUI images used by mouseevents
+				this.states.normalState = this.enabled ? scriptUIStatesObj.normalState : scriptUIStatesObj.normalStateInactive;
+				this.states.overState = this.enabled ? scriptUIStatesObj.overState : scriptUIStatesObj.overStateInactive;
+				this.states.downState = scriptUIStatesObj.downState;
+
+				if(this.image != scriptUIStatesObj.normalState) this.image = scriptUIStatesObj.normalState;
+			}
+			else
+			{
+				this.image = this.enabled ? scriptUIStatesObj.active : scriptUIStatesObj.inactive;	
+			}
+
+		};
 	}
 
-	// update callback: update UI state basd on provided scriptUIstates object
-	c.update = function( scriptUIStatesObj )
-	{
-		if(scriptUIStatesObj == undefined) return;
-
-		if(JSUI.isCS6)
-		{
-			// update ScriptUI images used by mouseevents
-			this.states.normalState = this.enabled ? scriptUIStatesObj.normalState : scriptUIStatesObj.normalStateInactive;
-			this.states.overState = this.enabled ? scriptUIStatesObj.overState : scriptUIStatesObj.overStateInactive;
-			this.states.downState = scriptUIStatesObj.downState;
-
-			if(this.image != scriptUIStatesObj.normalState) this.image = scriptUIStatesObj.normalState;
-		
-		//	JSUI.debug("\n\t" + propName + ": update() " + JSUI.PREFS[propName] + "\n\tcomponent.image: " + this.image + "\n" + "\t\tnormalState: " + this.states.normalState + "\n\t\toverState:" + this.states.overState + "\n\t\tdownState: " + this.states.downState);
-		}
-		else
-		{
-		//alert(propName + " checkbox:  " + this.value);
-
-			this.image = this.enabled ? scriptUIStatesObj.active : scriptUIStatesObj.inactive;	
-		}
-
-	};
-}
 	// if button has "browse" attribute...
 	if(obj.specs)
 	{
@@ -2476,7 +2475,7 @@ JSUI.fromIniString=function(str,obj, type)
 		}
 		
 	}
-	if($.level) JSUI.reflectProperties(obj, "\n[READING FROM INI STRING:]");
+	if($.level && JSUI.PrintINIstringInfo) JSUI.reflectProperties(obj, "\n[READING FROM INI STRING:]");
 	return obj;
 };
 
@@ -2519,12 +2518,11 @@ JSUI.writeIniFile = function(fptr, obj, header)
 	var str = header?header:'';
 	str += JSUI.toIniString(obj);
 	
- 	if($.level)
+	if($.level && JSUI.PrintINIstringInfo) 
  	{
  		JSUI.reflectProperties(obj, "\n[WRITING TO INI STRING:]");
  	}
 	JSUI.writeToFile(fptr,str);
-//	alert(fptr);
 };
 
 JSUI.saveIniFile = function()
