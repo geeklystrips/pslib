@@ -36,7 +36,10 @@
 		- added default close button to dialog window declaration
 		- added icons for relevant functions
 		- propertylist and property/value fields now update properly when XMP object is removed from layer.
-		- added "Load from CSV" function
+        - added "Load from CSV" function
+        
+    (0.5)
+    - Pslib.propertiesToCSV() upgraded to UTF-8 format
 */
 
 // these functions are often required when working with code obtained using the ScriptingListener plugin
@@ -58,7 +61,7 @@ catch(e)
 
 	// $.level == 0 if the script is run by Photoshop, == 1 if run by ExtendScript ToolKit
 	// if ESTK, then write to console for easier debugging
-	if($.level) $.writeln("Pslib object not found. Creating placeholder.");
+	if($.level) $.writeln("Pslib library object not found. Creating placeholder.");
 	
 	// errors are objects that can give you some information about what went wrong 
 	//$.writeln("typeof e.message: " + typeof e.message + "\n\ne:\n" + e + "\n\ne.message:\n" + e.message);
@@ -71,7 +74,7 @@ catch(e)
 }
 
 // library version, used in tool window titles. Maybe.
-Pslib.version = 0.44;
+Pslib.version = 0.5;
 Pslib.isPs64bits = BridgeTalk.appVersion.match(/\d\d$/) == '64';
 
 // metadata is only supported by Photoshop CS4+
@@ -742,7 +745,8 @@ Pslib.propertiesToCSV = function(layer, namespace, uri)
 				var file = new File(uri);
 				if(!file.parent.exists) file.parent.create();
 				if(file.exists) file.remove();
-				
+                
+                file.encoding = "UTF-8";
 				file.open('w');
 				$.os.search(/windows/i)  != -1 ? file.lineFeed = 'windows'  : file.lineFeed = 'macintosh';
 				file.write(report);
