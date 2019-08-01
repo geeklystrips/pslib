@@ -24,7 +24,12 @@
 		- added JSUI.prompt()
 		- added JSUI.setLayerObjectColor()
 		- JSUI.scriptUIstates() now accessible without JSUI.populateINI())
-		
+
+	0.96:
+		- added JSUI.getCurrentTheme() & added JSUI.getBackgroundColor() + default brightness values for automated styling of Photoshop CS6 dialogs
+		- support for inherent light/dark theme graphics as part of JSUI.scriptUIstates()
+
+
 	Uses functions adapted from Xbytor's Stdlib.js
 	
 	throwFileError
@@ -41,7 +46,7 @@
 JSUI = function(){}; 
 
 /* version	*/
-JSUI.version = "0.95";
+JSUI.version = "0.96";
 
 // do some of the stuff differently if operating UI dialogs from ESTK
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -88,9 +93,17 @@ JSUI.PREFS = {};
 
 /*  Layout and graphics  */
 JSUI.SPACING = (JSUI.isWindows ? 3 : 1);
-JSUI.dark = [0.33, 0.33, 0.33];
+JSUI.dark = [0.3255, 0.3255, 0.3255];
 JSUI.light = [0.86, 0.86, 0.86];
 JSUI.yellow = [1.0, 0.78, 0.04];
+
+JSUI.brightnessOriginal = [0.9412, 0.9412, 0.9412];
+JSUI.brightnessLightGray = [0.7216, 0.7216, 0.7216];
+JSUI.brightnessMediumGray = [0.3255, 0.3255, 0.3255];
+JSUI.brightnessDarkGray = [0.1961, 0.1961, 0.1961];
+
+// placeholder: this value is made dynamic later on
+JSUI.backgroundColor = [0.3255, 0.3255, 0.3255];
 
 /* failsafe for cases where the UI framework is used without a debugTxt dialog component	
  if this variable is not replaced, calls by regular functions to modify its state should not cause problems	*/
@@ -207,7 +220,7 @@ JSUI.debug = function(str, textfield)
 		// otherwise just assume 
 		else
 		{
-			debugTxt.text = str
+			debugTxt.text = str;
 		}
 		$.writeln(str);
 	}
@@ -243,6 +256,62 @@ JSUI.zeropad = function(str)
 	return (str.length < 2 ? "000" + str :  (str.length < 3 ? "00" + str : (str.length < 4 ? "0" + str : (str) ) ) ); // 40 becomes "0040"
 };
 
+// with help from Davide
+// *bows*
+JSUI.getCurrentTheme = function()
+{
+	// ah. Photoshop CS6 seems to crash on this
+	try
+	{
+		var ref = new ActionReference();
+		ref.putProperty(charIDToTypeID("Prpr"), stringIDToTypeID("interfacePrefs"));
+		ref.putEnumerated(charIDToTypeID("capp"), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
+		var desc = executeActionGet(ref).getObjectValue(stringIDToTypeID("interfacePrefs"));
+		return typeIDToStringID(desc.getEnumerationValue(stringIDToTypeID("kuiBrightnessLevel")));
+	}
+	catch(e)
+	{
+		return "kPanelBrightnessMediumGray";
+	}
+};
+
+JSUI.getBackgroundColor = function()
+{
+	var currentTheme = JSUI.getCurrentTheme();
+
+	switch(currentTheme)
+	{
+		case "kPanelBrightnessOriginal" : 
+		{
+			color = JSUI.brightnessOriginal;
+			break;
+		}
+		case "kPanelBrightnessLightGray" : 
+		{
+			color = JSUI.brightnessLightGray;
+			break;
+		}
+		case "kPanelBrightnessMediumGray" : 
+		{
+			color = JSUI.brightnessMediumGray;
+			break;
+		}
+		case "kPanelBrightnessDarkGray" : 
+		{
+			color = JSUI.brightnessDarkGray;
+			break;
+		}
+		default :
+		{
+			color = JSUI.brightnessMediumGray;
+			break;
+		}
+	}
+	return color;
+};
+
+JSUI.backgroundColor = JSUI.getBackgroundColor();
+
 JSUI.createDialog = function( obj )
 {
 	var obj = obj != undefined ? obj : {};
@@ -250,6 +319,13 @@ JSUI.createDialog = function( obj )
 	obj.title = obj.title != undefined ? obj.title : "JSUI Dialog Window";
 	obj.systemInfo = obj.systemInfo != undefined ?  ( obj.systemInfo ? (JSUI.is_x64 ? " x64" : " x32") : "" ) : "";
 	obj.extraInfo = obj.extraInfo != undefined ? obj.extraInfo : "";
+
+	obj.debugInfo = obj.debugInfo != undefined ? obj.debugInfo : false;
+	// obj.closeButton = obj.closeButton != undefined ? obj.closeButton : false;
+
+	obj.alert = obj.alert != undefined ? obj.alert : false;
+	obj.confirm = obj.confirm != undefined ? obj.confirm : false;
+	obj.prompt = obj.prompt != undefined ? obj.prompt : false;
 
 	var dlg = new Window('dialog', obj.title + obj.systemInfo + "" + obj.extraInfo, undefined, {closeButton:true/*, borderless:true*/});
 	if(JSUI.isCS6) dlg.darkMode();
@@ -264,7 +340,7 @@ JSUI.createDialog = function( obj )
 	dlg.preferredSize.width = obj.width != undefined ? obj.width : 600;
 	dlg.preferredSize.height = obj.height != undefined ? obj.height : 200;
 
-	var container = dlg.addRow( { alignChildren: "fill" /*margins: obj.margins ? obj.margins : 15, spacing: obj.spacing != undefined ? obj.spacing : 20 */ } );
+	//var container = dlg.addRow( { alignChildren: "fill" /*margins: obj.margins ? obj.margins : 15, spacing: obj.spacing != undefined ? obj.spacing : 20 */ } );
 	var img = null;
 	var imageSize = null;
 
@@ -285,7 +361,7 @@ JSUI.createDialog = function( obj )
 
 		}
 	}
-//alert(dlg.preferredSize);
+
 	var messageContainer = dlg.addColumn( { width: (dlg.preferredSize.width - ( img != null ? imageSize[0] : 0 ) ), alignChildren: "fill", margins: obj.margins ? obj.margins : 0, spacing: obj.spacing != undefined ? obj.spacing : 20} );
 
 	if(obj.message)
@@ -294,15 +370,19 @@ JSUI.createDialog = function( obj )
 		//message.characters = 75;
 	}
 	
+	//
+	// DIALOG WINDOW PROFILES
+	//
 	// alert status
-	if(obj.alert != undefined)
+	if(obj.alert)
 	{
 		var buttons = messageContainer.addRow( { spacing: 20 } );
-		var close = buttons.addButton( { label: "Close", name: "ok", width: 150, height: 44, alignment: "left" });
+		buttons.addCloseButton();
+
 		return dlg;
 	}
 	// confirm dialog (YES / NO)
-	else if(obj.confirm != undefined)
+	else if(obj.confirm)
 	{
 		var confirm = null;
 
@@ -315,14 +395,12 @@ JSUI.createDialog = function( obj )
 		{
 			confirm = true;
 			dlg.close();
-			//if($.level) $.writeln( "Confirm window: TRUE");
 		};
 
 		no.onClick = function()
 		{
 			confirm = false;
 			dlg.close();
-			//if($.level) $.writeln( "Confirm window: FALSE");
 		};
 
 		dlg.center();
@@ -336,8 +414,8 @@ JSUI.createDialog = function( obj )
 			return confirm;
 		}
 	}
-	// identity: prompt user with edittext + content
-	else if(obj.prompt != undefined)
+	// prompt user with edittext + content
+	else if(obj.prompt)
 	{
 		var textfield = messageContainer.add("edittext", undefined, obj.text != undefined ? obj.text : "DEFAULT STRING");
 		textfield.characters = obj.characters != undefined ? obj.characters : 35;
@@ -359,7 +437,15 @@ JSUI.createDialog = function( obj )
 	}
 	else
 	{
-	//	var close = dlg.addButton( { label: "Close", name: "ok", width: 150, height: 44, alignment: "left" });
+		// include debugTxt statictext at this point
+		if(obj.debugInfo && $.level)
+		{
+			debugText = dlg.addStaticText( { width:500, text:"[Debug text goes here...]\n[...and here.]", disabled:true, multiline:true, height:100 } );
+
+			var debugButtonsGroup = dlg.addRow( {alignChildren: 'fill'} );
+			debugButtonsGroup.addDeleteINIButton();
+			debugButtonsGroup.addOpenINILocationButton();
+		}
 
 		return dlg;
 	}
@@ -431,9 +517,6 @@ JSUI.prompt = function( obj )
 	return JSUI.createDialog( obj );
 };
 
-
-
-
 // standalone logic for ScriptUI image states to use with simple dual true/false logic
 // function should accept both strings and file objects
 // include optional value and use object as document holder?
@@ -489,7 +572,7 @@ JSUI.getScriptUIStates = function( obj )
 			imgFileOver = new File(obj.imgFile.toString().replace(/\.(png)$/i, "_over.png"));
 			imgFileDown = new File(obj.imgFile.toString().replace(/\.(png)$/i, "_down.png"));
 			
-			disabledImgFile = new File(obj.imgFile.toString().replace(".png", "_disabled.png") );
+			disabledImgFile = new File(obj.imgFile.toString().replace(/\.(png)$/i, "_disabled.png") );
 			disabledImgFileOver = new File(disabledImgFile.toString().replace(/\.(png)$/i, "_over.png"));
 
 			imgFileUpExists = imgFileUp.exists;
@@ -497,7 +580,62 @@ JSUI.getScriptUIStates = function( obj )
 			imgFileDownExists = imgFileDown.exists;
 
 			disabledImgFileExists = disabledImgFile.exists;
-			disabledImgFileOverExists = disabledImgFileOver.exists;
+			disabledImgFileOverExists = disabledImgFileOver.exists;	
+
+			// if background brightness is lower than 40%, look for "_light" prefix
+			// we must still support cases where no light version is available, so this step is technically optional
+			if(JSUI.backgroundColor[0] > 0.4)
+			{
+				var suffix = "_light";
+				var imgFileNormal = obj.imgFile.toString();
+
+				var imgFileLight = new File(imgFileNormal.replace(/\.(png)$/i, (suffix+".png")));
+		// $.writeln(imgFileLight.fsName + "\n" + imgFileLight.exists)		
+				if(imgFileLight.exists)
+				{
+					obj.imgFile = imgFileLight;
+				}	
+
+				var imgFileUpLight = new File(imgFileNormal.replace(/\.(png)$/i, ("_up"+suffix+".png")));
+				// $.writeln(imgFileUpLight.fsName + "\n" + imgFileUpLight.exists)	
+				if(imgFileUpLight.exists)
+				{
+					imgFileUp = imgFileUpLight;
+					imgFileUpExists = true;
+				}
+
+				var imgFileOverLight = new File(imgFileNormal.replace(/\.(png)$/i, ("_over"+suffix+".png")));
+				// $.writeln(imgFileOverLight.fsName + "\n" + imgFileOverLight.exists)	
+				if(imgFileOverLight.exists)
+				{
+					imgFileOver = imgFileOverLight;
+					imgFileOverExists = true;
+				}
+
+				var imgFileDownLight = new File(imgFileNormal.replace(/\.(png)$/i, ("_down"+suffix+".png")));
+				// $.writeln(imgFileDownLight.fsName + "\n" + imgFileDownLight.exists)	
+				if(imgFileDownLight.exists)
+				{
+					imgFileDown = imgFileDownLight;
+					imgFileDownExists = true;
+				}
+
+				var disabledImgFileLight = new File(imgFileNormal.replace(/\.(png)$/i, ("_disabled"+suffix+".png")));
+				// $.writeln(disabledImgFileLight.fsName + "\n" + disabledImgFileLight.exists)	
+				if(disabledImgFileLight.exists)
+				{
+					disabledImgFile = disabledImgFileLight;
+					disabledImgFileExists = true;
+				}
+
+				var disabledImgFileOverLight = new File(imgFileNormal.replace(".png", ("_disabled_over"+suffix+".png")));
+				// $.writeln(disabledImgFileOverLight.fsName + "\n" + disabledImgFileOverLight.exists)	
+				if(disabledImgFileOverLight.exists)
+				{
+					disabledImgFileOver = disabledImgFileOverLight;
+					disabledImgFileOverExists = true;
+				}
+			}
 
 			if($.level)
 			{
@@ -546,6 +684,14 @@ JSUI.getScriptUIStates = function( obj )
 /* supercharge object type to store interface element functions (hi X! )	*/
 Object.prototype.Components = new Array(); 
 
+// generic close button
+Object.prototype.addCloseButton = function( labelStr )
+{
+	var labelStr = labelStr != undefined ? labelStr : "";
+	var closeButton = this.addButton( { label: labelStr ? labelStr : "Close", name: "ok", width: 150, height: 44, alignment: "center" });
+	return closeButton;
+};
+
 /* Graphics treatment for CS6 (Dialog Window)*/
 Object.prototype.dialogDarkMode = function()
 {
@@ -553,8 +699,11 @@ Object.prototype.dialogDarkMode = function()
 	{
 		try
 		{
-			this.graphics.foregroundColor = this.graphics.newPen (this.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
-			this.graphics.backgroundColor = this.graphics.newBrush (this.graphics.PenType.SOLID_COLOR, [0.27, 0.27, 0.27], 1);
+			this.graphics.foregroundColor = this.graphics.newPen (this.graphics.PenType.SOLID_COLOR, (JSUI.backgroundColor[0] > 0.4 ? JSUI.dark : JSUI.light), 1);
+			//this.graphics.backgroundColor = this.graphics.newBrush (this.graphics.PenType.SOLID_COLOR, [0.27, 0.27, 0.27], 1); // arbitrary value
+			// this.graphics.backgroundColor = this.graphics.newBrush (this.graphics.PenType.SOLID_COLOR, (JSUI.backgroundColor[0] < 0.4 ? [0.27, 0.27, 0.27] : JSUI.backgroundColor), 1); // arbitrary value for edittext components
+			this.graphics.backgroundColor = this.graphics.newBrush (this.graphics.PenType.SOLID_COLOR, (JSUI.backgroundColor[0] < 0.4 ? [0.27, 0.27, 0.27] : [0.9765, 0.9765, 0.9765]), 1); // arbitrary value for edittext components
+			// this.graphics.backgroundColor = this.graphics.newBrush (this.graphics.PenType.SOLID_COLOR, JSUI.backgroundColor, 1); // arbitrary value
 		}
 		catch(e)
 		{
@@ -570,8 +719,8 @@ Object.prototype.darkMode = function()
 	{
 		try
 		{
-			this.graphics.foregroundColor = this.graphics.newPen (this.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
-			this.graphics.backgroundColor = this.graphics.newBrush (this.graphics.PenType.SOLID_COLOR, JSUI.dark, 1);
+			this.graphics.foregroundColor = this.graphics.newPen (this.graphics.PenType.SOLID_COLOR, (JSUI.backgroundColor[0] > 0.4 ? JSUI.dark : JSUI.light), 1);
+			this.graphics.backgroundColor = this.graphics.newBrush (this.graphics.PenType.SOLID_COLOR, JSUI.backgroundColor, 1);
 		}
 		catch(e)
 		{
@@ -668,10 +817,10 @@ Object.prototype.addPanel = function(obj)
 	if(obj.width) c.preferredSize.width = obj.width;
 	if(obj.height) c.preferredSize.height = obj.height;
 
-	if(JSUI.isCS6)
-	{
-		c.graphics.foregroundColor = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
-	}
+	// if(JSUI.isCS6)
+	// {
+	// 	c.graphics.foregroundColor = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
+	// }
 	
 	this.Components[obj.name] = c; 
 
@@ -847,7 +996,7 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 		c.onDraw = function (state)
 		{  
 			c.graphics.drawImage(c.image, 0, 0);
-			if($.level) $.writeln( "drawImage() " + c.image ); 
+			if($.level) $.writeln( propName+".graphics.drawImage() " + c.image ); 
 		}  
 
 		// mouse events
@@ -917,7 +1066,7 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 			this.value = !this.value;
 			JSUI.PREFS[ propName ] = this.value;
 			this.update();
-			if($.level) JSUI.debug("\n" + propName + ": " + JSUI.PREFS[propName] + "\nthis.image: " + c.image); 
+			if($.level) JSUI.debug("\n" + propName + ": " + JSUI.PREFS[propName] + "\n"+propName+".image: " + c.image); 
 		}
 
 		// debug display only
@@ -929,7 +1078,7 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 				var bool = JSUI.PREFS[ obj.array[i] ];
 				str += "  " + obj.array[i] + ": " + (bool ? bool.toString().toUpperCase() : bool);
 			}
-			if($.level) JSUI.debug((str ? "\n[" + str + " ]" : "") + "\n" + propName + ": " + JSUI.PREFS[propName] + "\ncomponent.image: " + c.image); 
+			if($.level) JSUI.debug((str ? "\n[" + str + " ]" : "") + "\n" + propName + ": " + JSUI.PREFS[propName] + "\n"+propName+".image: " + c.image); 
 		}
 		if(JSUI.autoSave) JSUI.saveIniFile();
 		if(obj.onClickFunction) obj.onClickFunction();
@@ -2234,6 +2383,7 @@ Object.prototype.addListBox = function(propName, obj)
 //~ 	c.selection = obj.selection != undefined ? (typeof obj.selection == "number" ? [obj.selection] : obj.selection) : JSUI.PREFS[propName];
 //~ alert(selection + " " + typeof selection + "  typeof null: " + typeof null )
 	c.selection = selection;
+	c.doubleClicked = null;
 
 	// update UI based on current JSUI.PREFS[propName] array
 	c.update = function()
@@ -2260,7 +2410,10 @@ Object.prototype.addListBox = function(propName, obj)
 					if(i == c.selection[sel])
 					{ 
 						array.push(i);
-						if($.level) debugArray.push(c.selection[sel]);
+						//if($.level) 
+						debugArray.push(c.selection[sel]);
+						c.doubleClicked = c.selection[sel];
+
 						break;
 					}
 				}
@@ -2283,17 +2436,26 @@ Object.prototype.addListBox = function(propName, obj)
 		if(JSUI.autoSave) JSUI.saveIniFile();
 	};
 
-	// in case of doubleclick (not useful for now)
+	// in case of doubleclick
 	c.onDoubleClick = function()
 	{
 		var selectionArr = c._buildArray();
 		JSUI.PREFS[propName] = selectionArr[0];
 
-		JSUI.debug("Doubleclicked item: " + ($.level ? selectionArr[1] : [])); 
+		JSUI.debug("Doubleclicked item: " + selectionArr[1]); //($.level ? selectionArr[1] : [])); 
+
+		c.doubleClicked = selectionArr[1];
+
+		if(obj.onClickFunction)
+		{
+		//	alert(selectionArr[0] + "\n" + selectionArr[1]);
+			obj.onClickFunction( );
+		}
 	};
 
 	return c;
 };
+
 
 // progress bar component
 Object.prototype.addProgressBar = function(obj)
