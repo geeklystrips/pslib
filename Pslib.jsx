@@ -65,7 +65,7 @@ catch(e)
 	
 	// errors are objects that can give you some information about what went wrong 
 	//$.writeln("typeof e.message: " + typeof e.message + "\n\ne:\n" + e + "\n\ne.message:\n" + e.message);
-	$.writeln(e);
+	//$.writeln(e);
 	
 	// create Pslib as a persistent object 
 	// it will remain accessible across most scopes, which is useful when working with panels & actions
