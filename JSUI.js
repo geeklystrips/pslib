@@ -29,6 +29,17 @@
 		- added JSUI.getCurrentTheme() & added JSUI.getBackgroundColor() + default brightness values for automated styling of Photoshop CS6 dialogs
 		- support for inherent light/dark theme graphics as part of JSUI.scriptUIstates()
 
+	0.965:
+		- JSUI.alert() now "column"-oriented by default (CS6)
+		- added JSUI.hexToRGB()
+		- added { style: "toolbutton" } property to addIconButton and addToggleIconButton to avoid outlines and shadows on iconbuttons in CS6 
+		- added JSUI.CS6styling boolean (true by default, false will deactivate all attempts at matching CS6 light/dark foreground/background matching)
+		- added JSUI.getRelativePath() routine to JSUI.scriptUIstates() to support "../../img/image.png"
+		- fixed scriptUIstates onMouseOver issue with CS6 for JSUI.addButton()
+
+	TODO
+	- Scrollable alert support for cases with overflowing content
+	- System color picker wrapper
 
 	Uses functions adapted from Xbytor's Stdlib.js
 	
@@ -46,7 +57,7 @@
 JSUI = function(){}; 
 
 /* version	*/
-JSUI.version = "0.96";
+JSUI.version = "0.965";
 
 // do some of the stuff differently if operating UI dialogs from ESTK
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -82,6 +93,7 @@ JSUI.TOOLSPREFSFOLDERNAME = "pslib";
 JSUI.INIFILE = JSUI.USERPREFSFOLDER + "/" + JSUI.TOOLSPREFSFOLDERNAME + "/" + JSUI.TOOLNAME + ".ini";
 JSUI.autoSave = false;
 JSUI.PrintINIstringInfo = false;
+JSUI.CS6styling = true;
 
 JSUI.populateINI = function()
 {
@@ -118,7 +130,8 @@ JSUI.getScriptFile = function()
 /* these functions return specs relative to JSUI.js (unless included files are flattened)	*/
 JSUI.getScriptFolder = function()
 {
-	return JSUI.getScriptFile().parent;
+	var script = JSUI.getScriptFile();
+	return script.parent;
 };
 
 JSUI.URI = JSUI.getScriptFolder();
@@ -312,6 +325,17 @@ JSUI.getBackgroundColor = function()
 
 JSUI.backgroundColor = JSUI.getBackgroundColor();
 
+// get array of normalized values from hexValue
+// "#f760e3" becomes [0.96862745098039,0.37647058823529,0.89019607843137,1];
+JSUI.hexToRGB = function (hex)
+{
+	var color = hex.trim().replace('#', '');
+	var r = parseInt(color.slice(0, 2), 16) / 255;
+	var g = parseInt(color.slice(2, 4), 16) / 255;
+	var b = parseInt(color.slice(4, 6), 16) / 255;
+	return [r, g, b, 1];
+};
+
 JSUI.createDialog = function( obj )
 {
 	var obj = obj != undefined ? obj : {};
@@ -328,7 +352,7 @@ JSUI.createDialog = function( obj )
 	obj.prompt = obj.prompt != undefined ? obj.prompt : false;
 
 	var dlg = new Window('dialog', obj.title + obj.systemInfo + "" + obj.extraInfo, undefined, {closeButton:true/*, borderless:true*/});
-	if(JSUI.isCS6) dlg.darkMode();
+	if(JSUI.isCS6 && JSUI.CS6styling) dlg.darkMode();
 
 	dlg.alignChildren = obj.alignChildren != undefined ? obj.alignChildren : "fill";
 	dlg.margins = obj.margins != undefined ? obj.margins : 20;
@@ -460,15 +484,22 @@ JSUI.alert = function( obj )
 		var obj = {};
 		obj.message = str;
 	}
+	else if(typeof obj == "object" && (obj instanceof File || obj instanceof Folder))
+	{
+		var f = obj;
+		var obj = {};
+		obj.message = f.toString();
+	}
 
 	obj.alert = true;
 	obj.title = obj.title ? obj.title : ""; //"JSUI Alert Dialog";
 
-	obj.width = obj.width != undefined ? obj.width : 300; 
+	obj.width = obj.width != undefined ? obj.width : 400; 
 	obj.height = obj.height != undefined ? obj.height : 150; 
 
 	obj.imgFile = obj.imgFile != undefined ? obj.imgFile : "/img/WarningSign_48px.png";
-
+	
+	obj.orientation = "column";
 	obj.alignChildren = "left";
 
 	var alertDlg = JSUI.createDialog( obj );
@@ -517,6 +548,31 @@ JSUI.prompt = function( obj )
 	return JSUI.createDialog( obj );
 };
 
+// this will return a file object for relative "../../img/image.png" if found
+JSUI.getRelativePath = function( str )
+{
+    if(str == undefined) return;
+
+    var scriptFolder = JSUI.getScriptFile().parent;
+    var relativePathStr = str;
+
+    var matchesDotDotSlash = relativePathStr.match( /\.\.\//g );
+    var hasMatch = matchesDotDotSlash != null;
+    var relativePathEndStr = hasMatch ? relativePathStr.replace( /\.\.\//g, "") : relativePathStr;
+
+    var targetFolder = scriptFolder;
+
+    for(var i = 0; i < matchesDotDotSlash.length; i++)
+    {
+        targetFolder = targetFolder.parent;
+    }
+
+    // will support both "../image.png" and "/../image.png"
+    var file = new File(targetFolder + (relativePathEndStr.toString()[0] == "/" ? "" : "/") + relativePathEndStr);
+
+    return file;
+};
+
 // standalone logic for ScriptUI image states to use with simple dual true/false logic
 // function should accept both strings and file objects
 // include optional value and use object as document holder?
@@ -541,6 +597,8 @@ JSUI.getScriptUIStates = function( obj )
 			// if still not valid, add absolute path for parent script
 			if(!testImage.exists)
 			{
+				// get relative path if necessary
+				//var matchesDotDotSlash = obj.imgFile.toString().match( /\.\.\//g );
 
 				// this will make it support cases where obj.imgFile parameter is passed as "/img/file.png" or "file.png"
 				testImage = new File(JSUI.URI + (obj.imgFile.toString()[0] == "/" ? "" : "/") + obj.imgFile);
@@ -589,15 +647,13 @@ JSUI.getScriptUIStates = function( obj )
 				var suffix = "_light";
 				var imgFileNormal = obj.imgFile.toString();
 
-				var imgFileLight = new File(imgFileNormal.replace(/\.(png)$/i, (suffix+".png")));
-		// $.writeln(imgFileLight.fsName + "\n" + imgFileLight.exists)		
+				var imgFileLight = new File(imgFileNormal.replace(/\.(png)$/i, (suffix+".png")));	
 				if(imgFileLight.exists)
 				{
 					obj.imgFile = imgFileLight;
 				}	
 
 				var imgFileUpLight = new File(imgFileNormal.replace(/\.(png)$/i, ("_up"+suffix+".png")));
-				// $.writeln(imgFileUpLight.fsName + "\n" + imgFileUpLight.exists)	
 				if(imgFileUpLight.exists)
 				{
 					imgFileUp = imgFileUpLight;
@@ -605,7 +661,6 @@ JSUI.getScriptUIStates = function( obj )
 				}
 
 				var imgFileOverLight = new File(imgFileNormal.replace(/\.(png)$/i, ("_over"+suffix+".png")));
-				// $.writeln(imgFileOverLight.fsName + "\n" + imgFileOverLight.exists)	
 				if(imgFileOverLight.exists)
 				{
 					imgFileOver = imgFileOverLight;
@@ -613,7 +668,6 @@ JSUI.getScriptUIStates = function( obj )
 				}
 
 				var imgFileDownLight = new File(imgFileNormal.replace(/\.(png)$/i, ("_down"+suffix+".png")));
-				// $.writeln(imgFileDownLight.fsName + "\n" + imgFileDownLight.exists)	
 				if(imgFileDownLight.exists)
 				{
 					imgFileDown = imgFileDownLight;
@@ -621,7 +675,6 @@ JSUI.getScriptUIStates = function( obj )
 				}
 
 				var disabledImgFileLight = new File(imgFileNormal.replace(/\.(png)$/i, ("_disabled"+suffix+".png")));
-				// $.writeln(disabledImgFileLight.fsName + "\n" + disabledImgFileLight.exists)	
 				if(disabledImgFileLight.exists)
 				{
 					disabledImgFile = disabledImgFileLight;
@@ -629,7 +682,6 @@ JSUI.getScriptUIStates = function( obj )
 				}
 
 				var disabledImgFileOverLight = new File(imgFileNormal.replace(".png", ("_disabled_over"+suffix+".png")));
-				// $.writeln(disabledImgFileOverLight.fsName + "\n" + disabledImgFileOverLight.exists)	
 				if(disabledImgFileOverLight.exists)
 				{
 					disabledImgFileOver = disabledImgFileOverLight;
@@ -695,7 +747,7 @@ Object.prototype.addCloseButton = function( labelStr )
 /* Graphics treatment for CS6 (Dialog Window)*/
 Object.prototype.dialogDarkMode = function()
 {
-	if(JSUI.isCS6)
+	if(JSUI.isCS6 && JSUI.CS6styling)
 	{
 		try
 		{
@@ -715,7 +767,7 @@ Object.prototype.dialogDarkMode = function()
 /* Graphics treatment for CS6 */
 Object.prototype.darkMode = function()
 {
-	if(JSUI.isCS6)
+	if(JSUI.isCS6 && JSUI.CS6styling)
 	{
 		try
 		{
@@ -816,11 +868,6 @@ Object.prototype.addPanel = function(obj)
 
 	if(obj.width) c.preferredSize.width = obj.width;
 	if(obj.height) c.preferredSize.height = obj.height;
-
-	// if(JSUI.isCS6)
-	// {
-	// 	c.graphics.foregroundColor = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
-	// }
 	
 	this.Components[obj.name] = c; 
 
@@ -841,7 +888,7 @@ Object.prototype.addTabbedPanel = function(obj)
 	if(obj.width) c.preferredSize.width = obj.width;
 	if(obj.height) c.preferredSize.height = obj.height;
 
-	if(JSUI.isCS6) c.darkMode();
+	if(JSUI.isCS6 && JSUI.CS6styling) c.darkMode();
 
 	return c;
 };
@@ -858,7 +905,7 @@ Object.prototype.addTab = function(obj)
 	if(obj.spacing) c.spacing = obj.spacing;
 	if(obj.margins) c.margins = obj.margins;
 
-	if(JSUI.isCS6) c.darkMode();
+	if(JSUI.isCS6 && JSUI.CS6styling) c.darkMode();
 
 	return c;
 };
@@ -871,7 +918,7 @@ Object.prototype.addDivider = function(obj)
 	c.alignChildren = 'fill';
 	c.orientation = obj.orientation ? obj.orientation : 'row';
 
-	if(JSUI.isCS6) c.darkMode();
+	if(JSUI.isCS6 && JSUI.CS6styling) c.darkMode();
 
 	return c;
 };
@@ -887,7 +934,7 @@ Object.prototype.addCheckBox = function(propName, obj)
 
 	c.value = obj.value != undefined ? obj.value : JSUI.PREFS[propName];
 
-	if(JSUI.isCS6) c.darkMode();
+	if(JSUI.isCS6 && JSUI.CS6styling) c.darkMode();
 
 	if(obj.helpTip != undefined) c.helpTip = obj.helpTip;
 
@@ -952,7 +999,7 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 	if(obj.imgFile != undefined && scriptUIstates.active != undefined)
 	{
 		if($.level) $.writeln("Adding [" + propName + "] toggle iconbutton" + (obj.array ? ' with radiobutton behavior' : '') + "\n");
-		var c = this.add('iconbutton', undefined, scriptUIstates.active);
+		var c = this.add('iconbutton', undefined, scriptUIstates.active, {style: "toolbutton"});
 
 		// let's add a .value container property, it makes everything so much easier
 		c.value = JSUI.PREFS[propName] != undefined ? (typeof JSUI.PREFS[propName] == "boolean" ? JSUI.PREFS[propName] : false) : false;
@@ -1271,7 +1318,7 @@ Object.prototype.addRadioButton = function(propName, obj)
 	if(obj.helpTip) c.helpTip = obj.helpTip;
 	if(obj.disabled) c.enabled = !obj.disabled;
 
-	if(JSUI.isCS6) c.darkMode();
+	if(JSUI.isCS6 && JSUI.CS6styling) c.darkMode();
 	
 	this.Components[propName] = c;
 
@@ -1344,7 +1391,7 @@ Object.prototype.addStaticText = function(obj)
 	
 	if(obj.justify) c.justify = obj.justify;
 
-	if(JSUI.isCS6) c.darkMode();
+	if(JSUI.isCS6 && JSUI.CS6styling) c.darkMode();
 
 	if(obj.style && JSUI.isCS6)
 	{
@@ -1394,8 +1441,10 @@ myWindow.onShow = function ()
 		*/
 	
 //	var obj = obj != undefined ? obj : {};
-	obj.text = obj.text != undefined ? obj.text : JSUI.PREFS[propName];
-	
+	obj.text = obj.text != undefined ? obj.text : (JSUI.PREFS[propName] != undefined ? JSUI.PREFS[propName] : "");
+	var readonly = obj.readonly != undefined ? obj.readonly : false;
+	// should also support properties: scrolling/wantReturn/noecho (case-sensitive)
+
 	// setup
 	var isFileObject = false;
 	var openFile = false;
@@ -1473,16 +1522,16 @@ myWindow.onShow = function ()
 // note that multiline:true is not enough to display a paragraph, the height must also be set accordingly.
 	if(useGroup)
 	{
-		var c = g.add('edittext', undefined, obj.text != undefined ? decodeURI (obj.text) : propName, {multiline:obj.multiline});
+		var c = g.add('edittext', undefined, obj.text != undefined ? decodeURI (obj.text) : propName, {multiline:obj.multiline, readonly: readonly});
 	}
 	else 
 	{
-		var c = this.add('edittext', undefined, obj.text != undefined ? decodeURI (obj.text) : propName, {multiline:obj.multiline});
+		var c = this.add('edittext', undefined, obj.text != undefined ? decodeURI (obj.text) : propName, {multiline:obj.multiline, readonly: readonly});
 	}
 	this.Components[propName] = c;
 	groupObjectsArray.push( [c, propName] );
 
-	if(JSUI.isCS6) c.dialogDarkMode();
+	if(JSUI.isCS6 && JSUI.CS6styling) c.dialogDarkMode();
 	
 
 	// if source/target file/folder needs an 'exists' indication, add read-only checkbox as an indicator next to the edittext component
@@ -1636,7 +1685,7 @@ myWindow.onShow = function ()
 	if(obj.helpTip) c.helpTip = obj.helpTip;
 	if(obj.disabled) c.enabled = !obj.disabled;
 
-	if(JSUI.isCS6) c.darkMode();
+	if(JSUI.isCS6 && JSUI.CS6styling) c.darkMode();
 	
 	// filter for File/Folder Object
 	if( obj.text != undefined ) 
@@ -1967,7 +2016,7 @@ Object.prototype.addButton = function(obj)
 
 
 		// fix for unwanted borders and outlines (CS6 & CC+) -- requires onDraw + eventListener
-		if(JSUI.isCS6 )
+		if(JSUI.isCS6)
 		{
 			var refImage = c.scriptUIstates.normalState;
 
@@ -1977,8 +2026,11 @@ Object.prototype.addButton = function(obj)
 
 			c.states = {};
 
-			c.states.normalState = c.value ? c.scriptUIstates.normalState : c.scriptUIstates.normalStateInactive;
-			c.states.overState = c.value ? c.scriptUIstates.overState : c.scriptUIstates.overStateInactive;
+			// wait. "button" does not have a value property.
+			// c.states.normalState = c.value ? c.scriptUIstates.normalState : c.scriptUIstates.normalStateInactive;
+			c.states.normalState = c.scriptUIstates.normalState;
+			// c.states.overState = c.value ? c.scriptUIstates.overState : c.scriptUIstates.overStateInactive;
+			c.states.overState = c.scriptUIstates.overState;
 			c.states.downState = c.scriptUIstates.downState;
 
 			c.onDraw = function (state)
@@ -2152,7 +2204,7 @@ Object.prototype.addIconButton = function(obj)
 
 	if(scriptUIstates.active != undefined)
 	{
-		var c = this.add('iconbutton', undefined, scriptUIstates.active);
+		var c = this.add('iconbutton', undefined, scriptUIstates.active, {style: "toolbutton"});
 	}
 	else
 	{		
@@ -2222,7 +2274,7 @@ Object.prototype.addSlider = function(propName, obj)
 	
 		var text = this.add('edittext', undefined, obj.value != undefined ? obj.value : JSUI.PREFS[propName]);
 		text.characters = obj.specs.characters != undefined ? obj.specs.characters : 6;
-		if(JSUI.isCS6) text.darkMode();
+		if(JSUI.isCS6 && JSUI.CS6styling) text.darkMode();
 		
 		this.Components[propName+"Text"] = text;
 		
@@ -2644,7 +2696,7 @@ JSUI.componentsFromObject = function (obj, container, array, preferRadiobuttons)
 							
 							c = container.addRadioButton(value[i]);
 
-							if(JSUI.isCS6)
+							if(JSUI.isCS6 && JSUI.CS6styling)
 							{
 								c.darkMode();
 							}
