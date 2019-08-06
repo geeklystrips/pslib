@@ -37,6 +37,11 @@
 		- added JSUI.getRelativePath() routine to JSUI.scriptUIstates() to support "../../img/image.png"
 		- fixed scriptUIstates onMouseOver issue with CS6 for JSUI.addButton()
 
+	0.968:
+		- added check for string arrays to JSUI.matchObjectArrayIndex() (would previously return the first object array index)
+		- JSUI.addButton() now updates its own visuals on creation
+		- fixed JSUI.is_x64 logic (displayed x32 on macOS)
+
 	TODO
 	- Scrollable alert support for cases with overflowing content
 	- System color picker wrapper
@@ -63,12 +68,12 @@ JSUI.version = "0.965";
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
 JSUI.isPhotoshop = app.name == "Adobe Photoshop";
 JSUI.isCS6 = JSUI.isPhotoshop ? app.version.match(/^13\./) != null : false;
-JSUI.is_x64 = BridgeTalk.appVersion.match(/\d\d$/) == '64';
 
 /*	 system properties	*/
 JSUI.isWindows = $.os.match(/windows/i) == "Windows";
 JSUI.isWin7 = $.os.match(/windows/i) == "Windows" ? $.os.match(" 6.1 Service Pack ") != null : false;
 JSUI.isWin10 = $.os.match(/windows/i) == "Windows" ? $.os.match(" 6.2 Service Pack ") != null : false;
+JSUI.is_x64 = JSUI.isWindows ? BridgeTalk.appVersion.match(/\d\d$/) == '64' : true;
 
 JSUI.TOOLNAME = "DEFAULTNAME";	
 
@@ -1269,31 +1274,39 @@ Object.prototype.addImageGrid = function(propName, obj)
 // this will match a string OR object with an index from an object array (ideally without using an eval() hack)
 JSUI.matchObjectArrayIndex = function(value, objArr, defaultValue) 
 {
+	var newValue = null;
+	var isArray = false;
+
 	for(var i = 0; i < objArr.length; i++)
 	{
 		if(typeof value == 'string')
 		{
-			if(value.toString() == objArr[i].toString())
+			if(value == objArr[i].toString())
+			//if(value.match(objArr[i].toString()) != null)
 			{
-				value = objArr[i];
+				newValue = objArr[i];
+			//	alert("String match!\nvalue: " + value + "\nobj: " + objArr[i].toString() + "\n\nnewValue: " + newValue.toString() );
 				break;
 			}
 		}
 		else if(typeof value == 'object')
 		{
-			if(value == objArr[i]);
+			// typeof may be object, but let's find out if it's actually an array
+			isArray = value.toString().length != value.length; 
+			//alert( "value:  " + value + "\nvalue.length:  " + value.length + "\nvalue.toString().length:  " + value.toString().length + "\n\nisArray: "+ isArray);
+
+			if( (isArray ? value[0].toString() : value.toString()) == objArr[i].toString() )
 			{
-				value = objArr[i];
+				newValue = objArr[i];
+			//	alert("Object match!\nvalue: " + value.toString() + "\nobj: " + objArr[i].toString() + "\n\nnewValue: " + newValue.toString() );
 				break;
 			}
 		}
 	}
 
-	if(typeof value != 'object')
-	{
-		value = defaultValue;
-	}
-	return value;
+	if(newValue == null) newValue = defaultValue;
+
+	return newValue;
 };
 
 /* radiobutton component	*/
@@ -2014,7 +2027,6 @@ Object.prototype.addButton = function(obj)
 		// add scriptuistates object container
 		c.scriptUIstates = scriptUIstates; 
 
-
 		// fix for unwanted borders and outlines (CS6 & CC+) -- requires onDraw + eventListener
 		if(JSUI.isCS6)
 		{
@@ -2058,7 +2070,7 @@ Object.prototype.addButton = function(obj)
 					default:   
 						event.target.image = c.states.normalState;  
 				}  
-				event.target.notify("onDraw");  
+				//event.target.notify("onDraw");  
 			}  
 		
 			// event listeners
@@ -2071,7 +2083,12 @@ Object.prototype.addButton = function(obj)
 		// update callback: update UI state basd on provided scriptUIstates object
 		c.update = function( scriptUIStatesObj )
 		{
-			if(scriptUIStatesObj == undefined) return;
+			if(scriptUIStatesObj == undefined)
+			{
+				var scriptUIStatesObj = this.scriptUIstates;
+			}
+
+			if($.level) $.writeln("Updating jsui button: " + scriptUIStatesObj.active);
 
 			if(JSUI.isCS6)
 			{
@@ -2086,7 +2103,6 @@ Object.prototype.addButton = function(obj)
 			{
 				this.image = this.enabled ? scriptUIStatesObj.active : scriptUIStatesObj.inactive;	
 			}
-
 		};
 	}
 
@@ -2154,6 +2170,8 @@ Object.prototype.addButton = function(obj)
 			}
 		}
 	}
+
+	c.update();
 
 	return c;
 };
@@ -2748,7 +2766,7 @@ JSUI.componentsFromObject = function (obj, container, array, preferRadiobuttons)
 
 /*
 	INI FILE MANAGEMENT
-	functions borrowed from Xbytor's Stdlib.js
+	functions adapted from Xbytor's Stdlib.js
 */
 
 throwFileError = function(f, msg)
@@ -2880,7 +2898,7 @@ JSUI.toIniString = function(obj)
 	return str;
 };
 
-// fromIniString adjustments (type: true/false, auto-type-conversion)
+// fromIniString adjustments (type = true: attempts to infer type based on value)
 JSUI.fromIniString=function(str,obj, type)
 {
 	var type = type != undefined ? type : false;
