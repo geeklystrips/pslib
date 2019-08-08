@@ -1320,6 +1320,8 @@ Object.prototype.addImageGrid = function(propName, obj)
 				}
 
 				JSUI.debug(propName + ": " + JSUI.PREFS[propName]); 
+				
+				if(obj.onClickFunction) obj.onClickFunction();
 
 				if(JSUI.autoSave) JSUI.saveIniFile();
 			};
