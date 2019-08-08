@@ -42,6 +42,12 @@
 		- JSUI.addButton() now updates its own visuals on creation
 		- fixed JSUI.is_x64 logic (displayed x32 on macOS)
 
+	0.969:
+		- fixed JSUI.addButton.update() issue
+		- JSUI.addButton() now also uses {style: "toolbutton"} creation properties when fed image resource
+		- improvements to JSUI.alert/confirm/prompt dialogs: fallbacks to default system behavior added 
+
+
 	TODO
 	- Scrollable alert support for cases with overflowing content
 	- System color picker wrapper
@@ -483,6 +489,8 @@ JSUI.createDialog = function( obj )
 // custom alert dialog
 JSUI.alert = function( obj )
 {
+	if(obj == undefined) return null;
+
 	if(typeof obj == "string") 
 	{
 		var str = obj;
@@ -509,10 +517,16 @@ JSUI.alert = function( obj )
 
 	var alertDlg = JSUI.createDialog( obj );
 
+	// either show custom alert window...
 	if(alertDlg != undefined)
 	{
 		alertDlg.center();
 		alertDlg.show();
+	}
+	// ... or fallback to dafault system stuff 
+	else
+	{
+		alert( obj.message );
 	}
 };
 
@@ -520,25 +534,68 @@ JSUI.alert = function( obj )
 JSUI.confirm = function( obj )
 {
 	if(obj == undefined) return null;
-	if(obj.message == undefined) return null;
+
+	if(typeof obj == "string") 
+	{
+		var str = obj;
+		var obj = {};
+		obj.message = str;
+	}
+	else if(typeof obj == "object" && (obj instanceof File || obj instanceof Folder))
+	{
+		var f = obj;
+		var obj = {};
+		obj.message = f.toString();
+	}
+
+
+	// if(obj.message == undefined) return null;
+
 	obj.confirm = true;
 	obj.title = obj.title ? obj.title : "JSUI Confirm Dialog";
 
-	obj.width = obj.width != undefined ? obj.width : 300; 
+	obj.width = obj.width != undefined ? obj.width : 400; 
 	obj.height = obj.height != undefined ? obj.height : 200; 
 
 	obj.imgFile = obj.imgFile != undefined ? obj.imgFile : "/img/Photoshop" + (JSUI.isCS6 ? "CS6" : "CC" ) + "_96px.png";
 
+	obj.orientation = "column";
 	obj.alignChildren = "left";
 
-	return JSUI.createDialog( obj );
+	var confirmDlg = JSUI.createDialog( obj );
+
+	// either show custom confirm window...
+	if(confirmDlg != undefined)
+	{
+		return confirmDlg;
+	}
+	// ... or fallback to dafault system stuff 
+	else
+	{	
+		return confirm( obj.message, undefined, obj.title );
+	}
 };
 
 // prompt user
 JSUI.prompt = function( obj )
 {
 	if(obj == undefined) return null;
-	if(obj.message == undefined) return null;
+
+	if(typeof obj == "string") 
+	{
+		var str = obj;
+		var obj = {};
+		obj.message = str;
+	}
+	else if(typeof obj == "object" && (obj instanceof File || obj instanceof Folder))
+	{
+		var f = obj;
+		var obj = {};
+		obj.message = f.toString();
+	}
+
+	// if(obj.message == undefined) return null;
+
 	obj.prompt = true;
 	obj.title = obj.title ? obj.title : "JSUI Prompt Dialog";
 	obj.text = obj.text ? obj.text : "JSUI Prompt Text";
@@ -548,9 +605,23 @@ JSUI.prompt = function( obj )
 
 	obj.imgFile = obj.imgFile != undefined ? obj.imgFile : "/img/Photoshop" + (JSUI.isCS6 ? "CS6" : "CC" ) + "_96px.png";
 
+	obj.orientation = "column";
 	obj.alignChildren = "right";
 
-	return JSUI.createDialog( obj );
+	var promptDlg = JSUI.createDialog( obj );
+
+	// either show custom confirm window...
+	if(promptDlg != undefined || promptDlg == null)
+	{
+		return promptDlg;
+	}
+	// ... or fallback to dafault system stuff 
+	else if( promptDlg != null)
+	{
+		return prompt( obj.message, obj.text, obj.title );
+	}
+
+	//return JSUI.createDialog( obj );
 };
 
 // this will return a file object for relative "../../img/image.png" if found
@@ -2004,7 +2075,7 @@ Object.prototype.addButton = function(obj)
 	{
 		if($.level) $.writeln("Adding iconbutton" + "\n");
 		// var c = this.add('iconbutton', undefined, ScriptUI.newImage(obj.imgFile, imgFileUp.exists ? imgFileUp : obj.imgFile, imgFileDown.exists ? imgFileDown : obj.imgFile, imgFileOver.exists ? imgFileOver : obj.imgFile));
-		var c = this.add('iconbutton', undefined, scriptUIstates.active);
+		var c = this.add('iconbutton', undefined, scriptUIstates.active, { style: "toolbutton" });
 	}
 	else
 	{
@@ -2104,6 +2175,8 @@ Object.prototype.addButton = function(obj)
 				this.image = this.enabled ? scriptUIStatesObj.active : scriptUIStatesObj.inactive;	
 			}
 		};
+
+		c.update();
 	}
 
 	// if button has "browse" attribute...
@@ -2170,8 +2243,6 @@ Object.prototype.addButton = function(obj)
 			}
 		}
 	}
-
-	c.update();
 
 	return c;
 };
