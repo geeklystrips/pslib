@@ -47,10 +47,16 @@
 		- JSUI.addButton() now also uses {style: "toolbutton"} creation properties when fed image resource
 		- improvements to JSUI.alert/confirm/prompt dialogs: fallbacks to default system behavior added 
 
+	0.97:
+		- added JSUI.status object for displaying progress if needed
+			- JSUI.status.increment( 0.01 ) means +1%
+			- adapted JSUI.debug() to display JSUI.status.message and JSUI.status.progress.
+
 
 	TODO
 	- Scrollable alert support for cases with overflowing content
 	- System color picker wrapper
+	- Better support for JSUI.addImageGrid() types (only supports arrays of strings for now)
 
 	Uses functions adapted from Xbytor's Stdlib.js
 	
@@ -68,7 +74,7 @@
 JSUI = function(){}; 
 
 /* version	*/
-JSUI.version = "0.965";
+JSUI.version = "0.97";
 
 // do some of the stuff differently if operating UI dialogs from ESTK
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -109,10 +115,13 @@ JSUI.CS6styling = true;
 JSUI.populateINI = function()
 {
 	JSUI.INIFILE = new File(JSUI.USERPREFSFOLDER + "/" + JSUI.TOOLSPREFSFOLDERNAME + "/" + JSUI.TOOLNAME + ".ini");
+	// JSUI.status.message = "JSUI init OK";
+	JSUI.status.message = "";
 }
 
 /* INI prefs framework	*/
 JSUI.PREFS = {};
+JSUI.status = { progress: 0, message: "" };
 
 /*  Layout and graphics  */
 JSUI.SPACING = (JSUI.isWindows ? 3 : 1);
@@ -236,6 +245,12 @@ JSUI.debug = function(str, textfield)
 {
 	if($.level)
 	{
+		//if status message is not empty, display
+		if (JSUI.status.message != "")
+		{
+			str += ("\n" + JSUI.status.message + "\n" + ( Math.round(JSUI.status.progress * 100) ) + "%");
+		}
+
 		// if textfield is provided
 		if(textfield != undefined)
 		{
@@ -247,6 +262,37 @@ JSUI.debug = function(str, textfield)
 			debugTxt.text = str;
 		}
 		$.writeln(str);
+	}
+
+	//
+	//JSUI.status = { progress: 0, message: "" };
+
+	//
+	// JSUI.status.progress 
+	// JSUI.status.message 
+	//
+
+};
+
+// progress bar support
+JSUI.status.increment = function( num )
+{
+	//if( !isNaN(JSUI.status.progress) ) 
+	if( !isNaN( num ) ) 
+	{
+		// make sure value is normalized
+		if( num >= 0.0 && num <= 1.0 )
+		{
+			JSUI.status.progress += num;
+		}
+		else
+		{
+			if($.level) $.writeln( "JSUI.status.increment() failed: provided value is either lower or higher than accepted parameters [" + num + "]" );
+		}
+	}
+	else
+	{
+		if($.level) $.writeln( "JSUI.status.increment() failed: provided value is not a number [" + num + "]" );
 	}
 };
 
@@ -1255,6 +1301,18 @@ Object.prototype.addImageGrid = function(propName, obj)
 		// if obj.states.length == strArray.length, assume a grid which uses a different set of ScriptUI images for each component
 		
 	*/
+	obj.rows = parseInt(obj.rows);
+	obj.columns = parseInt(obj.columns);
+
+	// if no array is provided, create one to work with
+	if(obj.strArray == undefined)
+	{
+		obj.strArray = [];
+		for(var i = 0; i < ( JSUI.PREFS.imageGridColumns * JSUI.PREFS.imageGridRows); i++ )
+		{
+			obj.strArray.push( i + "" );
+		}
+	}
 
 	// check if indexes matches before proceeding
 	if (obj.rows * obj.columns != obj.strArray.length)
@@ -1292,7 +1350,8 @@ Object.prototype.addImageGrid = function(propName, obj)
 		for(var item = 0; item < obj.columns; item++)
 		{
 			var itemName = propName + "Row" + row + "Id" + item;
-			var iconbutton = r.addToggleIconButton(itemName, { imgFile: obj.imgFile, array: jsuiStrArr, helpTip: obj.strArray[(row+item)] });
+			// helptip is screwed up!
+			var iconbutton = r.addToggleIconButton(itemName, { imgFile: obj.imgFile, array: jsuiStrArr, helpTip: obj.strArray[ ( row > 0 ? row * obj.columns : 0 ) + item ] });
 			jsuiComponentArr.push(iconbutton);
 
 			// override onClick event
@@ -1320,7 +1379,7 @@ Object.prototype.addImageGrid = function(propName, obj)
 				}
 
 				JSUI.debug(propName + ": " + JSUI.PREFS[propName]); 
-				
+
 				if(obj.onClickFunction) obj.onClickFunction();
 
 				if(JSUI.autoSave) JSUI.saveIniFile();
@@ -1340,8 +1399,15 @@ Object.prototype.addImageGrid = function(propName, obj)
 		}
 	}
 
-	// tentative
+	// add string array as component property so it can be accessed from outside
+	grid.strArray = obj.strArray;
+
+	// add grid (technically a column layout object) to list of accessible components
 	this.Components[propName] = grid;
+
+	//  here's how to match the property value with an index from the internal array if necessary (INI file)
+	// 	JSUI.PREFS.propName = JSUI.matchObjectArrayIndex(JSUI.PREFS.propName, this.Components["imageGrid"].strArray, this.Components["imageGrid"].strArray[0]);
+
 };
 
 // this will match a string OR object with an index from an object array (ideally without using an eval() hack)
