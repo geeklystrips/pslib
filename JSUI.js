@@ -77,7 +77,7 @@
 JSUI = function(){}; 
 
 /* version	*/
-JSUI.version = "0.97";
+JSUI.version = "0.971";
 
 // do some of the stuff differently if operating UI dialogs from ESTK
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
