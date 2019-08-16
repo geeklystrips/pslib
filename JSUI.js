@@ -52,6 +52,9 @@
 			- JSUI.status.increment( 0.01 ) means +1%
 			- adapted JSUI.debug() to display JSUI.status.message and JSUI.status.progress.
 
+	0.971: 
+		- added JSUI.status.percent (String)
+
 
 	TODO
 	- Scrollable alert support for cases with overflowing content
@@ -121,7 +124,7 @@ JSUI.populateINI = function()
 
 /* INI prefs framework	*/
 JSUI.PREFS = {};
-JSUI.status = { progress: 0, message: "" };
+JSUI.status = { progress: 0, percent: "0%", message: "" };
 
 /*  Layout and graphics  */
 JSUI.SPACING = (JSUI.isWindows ? 3 : 1);
@@ -284,6 +287,7 @@ JSUI.status.increment = function( num )
 		if( num >= 0.0 && num <= 1.0 )
 		{
 			JSUI.status.progress += num;
+			JSUI.status.percent = ( Math.round(JSUI.status.progress * 100) ) + "%";
 		}
 		else
 		{
@@ -2665,7 +2669,6 @@ Object.prototype.addListBox = function(propName, obj)
 	return c;
 };
 
-
 // progress bar component
 Object.prototype.addProgressBar = function(obj)
 {		
@@ -2682,7 +2685,8 @@ Object.prototype.addProgressBar = function(obj)
 	{
 		c.msg = this.add('statictext', undefined, obj.msg);
 		if(obj.msgWidth) c.msg.preferredSize.width = obj.msgWidth;
-		c.msg.enabled = false;
+		//c.msg.enabled = false;
+		c.msg.graphics.font = ScriptUI.newFont(JSUI.isWindows ? "Tahoma" : "Arial", "REGULAR", 10);
 	}
 	
 	if(obj.width) c.preferredSize.width = obj.width;
@@ -2705,7 +2709,7 @@ Object.prototype.addProgressBar = function(obj)
 	{
 		c.isDone = true;
 		return c.isDone;
-	}
+	};
 
 //	if(progressBar.isDone) { break;}
 
@@ -2716,7 +2720,7 @@ Object.prototype.addProgressBar = function(obj)
 		else c.value = c.maxvalue;
 		if($.level) $.writeln("...updating progress bar: " + c.value );	
 			//win.layout.layout(true);
-	}
+	};
 
 	// update as percentage?
 	c.updateProgress = function(percent)
@@ -2724,7 +2728,17 @@ Object.prototype.addProgressBar = function(obj)
 		c.value = (percent/100) * c.maxvalue; 
 		if($.level) $.writeln("Progress: " + Math.round(percent) + " %");	
 			//win.layout.layout(true);
-	}
+	};
+
+	// use this when working with JSUI.status object
+	c.update = function ( str )
+	{
+		c.value = JSUI.status.progress;
+		if(obj.msg)
+		{
+			c.msg.text = str != undefined ? str : JSUI.status.message;
+		}
+	};
 	
 	if(obj.msg)
 	{
