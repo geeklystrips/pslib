@@ -55,6 +55,9 @@
 	0.971: 
 		- added JSUI.status.percent (String)
 
+	0.972: 
+		- added support for palette mode to JSUI.createDialog()
+		- added debug and refresh booleans to addProgressBar.update()
 
 	TODO
 	- Scrollable alert support for cases with overflowing content
@@ -77,7 +80,7 @@
 JSUI = function(){}; 
 
 /* version	*/
-JSUI.version = "0.971";
+JSUI.version = "0.972";
 
 // do some of the stuff differently if operating UI dialogs from ESTK
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -278,15 +281,23 @@ JSUI.debug = function(str, textfield)
 };
 
 // progress bar support
-JSUI.status.increment = function( num )
+JSUI.status.increment = function( num, absolute )
 {
-	//if( !isNaN(JSUI.status.progress) ) 
+	var absolute = absolute != undefined ? absolute : false;
 	if( !isNaN( num ) ) 
 	{
 		// make sure value is normalized
 		if( num >= 0.0 && num <= 1.0 )
 		{
-			JSUI.status.progress += num;
+			// if absolute, don't actually increment
+			if(absolute)
+			{
+				JSUI.status.progress = num;
+			}
+			else
+			{
+				JSUI.status.progress += num;
+			}
 			JSUI.status.percent = ( Math.round(JSUI.status.progress * 100) ) + "%";
 		}
 		else
@@ -412,7 +423,9 @@ JSUI.createDialog = function( obj )
 	obj.confirm = obj.confirm != undefined ? obj.confirm : false;
 	obj.prompt = obj.prompt != undefined ? obj.prompt : false;
 
-	var dlg = new Window('dialog', obj.title + obj.systemInfo + "" + obj.extraInfo, undefined, {closeButton:true/*, borderless:true*/});
+	obj.palette = obj.palette != undefined ? obj.palette : false;
+
+	var dlg = new Window( obj.palette ? 'palette' : 'dialog', obj.title + obj.systemInfo + "" + obj.extraInfo, undefined, {closeButton:true/*, borderless:true*/});
 	if(JSUI.isCS6 && JSUI.CS6styling) dlg.darkMode();
 
 	dlg.alignChildren = obj.alignChildren != undefined ? obj.alignChildren : "fill";
@@ -2728,16 +2741,23 @@ Object.prototype.addProgressBar = function(obj)
 		c.value = (percent/100) * c.maxvalue; 
 		if($.level) $.writeln("Progress: " + Math.round(percent) + " %");	
 			//win.layout.layout(true);
+		app.refresh();
 	};
 
 	// use this when working with JSUI.status object
-	c.update = function ( str )
+	c.update = function ( str, debug, refresh )
 	{
 		c.value = JSUI.status.progress;
+
 		if(obj.msg)
 		{
-			c.msg.text = str != undefined ? str : JSUI.status.message;
+			c.msg.text = str != undefined && str != "" ? str : JSUI.status.message;
 		}
+		// this will update debugTxt.text
+		if(debug /*&& $.level*/ ) JSUI.debug( "" );
+
+		if(refresh) app.refresh();
+
 	};
 	
 	if(obj.msg)
