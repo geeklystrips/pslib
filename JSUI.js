@@ -59,10 +59,18 @@
 		- added support for palette mode to JSUI.createDialog()
 		- added debug and refresh booleans to addProgressBar.update()
 
+	0.975
+		- added basic Illustrator support
+		- added onChangingFunction support to JSUI.addBrowseForFolder() && JSUI.addEditText()
+		- improved obj.imgFile support, JSUI.addButton() now looks for "imgNameStr.png"
+		- added built-in support for "img/" JSUI.scriptUIstates()
+		- added functions for returning next/previous multiples of x
+
 	TODO
 	- Scrollable alert support for cases with overflowing content
 	- System color picker wrapper
 	- Better support for JSUI.addImageGrid() types (only supports arrays of strings for now)
+	- save settings to / read from XML
 
 	Uses functions adapted from Xbytor's Stdlib.js
 	
@@ -80,11 +88,12 @@
 JSUI = function(){}; 
 
 /* version	*/
-JSUI.version = "0.972";
+JSUI.version = "0.975";
 
 // do some of the stuff differently if operating UI dialogs from ESTK
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
 JSUI.isPhotoshop = app.name == "Adobe Photoshop";
+JSUI.isIllustrator = app.name == "Adobe Illustrator";
 JSUI.isCS6 = JSUI.isPhotoshop ? app.version.match(/^13\./) != null : false;
 
 /*	 system properties	*/
@@ -345,7 +354,6 @@ JSUI.zeropad = function(str)
 // *bows*
 JSUI.getCurrentTheme = function()
 {
-	// ah. Photoshop CS6 seems to crash on this
 	try
 	{
 		var ref = new ActionReference();
@@ -586,7 +594,7 @@ JSUI.alert = function( obj )
 		alertDlg.center();
 		alertDlg.show();
 	}
-	// ... or fallback to dafault system stuff 
+	// ... or fallback to default system stuff 
 	else
 	{
 		alert( obj.message );
@@ -611,9 +619,6 @@ JSUI.confirm = function( obj )
 		obj.message = f.toString();
 	}
 
-
-	// if(obj.message == undefined) return null;
-
 	obj.confirm = true;
 	obj.title = obj.title ? obj.title : "JSUI Confirm Dialog";
 
@@ -632,7 +637,7 @@ JSUI.confirm = function( obj )
 	{
 		return confirmDlg;
 	}
-	// ... or fallback to dafault system stuff 
+	// ... or fallback to default system stuff 
 	else
 	{	
 		return confirm( obj.message, undefined, obj.title );
@@ -657,8 +662,6 @@ JSUI.prompt = function( obj )
 		obj.message = f.toString();
 	}
 
-	// if(obj.message == undefined) return null;
-
 	obj.prompt = true;
 	obj.title = obj.title ? obj.title : "JSUI Prompt Dialog";
 	obj.text = obj.text ? obj.text : "JSUI Prompt Text";
@@ -678,7 +681,7 @@ JSUI.prompt = function( obj )
 	{
 		return promptDlg;
 	}
-	// ... or fallback to dafault system stuff 
+	// ... or fallback to default system stuff 
 	else if( promptDlg != null)
 	{
 		return prompt( obj.message, obj.text, obj.title );
@@ -728,6 +731,15 @@ JSUI.getScriptUIStates = function( obj )
 
 	if(obj.imgFile != undefined)
 	{
+		if(typeof obj.imgFile == "string")
+		{
+			var imgNameStr = obj.imgFile;
+			var containsExtension = imgNameStr.match(/\.[^\\.]+$/) != null;
+			var matchesPNGExt = containsExtension ? imgNameStr.match(/\.[^\\.]+$/)[0].toLowerCase() == ".png" : false;
+
+			obj.imgFile = matchesPNGExt ? imgNameStr : imgNameStr + ".png";
+		}
+
 		// if not a valid file URI, attempt to make it a file object
 		if( !(obj.imgFile instanceof File) )
 		{
@@ -739,8 +751,14 @@ JSUI.getScriptUIStates = function( obj )
 				// get relative path if necessary
 				//var matchesDotDotSlash = obj.imgFile.toString().match( /\.\.\//g );
 
-				// this will make it support cases where obj.imgFile parameter is passed as "/img/file.png" or "file.png"
+				// this will make it support cases where obj.imgFile parameter is passed as either "/img/file.png", "img/file.png" or just "file.png"
 				testImage = new File(JSUI.URI + (obj.imgFile.toString()[0] == "/" ? "" : "/") + obj.imgFile);
+
+				// if not found, test for JSUI.URI + "/img" + name just to make sure
+				if(!testImage.exists) 
+				{
+					testImage = new File(JSUI.URI + "/img" + (obj.imgFile.toString()[0] == "/" ? "" : "/") + obj.imgFile);
+				}
 
 				if(testImage.exists)
 				{
@@ -831,12 +849,12 @@ JSUI.getScriptUIStates = function( obj )
 			if($.level)
 			{
 				$.writeln( (obj.imgFile.exists ? "Found: " : "*** NOT FOUND: ") + obj.imgFile.name);
-				$.writeln( (imgFileUpExists ? "Found: " : "***" + imgFileUp.name + " NOT FOUND--instead using ") + (imgFileUpExists ? imgFileUp.name : obj.imgFile.name) );
-				$.writeln( (imgFileOverExists ? "Found: " : "***" + imgFileOver.name + " NOT FOUND--instead using ") + (imgFileOverExists ? imgFileOver.name : obj.imgFile.name) );
-				$.writeln( (imgFileDownExists ? "Found: " : "***" + imgFileDown.name + " NOT FOUND--instead using ") + (imgFileDownExists ? imgFileDown.name : obj.imgFile.name) );				
+				// $.writeln( (imgFileUpExists ? "Found: " : "***" + imgFileUp.name + " NOT FOUND--instead using ") + (imgFileUpExists ? imgFileUp.name : obj.imgFile.name) );
+				// $.writeln( (imgFileOverExists ? "Found: " : "***" + imgFileOver.name + " NOT FOUND--instead using ") + (imgFileOverExists ? imgFileOver.name : obj.imgFile.name) );
+				// $.writeln( (imgFileDownExists ? "Found: " : "***" + imgFileDown.name + " NOT FOUND--instead using ") + (imgFileDownExists ? imgFileDown.name : obj.imgFile.name) );				
 
-				$.writeln( (disabledImgFileExists ? "Found: " : "***" + disabledImgFile.name + " NOT FOUND--instead using ") + (disabledImgFileExists ? disabledImgFile.name : obj.imgFile.name) );
-				$.writeln( (disabledImgFileOverExists ? "Found: " : "***" + disabledImgFileOver.name + " NOT FOUND--instead using ") + (disabledImgFileOverExists ? disabledImgFileOver.name : obj.imgFile.name) );
+				// $.writeln( (disabledImgFileExists ? "Found: " : "***" + disabledImgFile.name + " NOT FOUND--instead using ") + (disabledImgFileExists ? disabledImgFile.name : obj.imgFile.name) );
+				// $.writeln( (disabledImgFileOverExists ? "Found: " : "***" + disabledImgFileOver.name + " NOT FOUND--instead using ") + (disabledImgFileOverExists ? disabledImgFileOver.name : obj.imgFile.name) );
 			}
 
 			// extra sanitization layer
@@ -891,10 +909,7 @@ Object.prototype.dialogDarkMode = function()
 		try
 		{
 			this.graphics.foregroundColor = this.graphics.newPen (this.graphics.PenType.SOLID_COLOR, (JSUI.backgroundColor[0] > 0.4 ? JSUI.dark : JSUI.light), 1);
-			//this.graphics.backgroundColor = this.graphics.newBrush (this.graphics.PenType.SOLID_COLOR, [0.27, 0.27, 0.27], 1); // arbitrary value
-			// this.graphics.backgroundColor = this.graphics.newBrush (this.graphics.PenType.SOLID_COLOR, (JSUI.backgroundColor[0] < 0.4 ? [0.27, 0.27, 0.27] : JSUI.backgroundColor), 1); // arbitrary value for edittext components
 			this.graphics.backgroundColor = this.graphics.newBrush (this.graphics.PenType.SOLID_COLOR, (JSUI.backgroundColor[0] < 0.4 ? [0.27, 0.27, 0.27] : [0.9765, 0.9765, 0.9765]), 1); // arbitrary value for edittext components
-			// this.graphics.backgroundColor = this.graphics.newBrush (this.graphics.PenType.SOLID_COLOR, JSUI.backgroundColor, 1); // arbitrary value
 		}
 		catch(e)
 		{
@@ -1438,10 +1453,8 @@ JSUI.matchObjectArrayIndex = function(value, objArr, defaultValue)
 		if(typeof value == 'string')
 		{
 			if(value == objArr[i].toString())
-			//if(value.match(objArr[i].toString()) != null)
 			{
 				newValue = objArr[i];
-			//	alert("String match!\nvalue: " + value + "\nobj: " + objArr[i].toString() + "\n\nnewValue: " + newValue.toString() );
 				break;
 			}
 		}
@@ -1449,12 +1462,10 @@ JSUI.matchObjectArrayIndex = function(value, objArr, defaultValue)
 		{
 			// typeof may be object, but let's find out if it's actually an array
 			isArray = value.toString().length != value.length; 
-			//alert( "value:  " + value + "\nvalue.length:  " + value.length + "\nvalue.toString().length:  " + value.toString().length + "\n\nisArray: "+ isArray);
 
 			if( (isArray ? value[0].toString() : value.toString()) == objArr[i].toString() )
 			{
 				newValue = objArr[i];
-			//	alert("Object match!\nvalue: " + value.toString() + "\nobj: " + objArr[i].toString() + "\n\nnewValue: " + newValue.toString() );
 				break;
 			}
 		}
@@ -1584,7 +1595,7 @@ Object.prototype.addStaticText = function(obj)
 
 // editable text component
 // can be automatically tied to a corresponding UI button to browse folder
-//	var edittext = container.addEditText( { name:"edittext", text:new Folder(prefs.sourcePath).fsName, prefs:prefs, specs:{browseFile:true/*, browseFolder:true*/}, width:600, label:"Folder:"} );
+//	var edittext = container.addEditText( "edittext", { text:new Folder(prefs.sourcePath).fsName, specs:{browseFile:true/*, browseFolder:true*/}, width:600, label:"Folder:"} );
 // (note: if prefsObj has corresponding property, it is updated on the fly by OnChange event)
 // 	
 Object.prototype.addEditText = function(propName, obj)
@@ -1914,6 +1925,8 @@ myWindow.onShow = function ()
 			// update preferences object
 			JSUI.PREFS[propName] = encodeURI(JSUI.fsname2uri(c.text));
 			JSUI.debug(propName + ": " + c.text + ( "\n[ exists: " + objectExists.toString().toUpperCase() + " ]" )); 
+
+			if(obj.onChangingFunction) obj.onChangingFunction();
 		}
 		else
 		{
@@ -1968,7 +1981,8 @@ myWindow.onShow = function ()
 Object.prototype.addBrowseForFolder = function(propName, obj)
 {
 	var obj = obj != undefined ? obj : {};
-	var c = this.addEditText(propName, { text: obj.text != undefined ? obj.text : new Folder(JSUI.PREFS[propName]).fsName, label:obj.label, characters: obj.characters ? obj.characters : 45, specs:{ browseFolder:true, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{ alignment: obj.alignment != undefined ? obj.alignment : 'right'}} } );
+	// var c = this.addEditText(propName, { text: obj.text != undefined ? obj.text : new Folder(JSUI.PREFS[propName]).fsName, label:obj.label, characters: obj.characters ? obj.characters : 45, specs:{ browseFolder:true, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{ alignment: obj.alignment != undefined ? obj.alignment : 'right'}} } );
+	var c = this.addEditText(propName, { text: obj.text != undefined ? obj.text : new Folder(JSUI.PREFS[propName]).fsName, label:obj.label, characters: obj.characters ? obj.characters : 45, onChangingFunction: obj.onChangingFunction ? obj.onChangingFunction : undefined, specs:{ browseFolder:true, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{ alignment: obj.alignment != undefined ? obj.alignment : 'right'}} } );
 
 	return c;
 };
@@ -2140,7 +2154,8 @@ Object.prototype.addDropDownList = function(propName, obj)
 	EXAMPLES
 
 	var button = container.addButton( {label:"Filter Folder Content"} );
-	var iconbutton = container.addButton( {hasImage:true, imgFile:new File("/path/to/file.png")} );
+	var iconbutton = container.addButton( { imgFile:new File("/path/to/file.png") } ); // { imgFile: "file.png" } should also work
+	var iconbuttonAlso = container.addButton( "iconbuttonAlso", { } ); // tells JSUI.getScriptUIStates() to look for "iconbuttonAlso.png"
 	
 	// couple in context with an edittext component in order to automate file/folder location functions
 	// prefsObj needs a "specs" property (Object), with a direct reference to an existing edittext var name (textfield:varname), 
@@ -2150,9 +2165,28 @@ Object.prototype.addDropDownList = function(propName, obj)
 	var sourcepath = container.addEditText( { name:"sourcepath", text:new Folder(prefsObj.sourcepath).fsName, prefs:prefsObj } );		
 	var browsebtn = container.addButton( {label:"Browse...", prefs:prefsObj, specs:{ prefs:prefsObj, browseFolder:true, textfield:sourcepath, prop:"sourcepath"} } );
 */
-Object.prototype.addButton = function(obj)
+//Object.prototype.addButton = function(obj)
+Object.prototype.addButton = function(imgNameStr, obj)
 {
-	if(obj == undefined) return;
+	//if(obj == undefined) return;
+	if(imgNameStr == undefined) return;
+
+	// if property name not provided, just assume it's the legacy object and proceed
+	if(typeof imgNameStr != "string")
+	{
+		if( typeof imgNameStr == "object")
+		{
+			obj = imgNameStr;
+		}
+	}
+	// if both arguments are provided and obj.imgFile is not specified, have JSUI.getScriptUIStates() look for "imgNameStr.png"
+	else if( typeof imgNameStr == "string" &&  typeof obj == "object")
+	{
+		if( obj.imgFile == undefined )
+		{
+			obj.imgFile = imgNameStr;
+		}
+	}
 
 	var scriptUIstates = JSUI.getScriptUIStates( obj );
 	
@@ -3287,7 +3321,7 @@ JSUI.isPower2 = function(n)
 	}
 };
 
-// get next value
+// get next power of 2
 JSUI.getNextPow2 = function(n)
 {
 	var p = 2;
@@ -3300,7 +3334,7 @@ JSUI.getNextPow2 = function(n)
 	return p;
 };
 
-// get previous  value
+// get previous power of 2
 JSUI.getPreviousPow2 = function(n)
 {
 	var p = 2;
@@ -3312,7 +3346,25 @@ JSUI.getPreviousPow2 = function(n)
 	return p / 2;
 };
 
-// get previous  value
+// multiple of x check
+JSUI.isMult = function(n, mult)
+{
+	return (Math.ceil(n/mult) * mult == n);
+};
+
+// get next multiple of x
+JSUI.getNextMult = function(n, mult)
+{
+	return (n % mult == 0) ? n : ( n + (mult - (n % mult)) );
+};
+
+// get previous multiple of x
+JSUI.getPreviousMult = function(n, mult)
+{
+	return (n % mult == 0) ? n : ((n < mult == 0) ? JSUI.getNextMult(n, mult) : n - (n % mult));
+};
+
+// clamp value
 JSUI.clampValue = function(n, min, max)
 {
 	if(n < min)
@@ -3326,7 +3378,6 @@ JSUI.clampValue = function(n, min, max)
 
 	return n;
 };
-
 
 // required
 if(JSUI.isPhotoshop)
@@ -3408,6 +3459,6 @@ JSUI.setLayerObjectColor = function( color )
 if($.level)
 {
 	// let's confirm that the file was properly included
-	$.writeln("\nJSUI.js successfully loaded by " + app.name);
+	$.writeln("\nJSUI.js successfully loaded by " + app.name + " " + app.version);
 }
 //EOF
