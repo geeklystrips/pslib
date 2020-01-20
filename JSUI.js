@@ -66,6 +66,10 @@
 		- added built-in support for "img/" JSUI.scriptUIstates()
 		- added functions for returning next/previous multiples of x
 
+	0.976
+		- added JSUI.addBrowseForFolderWidget() with built-in fixed location widget/presets
+		- tweaks to mults of x / powers of 2 function
+
 	TODO
 	- Scrollable alert support for cases with overflowing content
 	- System color picker wrapper
@@ -354,15 +358,22 @@ JSUI.zeropad = function(str)
 // *bows*
 JSUI.getCurrentTheme = function()
 {
-	try
+	if(JSUI.isPhotoshop)
 	{
-		var ref = new ActionReference();
-		ref.putProperty(charIDToTypeID("Prpr"), stringIDToTypeID("interfacePrefs"));
-		ref.putEnumerated(charIDToTypeID("capp"), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
-		var desc = executeActionGet(ref).getObjectValue(stringIDToTypeID("interfacePrefs"));
-		return typeIDToStringID(desc.getEnumerationValue(stringIDToTypeID("kuiBrightnessLevel")));
+		try
+		{
+			var ref = new ActionReference();
+			ref.putProperty(charIDToTypeID("Prpr"), stringIDToTypeID("interfacePrefs"));
+			ref.putEnumerated(charIDToTypeID("capp"), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
+			var desc = executeActionGet(ref).getObjectValue(stringIDToTypeID("interfacePrefs"));
+			return typeIDToStringID(desc.getEnumerationValue(stringIDToTypeID("kuiBrightnessLevel")));
+		}
+		catch(e)
+		{
+			return "kPanelBrightnessMediumGray";
+		}
 	}
-	catch(e)
+	else
 	{
 		return "kPanelBrightnessMediumGray";
 	}
@@ -1672,7 +1683,8 @@ myWindow.onShow = function ()
 		{
 			if(obj.specs.groupSpecs.alignment) g.alignment = obj.specs.groupSpecs.alignment;
 			if(obj.specs.groupSpecs.orientation) g.orientation = obj.specs.groupSpecs.orientation;
-			if(obj.specs.groupSpecs.spacing) g.spacing = obj.specs.groupSpecs.spacing;
+			//if(obj.specs.groupSpecs.spacing) 
+			g.spacing = obj.specs.groupSpecs.spacing != undefined ? obj.specs.groupSpecs.spacing : 0;
 		}
 		
 		this.Components[propName+'Group'] = g;
@@ -1698,6 +1710,29 @@ myWindow.onShow = function ()
 		groupObjectsArray.push( [l, propName+'Label'] );
 	}
 	
+	// if source/target file/folder needs an 'exists' indication, add read-only checkbox as an indicator next to the edittext component
+	if(addIndicator)
+	{
+
+		if(useGroup)
+		{
+			var d = g.add('checkbox', undefined, '');
+			// var d = g.add('radiobutton', undefined, '');
+		}
+		else 
+		{
+			var d = this.add('checkbox', undefined, '');
+			// var d = this.add('radiobutton', undefined, '');
+		}
+
+		d.enabled = false;
+		d.value = ( isFolderObject ? new Folder(obj.text) : new File(obj.text) ).exists;
+		d.helpTip = "URI integrity validator:\nIndicates whether or not specified location exists";
+		
+		this.Components[propName+'Indicator'] = d;
+		groupObjectsArray.push( [d, propName+'Indicator'] );
+	}
+
 // some textfield properties (such as multiline) need to be specified at the initial moment of creation
 // note that multiline:true is not enough to display a paragraph, the height must also be set accordingly.
 	if(useGroup)
@@ -1713,28 +1748,6 @@ myWindow.onShow = function ()
 
 	if(JSUI.isCS6 && JSUI.CS6styling) c.dialogDarkMode();
 	
-
-	// if source/target file/folder needs an 'exists' indication, add read-only checkbox as an indicator next to the edittext component
-	if(addIndicator)
-	{
-
-		if(useGroup)
-		{
-			var d = g.add('checkbox', undefined, '');
-		}
-		else 
-		{
-			var d = this.add('checkbox', undefined, '');
-		}
-
-		d.enabled = false;
-		d.value = ( isFolderObject ? new Folder(obj.text) : new File(obj.text) ).exists;
-		d.helpTip = "URI integrity validator:\nIndicates whether or not specified location exists";
-		
-		this.Components[propName+'Indicator'] = d;
-		groupObjectsArray.push( [d, propName+'Indicator'] );
-	}
-
 	// a pre-configured "Browse..." button can be added
 	if(addBrowseButton)
 	{
@@ -2043,6 +2056,170 @@ Object.prototype.addBrowseForFileReplace = function(propName, obj)
 	return c;
 };
 
+/*
+	Add Browse for Folder Widget
+	- manages toggling between fixed folder vs dynamic folder locations
+	- includes support for optional independant onChanging and onToggle functions
+
+var browseWidget = container.addBrowseForFolderWidget( "browseWidget", { characters: 50, useFixedOption: true, imgFiles: ["img/createLocation.png", "img/openLocation.png", "img/browseWidgetUseFixed.png" ],  showFixedToggle: true, onChangingFunction: browseWidgetChangingFn, onToggleFixedFunction: toggleFixedExportPathFn } );
+
+*/
+// JSUI prototyping
+Object.prototype.addBrowseForFolderWidget = function(propName, obj)
+{
+	var obj = obj != undefined ? obj : {};
+	var c = this.addEditText(propName, { /* text: obj.text != undefined ? obj.text : new Folder( JSUI.PREFS[propName]).fsName, */ label:obj.label, characters: obj.characters ? obj.characters : 45, onChangingFunction: obj.onChangingFunction ? obj.onChangingFunction : undefined, specs:{ browseFolder:true, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{ alignment: obj.alignment != undefined ? obj.alignment : 'right'}} } );
+
+    var showFixedOption = obj.showFixedToggle != undefined ? obj.showFixedToggle : false;
+    var useFixedOption = obj.useFixedOption != undefined ? obj.useFixedOption : false;
+
+	//imgFiles: ["img/createLocation.png", "img/openLocation.png", "img/browseWidgetUseFixed.png" ]
+
+    var	createLocationImg = JSUI.getScriptUIStates( { imgFile: obj.imgFiles[0] } );
+    var	openLocationImg = JSUI.getScriptUIStates( { imgFile: obj.imgFiles[1] } );
+
+    var openOrCreateLocation = this.Components[propName+'Group'].addButton("openOrCreateLocation", {  alignment: "right", imgFile: obj.imgFiles[1], helpTip:"Open this location in file system"} );
+
+    openOrCreateLocation.onClick = function()
+    {
+        var testPath = new Folder(c.text.trim());
+        if(testPath != null && testPath.exists)
+        {
+            testPath.execute();
+        }
+        else if(!testPath.exists)
+        {
+            testPath.create();
+            c.onChanging();
+        }
+    };
+
+    this.Components[propName+'OpenOrCreateLocation'] = openOrCreateLocation;
+    //groupObjectsArray.push( [openOrCreateLocation, propName+'OpenOrCreateLocation'] );
+    
+    if(useFixedOption)
+    {
+        var toggle = this.Components[propName+'Group'].addToggleIconButton( propName+'UseFixed', { imgFile: ( obj.imgFiles[2] ), alignment: "left", helpTip: "Toggle fixed location mode" });
+
+        toggle.onClick = function()
+        {
+            this.value = !this.value;
+			JSUI.PREFS[ propName+'UseFixed' ] = this.value;
+            
+            if($.level) JSUI.debug("\n" + propName+'UseFixed' + ": " + JSUI.PREFS[propName+'UseFixed'] + "\n"+propName+'UseFixed'+".image: " + this.image); 
+            
+            // when switching from UseFixed to Dynamic, the same value is assigned to both properties. What's up?
+            if(JSUI.PREFS[propName+'UseFixed'])
+            {
+                c.text = new Folder( JSUI.PREFS[propName+"Fixed"] ).fsName;
+
+                var testFolder = new Folder(c.text.trim());
+                JSUI.debug(propName+"Fixed: " + JSUI.PREFS[propName+"Fixed"] + " [exists: " + testFolder.exists + "]");
+            }
+            else
+            {
+                c.text = new Folder( JSUI.PREFS[propName] ).fsName;
+
+                var testFolder = new Folder(c.text.trim());
+                JSUI.debug(propName+": " + JSUI.PREFS[propName] + " [exists: " + testFolder.exists + "]");
+            }
+            toggle.update();
+            c.onChanging();
+            if(JSUI.autoSave) JSUI.saveIniFile();
+        }; 
+
+        // update callback: update the UI based on the true/false value
+        toggle.update = function ( scriptUIStatesObj )
+        {
+            if(scriptUIStatesObj == undefined)
+            {
+                var scriptUIStatesObj = this.scriptUIstates;
+            }
+
+            if($.level) $.writeln(propName+'UseFixed' + ": Using " + scriptUIStatesObj.active);
+
+            if(JSUI.isCS6)
+            {
+                // update ScriptUI images used by mouseevents
+                this.states.normalState = this.value ? scriptUIStatesObj.normalState : scriptUIStatesObj.normalStateInactive;
+                this.states.overState = this.value ? scriptUIStatesObj.overState : scriptUIStatesObj.overStateInactive;
+                this.states.downState = scriptUIStatesObj.downState;
+
+                if(this.image != this.states.normalState) this.image = this.states.normalState;
+                JSUI.debug("\n\t" + propName+'UseFixed' + ".update() " + JSUI.PREFS[propName+'UseFixed'] + "\n\timage:\t" + this.image + "\n\t\tnormalState:\t" + this.states.normalState + "\n\t\toverState:\t" + this.states.overState + "\n\t\tdownState:\t" + this.states.downState);
+            }
+            else
+            {
+                this.image = this.value ? scriptUIStatesObj.active : scriptUIStatesObj.inactive;
+                JSUI.debug("\n\t" + propName+'UseFixed' + ".update() " + JSUI.PREFS[propName+'UseFixed'] + "\n\timage:\t" + this.image + "\n\t\tactive:\t" + scriptUIStatesObj.active + "\n\t\tinactive:\t" + scriptUIStatesObj.inactive);
+            }
+        };
+
+        this.Components[propName+'UseFixed'] = toggle;
+        //groupObjectsArray.push( [toggle, propName+'UseFixed'] );
+
+        if(obj.onToggleFixedFunction != undefined) obj.onToggleFixedFunction();
+    }
+
+	// using the file/folder location dialog automatically triggers onChange()
+	// workaround is to refer to onChanging function
+	c.onChange = function()
+	{
+		c.onChanging();
+
+		if(JSUI.autoSave) JSUI.saveIniFile();
+	}
+
+	// function that is used when updating textfield
+	c.onChanging = function()
+	{	
+        var textStr = c.text.trim();
+        var testFolderURI = new Folder(textStr);
+
+        if(testFolderURI != null && textStr != "")
+        {
+            if(JSUI.PREFS[propName+'UseFixed'])
+            {
+                JSUI.PREFS[propName+'Fixed'] = JSUI.fsname2uri( encodeURI(textStr) );
+                JSUI.debug(propName+"Fixed: " + JSUI.PREFS[propName+"Fixed"] + " [exists: " + testFolderURI.exists + "]");
+            }
+            else
+            {
+                JSUI.PREFS[propName] = JSUI.fsname2uri( encodeURI(textStr) ); //new Folder(c.text).fsName;
+                JSUI.debug(propName + ": " + JSUI.PREFS[propName] + ( "\n[ exists: " + testFolderURI.exists + " ]" )); 
+            }
+        }
+
+        // swap button graphics
+        if(!testFolderURI.exists)
+        {
+            openOrCreateLocation.update(createLocationImg);
+            openOrCreateLocation.helpTip = "Create directory:\n\n" + testFolderURI.fsName;
+        }
+        else
+        {
+            openOrCreateLocation.update(openLocationImg);
+            openOrCreateLocation.helpTip = "Open this location in file system:\n\n" + testFolderURI.fsName;
+        }
+
+        // check for indicator
+        //if(addIndicator) 
+        this.Components[propName+'Indicator'].value = testFolderURI.exists;
+
+        if(obj.onChangingFunction != undefined) obj.onChangingFunction();
+    }
+    
+    if(showFixedOption)
+    {
+        if(JSUI.PREFS[ propName+'UseFixed' ] != undefined) toggle.update();
+    }
+
+    // running onChanging() event before returning will initiate "createFolder" button status if needed
+	c.onChanging();
+	
+
+	return c;
+};
 
 // dropdownlist component
 // 	var ddlist = container.addDropDownList( { prefs:prefsObj, name:"ddlist", list:["Zero", "One", "Two"] , label:"Choose a number:"} );
@@ -3303,21 +3480,39 @@ String.prototype.trim = function()
 // power of 2 check
 JSUI.isPower2 = function(n)
 {
-	while(true)
+	// while(true)
+	// {
+	// 	var sr = Math.sqrt(n);
+	// 	if(Math.floor(sr) != sr)
+	// 	{	
+	// 		return false;
+	// 	}
+	// 	else if(sr == 2)
+	// 	{
+	// 		return true;
+	// 	}
+	// 	else
+	// 	{
+	// 		n = sr;
+	// 	}
+	// }
+	var n = n = Math.floor(n);
+	if( n > 0 )
 	{
-		var sr = Math.sqrt(n);
-		if(Math.floor(sr) != sr)
-		{	
-			return false;
+		while( n % 2 == 0)
+		{
+			n /= 2;
 		}
-		else if(sr == 2)
+		if( n == 1 )
 		{
 			return true;
 		}
-		else
-		{
-			n = sr;
-		}
+		
+		return false;
+	}
+	else
+	{
+		return null;
 	}
 };
 
@@ -3338,7 +3533,7 @@ JSUI.getNextPow2 = function(n)
 JSUI.getPreviousPow2 = function(n)
 {
 	var p = 2;
-	n = Math.floor(n);
+	var n = Math.floor(n);
 	while(n >= p)
 	{
 		p = p * 2;
@@ -3361,7 +3556,11 @@ JSUI.getNextMult = function(n, mult)
 // get previous multiple of x
 JSUI.getPreviousMult = function(n, mult)
 {
-	return (n % mult == 0) ? n : ((n < mult == 0) ? JSUI.getNextMult(n, mult) : n - (n % mult));
+	//  return (n % mult == 0) ? n : ((n < mult == 0) ? JSUI.getNextMult(n, mult) : n - (n % mult));
+
+	if(n % mult == 0) return n;
+	else if(n < mult) return JSUI.getNextMult(n, mult);
+	else return n - (n % mult);
 };
 
 // clamp value
