@@ -70,7 +70,22 @@
 		- added JSUI.addBrowseForFolderWidget() with built-in fixed location widget/presets
 		- tweaks to mults of x / powers of 2 function
 
+	0.977 
+		- added drawRectangle()
+		- tweaked addBrowseForFolderWidget()
+		- tweaked addEditText() 
+			- made onChangingFunction also accessible for non-file object fields
+			- made empty strings possible
+			- added option to bypass prefs update (fix for issue with addBrowseForFolderWidget())
+		- tweaked addDropDownList with obj.onChangedFunction
+		- added JSUI.launchURL() + basic inline .url property for addButton()
+
+
 	TODO
+	- make imgFile property accept existing ScriptUIStates object ( if typeof imgFile == "object" and instanceof file, create from filename, otherwise test for .active/.inactive properties) 
+	- also make it accept arrays to bypass default naming scheme (if typeof imgFile == "object" && imgFile.length != undefined)
+	- fallback to placeholder handle for cases where image doesn't exist (use "placeholder.png" if available?)
+
 	- Scrollable alert support for cases with overflowing content
 	- System color picker wrapper
 	- Better support for JSUI.addImageGrid() types (only supports arrays of strings for now)
@@ -92,7 +107,7 @@
 JSUI = function(){}; 
 
 /* version	*/
-JSUI.version = "0.975";
+JSUI.version = "0.977";
 
 // do some of the stuff differently if operating UI dialogs from ESTK
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -211,7 +226,8 @@ JSUI.fsname2uri = function(fsname)
 	{
 		uri = fsname.toString().replace(":", "");
 		uri = uri.replace(/\\/g, "/");
-		uri = "/" + uri;
+
+		if( uri[0] != "/" ) uri = "/" + uri;
 	}
 	return uri;
 };
@@ -223,6 +239,25 @@ JSUI.uri2fsname = function(uri)
 	else	var fsname = new File(uri);
 	return fsname.fsName;
 };
+
+// launch browser
+JSUI.launchURL = function(url)
+{
+	try
+	{
+		var u = new File(Folder.temp + '/JSUITmpURL.url');
+		u.open('w');
+		u.writeln('[InternetShortcut]\nURL=' + url + '\n');
+		u.close();
+		u.execute();
+		u.remove(); 
+	}
+	catch(e)
+	{  
+		alert(e);
+	} 
+};
+
 
 /* print object properties to javascript console (with ExtendScript Toolkit only)	*/
 JSUI.reflectProperties = function(obj, msg)
@@ -1314,12 +1349,12 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 			this.states.downState = scriptUIStatesObj.downState;
 
 			if(this.image != this.states.normalState) this.image = this.states.normalState;
-			JSUI.debug("\n\t" + propName + ".update() " + JSUI.PREFS[propName] + "\n\timage:\t" + this.image + "\n\t\tnormalState:\t" + this.states.normalState + "\n\t\toverState:\t" + this.states.overState + "\n\t\tdownState:\t" + this.states.downState);
+			// JSUI.debug("\n\t" + propName + ".update() " + JSUI.PREFS[propName] + "\n\timage:\t" + this.image + "\n\t\tnormalState:\t" + this.states.normalState + "\n\t\toverState:\t" + this.states.overState + "\n\t\tdownState:\t" + this.states.downState);
 		}
 		else
 		{
 			this.image = this.value ? scriptUIStatesObj.active : scriptUIStatesObj.inactive;
-			JSUI.debug("\n\t" + propName + ".update() " + JSUI.PREFS[propName] + "\n\timage:\t" + this.image + "\n\t\tactive:\t" + scriptUIStatesObj.active + "\n\t\tinactive:\t" + scriptUIStatesObj.inactive);
+			// JSUI.debug("\n\t" + propName + ".update() " + JSUI.PREFS[propName] + "\n\timage:\t" + this.image + "\n\t\tactive:\t" + scriptUIStatesObj.active + "\n\t\tinactive:\t" + scriptUIStatesObj.inactive);
 		}
 	};
 
@@ -1328,6 +1363,57 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 	return c;
 };
 
+// visually update array of controls (typically a group of toggle icon buttons)
+JSUI.updateControlsArrayUI = function(targetDialog, controlArr, valuesArr, updatePrefs) 
+{
+	var updatePrefs = updatePrefs != undefined ? updatePrefs : false;
+
+	if($.level) $.writeln( "updateControlsArrayUI() looping through list of " + controlArr.length + " controls..." );
+	for(var i = 0; i < valuesArr.length; i++)
+	{
+		var propName = controlArr[i];
+		var component = targetDialog.Components[ propName ];
+		var pref = JSUI.PREFS[propName];
+
+		if(updatePrefs)
+		{
+			if(pref != undefined)
+			{
+				if(typeof pref == "boolean")
+				{
+					JSUI.PREFS[propName] = !pref;
+				}
+			}
+		}
+
+		if($.level) $.writeln( "\t" + propName + "..." );
+		if(component != undefined)
+		{
+		//	component.value = JSUI.PREFS[controlArr[i]];
+			component.update();
+			if($.level) $.writeln( "\t\t value: "+component.value+"  updated successfully! " );
+		}
+	}
+};
+
+// visually update array of controls (typically a group of toggle icon buttons)
+JSUI.turnOffToggleIconButtonsArray = function(targetDialog, controlArr) 
+{
+	if($.level) $.writeln( "turnOffToggleIconButtonsArray() looping through " + controlArr.length + " controls..." );
+	for(var i = 0; i < controlArr.length; i++)
+	{
+		var component = targetDialog.Components[ controlArr[i] ];
+		var propName = controlArr[i];
+		if($.level) $.writeln( "\t" + controlArr[i] + "..." );
+		if(component != undefined)
+		{
+			JSUI.PREFS[propName] = false;
+			component.value = false;
+			component.update();
+			if($.level) $.writeln( "\t\t value: "+component.value+"  updated successfully! " );
+		}
+	}
+};
 
 // custom set of components for replacing legacy radiobutton grid
 // var propertyName = container.addImageGrid( "propertyName", { strArray: [ "0", "1", "2", "3", "4", "5", "6", "7", "8" ]], imgFile: "image.png", rows: 3, columns: 3 } );
@@ -1571,7 +1657,9 @@ Object.prototype.addStaticText = function(obj)
 
 // some textfield properties (such as multiline) need to be specified at the initial moment of creation
 // note that multiline:true is not enough to display a paragraph, the height must also be set accordingly.
-	var c = this.add('statictext', undefined, obj.text ? obj.text : 'Default Text', {multiline: obj.multiline});
+	// var c = this.add('statictext', undefined, obj.text ? obj.text : 'Default Text', {multiline: obj.multiline});
+	var c = this.add('statictext', undefined, obj.text ? obj.text : '', {multiline: obj.multiline});
+	// var c = this.add('statictext', undefined, obj.text != undefined ? obj.text : 'Default Text', {multiline: obj.multiline});
 	
 	//if(obj.multiline) c.multiline = obj.multiline;
 	if(obj.truncate) c.truncate = obj.truncate;
@@ -1648,6 +1736,7 @@ myWindow.onShow = function ()
 	var hasImage = false;
 	var imgFile;
 	var imgFileExists = false;
+	var prefsBypass = false;
 	var useGroup = false;
 
 	// let's deal with automatically created objects (group, indicator, label)
@@ -1666,6 +1755,7 @@ myWindow.onShow = function ()
 		addBrowseButton = obj.specs.addBrowseButton != undefined ? obj.specs.addBrowseButton : false;
 		useGroup = obj.specs.useGroup != undefined ? obj.specs.useGroup : false;
 		hasImage = obj.specs.hasImage != undefined ? obj.specs.hasImage : false;
+		prefsBypass = obj.specs.prefsBypass != undefined ? obj.specs.prefsBypass : false;
 
 		if(hasImage && obj.specs.imgFile != undefined)
 		{
@@ -1790,9 +1880,7 @@ myWindow.onShow = function ()
 				}	
 				
 			}
-			this.Components[propName+'BrowseButton'] = b;
-			groupObjectsArray.push( [b, propName+'BrowseButton'] );
-		
+	
 			b.helpTip = obj.specs.browseFolder ? "Browse for location URI" :  "Browse for file URI";
 
 			
@@ -1811,15 +1899,21 @@ myWindow.onShow = function ()
 					
 					if(chosenFolder != null)
 					{
-						JSUI.debug("chosenFolder: " + chosenFolder.fsName + "\n[ exists: " + chosenFolder.exists + " ]");
-						JSUI.PREFS[propName] = encodeURI (chosenFolder) ;
-						c.text = chosenFolder.fsName;
-						if(JSUI.autoSave) JSUI.saveIniFile();
+						// update preferences object
+						if(!prefsBypass)
+						{
+							JSUI.debug("chosenFolder: " + chosenFolder.fsName + "\n[ exists: " + chosenFolder.exists + " ]");
+							JSUI.PREFS[propName] = encodeURI (chosenFolder) ;
+							c.text = chosenFolder.fsName;
+							if(JSUI.autoSave) JSUI.saveIniFile();
+						}
+						else
+						{
+							JSUI.debug("Bypassing prefs object property update");
+						}
 					}
 					else
 					{
-						/*	user either closed the window or pointed to an invalid location/special folder
-							*/
 						JSUI.debug("User either closed the browse dialog without chosing a target folder, or pointed to an invalid resource"); 
 					}
 				}
@@ -1837,10 +1931,7 @@ myWindow.onShow = function ()
 					}
 
 					// file types
-					// var chosenFile = File.saveDialog("Prompt", "*.*"); 
 					var chosenFile = openFile ? new File(c.text).openDlg("Select " + ( filter == "*" ? "" : ("." + filter.toUpperCase() ) + " file to open"), ("*." + filter)) : new File(c.text).saveDlg("Select " + ( filter == "*" ? "" : ("." + filter.toUpperCase() ) + " file to save over"), ("*." + filter));
-			//		File.openDialog();
-			//		var chosenFile = new File(sourceImgPath.text).openDlg("Select .png file", "*.png");
 
 					if(chosenFile)
 					{
@@ -1858,6 +1949,9 @@ myWindow.onShow = function ()
 				// use onChanging callback so "exists" indicator is properly refreshed after selecting file or folder.
 				c.onChanging();
 			}
+
+			this.Components[propName+'BrowseButton'] = b;
+			groupObjectsArray.push( [b, propName+'BrowseButton'] );
 			
 		}
 		catch(e)
@@ -1925,7 +2019,7 @@ myWindow.onShow = function ()
 		var folder = new Folder(c.text);
 		var file = new File(c.text);
 		
-		JSUI.PREFS[propName] = encodeURI (c.text);
+	//	JSUI.PREFS[propName] = encodeURI (c.text);
 
 		// deal with file/folder existence indicator
 		if(isFolderObject || isFileObject)
@@ -1936,10 +2030,16 @@ myWindow.onShow = function ()
 			if(addIndicator) this.Components[propName+'Indicator'].value = objectExists;
 			
 			// update preferences object
-			JSUI.PREFS[propName] = encodeURI(JSUI.fsname2uri(c.text));
-			JSUI.debug(propName + ": " + c.text + ( "\n[ exists: " + objectExists.toString().toUpperCase() + " ]" )); 
+			if(!prefsBypass)
+			{
+				JSUI.PREFS[propName] = encodeURI(JSUI.fsname2uri(c.text));
+				JSUI.debug(propName + ": " + c.text + ( "\n[ exists: " + objectExists.toString().toUpperCase() + " ]" )); 
+			}
+			else
+			{
+				JSUI.debug("Bypassing prefs object property update");
+			}
 
-			if(obj.onChangingFunction) obj.onChangingFunction();
 		}
 		else
 		{
@@ -1949,15 +2049,18 @@ myWindow.onShow = function ()
 			// if the edittext field contains "0x" we are expected to leave as String instead of automatically converting to Number
 			if(c.text.trim().match(/0x/i) != null)
 			{
-				JSUI.PREFS[propName] = encodeURI (c.text);
+				JSUI.PREFS[propName] = encodeURI (c.text.trim());
 				JSUI.debug(propName + ": " + JSUI.PREFS[propName] + " [" + typeof JSUI.PREFS[propName] + "]"); 
 			}
 			else
 			{
-				JSUI.PREFS[propName] = isNaN(c.text) ? encodeURI (c.text) : Number(c.text);
+				// JSUI.PREFS[propName] = isNaN(c.text) ? encodeURI (c.text) : Number(c.text);
+				// empty string allowed!
+				JSUI.PREFS[propName] = (c.text == "") ? "" : (isNaN(c.text) ? encodeURI (c.text) : Number(c.text));
 				JSUI.debug(propName + ": " + JSUI.PREFS[propName] + " [" + typeof JSUI.PREFS[propName] + "]"); 
 			}
 		}
+		if(obj.onChangingFunction) obj.onChangingFunction();
 	}
 
 	// experimental: provide a way to arbitrarily enable/disable the whole thing from outside
@@ -1965,7 +2068,7 @@ myWindow.onShow = function ()
 	{
 		for(var i = 0; i < groupObjectsArray.length; i++)
 		{
-			groupObjectsArray[i][0].enabled = bool
+			groupObjectsArray[i][0].enabled = bool;
 			if($.level) $.writeln( groupObjectsArray[i][1] + " enabled status: " + bool ); 
 		}
 	}
@@ -2068,13 +2171,20 @@ var browseWidget = container.addBrowseForFolderWidget( "browseWidget", { charact
 Object.prototype.addBrowseForFolderWidget = function(propName, obj)
 {
 	var obj = obj != undefined ? obj : {};
-	var c = this.addEditText(propName, { /* text: obj.text != undefined ? obj.text : new Folder( JSUI.PREFS[propName]).fsName, */ label:obj.label, characters: obj.characters ? obj.characters : 45, onChangingFunction: obj.onChangingFunction ? obj.onChangingFunction : undefined, specs:{ browseFolder:true, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{ alignment: obj.alignment != undefined ? obj.alignment : 'right'}} } );
+	var c = this.addEditText(propName, { label:obj.label, characters: obj.characters ? obj.characters : 45, onChangingFunction: obj.onChangingFunction ? obj.onChangingFunction : undefined, specs:{ prefsBypass: true, browseFolder:true, addIndicator:false, addBrowseButton:true, useGroup:true, groupSpecs:{ alignment: obj.alignment != undefined ? obj.alignment : 'right'}} } );
+
+	// var showDebugFields = true;
+	var addIndicator = false;
+	var groupObjectsArray = [];
+
+	var useFixedChanged = false;
+
+	var useFixedToggleCount = 0;
+	var browseWidgetURIupdateCount = 0;
+	var browseWidgetFixedURIupdateCount = 0;
 
     var showFixedOption = obj.showFixedToggle != undefined ? obj.showFixedToggle : false;
     var useFixedOption = obj.useFixedOption != undefined ? obj.useFixedOption : false;
-
-	//imgFiles: ["img/createLocation.png", "img/openLocation.png", "img/browseWidgetUseFixed.png" ]
-
     var	createLocationImg = JSUI.getScriptUIStates( { imgFile: obj.imgFiles[0] } );
     var	openLocationImg = JSUI.getScriptUIStates( { imgFile: obj.imgFiles[1] } );
 
@@ -2082,8 +2192,12 @@ Object.prototype.addBrowseForFolderWidget = function(propName, obj)
 
     openOrCreateLocation.onClick = function()
     {
-        var testPath = new Folder(c.text.trim());
-        if(testPath != null && testPath.exists)
+		var testPath = new Folder( JSUI.fsname2uri( encodeURI( c.text.trim() ) ) );
+		var pathMatchesSystem = testPath.toString().match( app.path ) != null;
+
+//		alert( testPath.fsName + "\n\npathMatchesSystem: " + pathMatchesSystem);
+
+        if(/*testPath != null &&*/ testPath.exists)
         {
             testPath.execute();
         }
@@ -2091,40 +2205,46 @@ Object.prototype.addBrowseForFolderWidget = function(propName, obj)
         {
             testPath.create();
             c.onChanging();
-        }
+		}
     };
 
     this.Components[propName+'OpenOrCreateLocation'] = openOrCreateLocation;
-    //groupObjectsArray.push( [openOrCreateLocation, propName+'OpenOrCreateLocation'] );
+    groupObjectsArray.push( [openOrCreateLocation, propName+'OpenOrCreateLocation'] );
     
     if(useFixedOption)
     {
-        var toggle = this.Components[propName+'Group'].addToggleIconButton( propName+'UseFixed', { imgFile: ( obj.imgFiles[2] ), alignment: "left", helpTip: "Toggle fixed location mode" });
-
+		var toggle = this.Components[propName+'Group'].addToggleIconButton( propName+'UseFixed', { imgFile: ( obj.imgFiles[2] ), alignment: "left", helpTip: "Toggle fixed location mode" });
+		
         toggle.onClick = function()
         {
             this.value = !this.value;
 			JSUI.PREFS[ propName+'UseFixed' ] = this.value;
+			useFixedToggleCount++;
+			useFixedChanged = true;
             
-            if($.level) JSUI.debug("\n" + propName+'UseFixed' + ": " + JSUI.PREFS[propName+'UseFixed'] + "\n"+propName+'UseFixed'+".image: " + this.image); 
+            // if($.level) JSUI.debug("\n" + propName+'UseFixed' + ": " + JSUI.PREFS[propName+'UseFixed'] + "\n"+propName+'UseFixed'+".image: " + this.image); 
             
             // when switching from UseFixed to Dynamic, the same value is assigned to both properties. What's up?
             if(JSUI.PREFS[propName+'UseFixed'])
             {
-                c.text = new Folder( JSUI.PREFS[propName+"Fixed"] ).fsName;
+				c.text = new Folder( JSUI.PREFS[propName+"Fixed"] ).fsName;
+				var testFolder = new Folder(c.text.trim());
 
-                var testFolder = new Folder(c.text.trim());
-                JSUI.debug(propName+"Fixed: " + JSUI.PREFS[propName+"Fixed"] + " [exists: " + testFolder.exists + "]");
+                JSUI.debug(propName+"Fixed: " + JSUI.PREFS[propName+"Fixed"] + " [exists: " + testFolder.exists + "]  useFixedToggleCount: " + useFixedToggleCount);
             }
             else
             {
                 c.text = new Folder( JSUI.PREFS[propName] ).fsName;
+				var testFolder = new Folder(c.text.trim());
+				
+                JSUI.debug(propName+": " + JSUI.PREFS[propName] + " [exists: " + testFolder.exists + "]  useFixedToggleCount: " + useFixedToggleCount);
+			}
 
-                var testFolder = new Folder(c.text.trim());
-                JSUI.debug(propName+": " + JSUI.PREFS[propName] + " [exists: " + testFolder.exists + "]");
-            }
             toggle.update();
-            c.onChanging();
+			c.onChanging( true );
+			
+			if(obj.onToggleFixedFunction != undefined) obj.onToggleFixedFunction();
+
             if(JSUI.autoSave) JSUI.saveIniFile();
         }; 
 
@@ -2136,7 +2256,7 @@ Object.prototype.addBrowseForFolderWidget = function(propName, obj)
                 var scriptUIStatesObj = this.scriptUIstates;
             }
 
-            if($.level) $.writeln(propName+'UseFixed' + ": Using " + scriptUIStatesObj.active);
+            // if($.level) $.writeln(propName+'UseFixed' + ": Using " + scriptUIStatesObj.active);
 
             if(JSUI.isCS6)
             {
@@ -2146,19 +2266,17 @@ Object.prototype.addBrowseForFolderWidget = function(propName, obj)
                 this.states.downState = scriptUIStatesObj.downState;
 
                 if(this.image != this.states.normalState) this.image = this.states.normalState;
-                JSUI.debug("\n\t" + propName+'UseFixed' + ".update() " + JSUI.PREFS[propName+'UseFixed'] + "\n\timage:\t" + this.image + "\n\t\tnormalState:\t" + this.states.normalState + "\n\t\toverState:\t" + this.states.overState + "\n\t\tdownState:\t" + this.states.downState);
+                // JSUI.debug("\n\t" + propName+'UseFixed' + ".update() " + JSUI.PREFS[propName+'UseFixed'] + "\n\timage:\t" + this.image + "\n\t\tnormalState:\t" + this.states.normalState + "\n\t\toverState:\t" + this.states.overState + "\n\t\tdownState:\t" + this.states.downState);
             }
             else
             {
                 this.image = this.value ? scriptUIStatesObj.active : scriptUIStatesObj.inactive;
-                JSUI.debug("\n\t" + propName+'UseFixed' + ".update() " + JSUI.PREFS[propName+'UseFixed'] + "\n\timage:\t" + this.image + "\n\t\tactive:\t" + scriptUIStatesObj.active + "\n\t\tinactive:\t" + scriptUIStatesObj.inactive);
+                // JSUI.debug("\n\t" + propName+'UseFixed' + ".update() " + JSUI.PREFS[propName+'UseFixed'] + "\n\timage:\t" + this.image + "\n\t\tactive:\t" + scriptUIStatesObj.active + "\n\t\tinactive:\t" + scriptUIStatesObj.inactive);
             }
-        };
-
-        this.Components[propName+'UseFixed'] = toggle;
-        //groupObjectsArray.push( [toggle, propName+'UseFixed'] );
-
-        if(obj.onToggleFixedFunction != undefined) obj.onToggleFixedFunction();
+		};
+					
+		this.Components[propName+'UseFixed'] = toggle;
+		groupObjectsArray.push( [toggle, propName+'UseFixed'] );
     }
 
 	// using the file/folder location dialog automatically triggers onChange()
@@ -2171,22 +2289,67 @@ Object.prototype.addBrowseForFolderWidget = function(propName, obj)
 	}
 
 	// function that is used when updating textfield
-	c.onChanging = function()
+	c.onChanging = function( justSwappedBool )
 	{	
+		// if just swapped, onChanging is called by toggle.onClick()
+		var justSwappedBool = justSwappedBool == undefined ? false : justSwappedBool;
+		
         var textStr = c.text.trim();
-        var testFolderURI = new Folder(textStr);
+		var testFolderURI = new Folder(textStr);
+
+		var useFixed = JSUI.PREFS[propName+'UseFixed'] != undefined ? JSUI.PREFS[propName+'UseFixed'] : false;
 
         if(testFolderURI != null && textStr != "")
         {
-            if(JSUI.PREFS[propName+'UseFixed'])
+            if(useFixed)
             {
-                JSUI.PREFS[propName+'Fixed'] = JSUI.fsname2uri( encodeURI(textStr) );
-                JSUI.debug(propName+"Fixed: " + JSUI.PREFS[propName+"Fixed"] + " [exists: " + testFolderURI.exists + "]");
+				// if using fixed and *just* toggled, override prefs value  
+				if(justSwappedBool)
+				{
+					JSUI.PREFS[propName+'Fixed'] = encodeURI(JSUI.fsname2uri(textStr));
+					browseWidgetFixedURIupdateCount++;
+					c.text = JSUI.uri2fsname( JSUI.PREFS[propName+'Fixed'] );
+					testFolderURI = new Folder( c.text );
+				}
+				// if toggle was NOT just triggered, we're either showing the dialog for the first time or
+				else
+				{
+					// on initialize window...
+					if(browseWidgetFixedURIupdateCount == 0)
+					{
+						c.text = JSUI.uri2fsname( JSUI.PREFS[propName+'Fixed'] );
+						testFolderURI = new Folder( c.text );
+					}
+					// ...or just update prefs object property as expected
+					else
+					{
+						JSUI.PREFS[propName+'Fixed'] = encodeURI(JSUI.fsname2uri(textStr));
+						testFolderURI = new Folder( textStr );
+					}
+
+					browseWidgetFixedURIupdateCount++;
+					
+				}
+
+                JSUI.debug( propName +"Fixed: " + JSUI.PREFS[propName+"Fixed"] + " [ exists: " + testFolderURI.exists + " ]  browseWidgetFixedURIupdateCount: " + browseWidgetFixedURIupdateCount);
             }
             else
             {
-                JSUI.PREFS[propName] = JSUI.fsname2uri( encodeURI(textStr) ); //new Folder(c.text).fsName;
-                JSUI.debug(propName + ": " + JSUI.PREFS[propName] + ( "\n[ exists: " + testFolderURI.exists + " ]" )); 
+				if(justSwappedBool)
+				{
+					JSUI.PREFS[propName] = encodeURI(JSUI.fsname2uri(textStr));
+					browseWidgetURIupdateCount++;
+					c.text = textStr;
+					testFolderURI = new Folder( textStr );
+				}
+				else
+				{
+					JSUI.PREFS[propName] = encodeURI(JSUI.fsname2uri(textStr));
+					browseWidgetURIupdateCount++;
+					testFolderURI = new Folder( textStr );
+				}
+
+                JSUI.debug(propName + ": " + JSUI.PREFS[propName] + ( "\n[ exists: " + testFolderURI.exists + " ]  browseWidgetURIupdateCount: " + browseWidgetURIupdateCount) ); 
             }
         }
 
@@ -2203,20 +2366,101 @@ Object.prototype.addBrowseForFolderWidget = function(propName, obj)
         }
 
         // check for indicator
-        //if(addIndicator) 
-        this.Components[propName+'Indicator'].value = testFolderURI.exists;
+        if(addIndicator) this.Components[propName+'Indicator'].value = testFolderURI.exists;
 
         if(obj.onChangingFunction != undefined) obj.onChangingFunction();
-    }
-    
+	}
+	
+	// override browse button behavior
+	this.Components[propName+'BrowseButton'].onClick = function()
+	{
+		var defaultFolder = c.text;
+		var testFolder = new Folder(c.text);
+		if($.level) $.writeln("Browsing for directory. Default path: " + testFolder.fsName);
+		if(!testFolder.exists) defaultFolder = "~";
+
+		var chosenFolder = Folder.selectDialog(c.text, defaultFolder);
+		
+		if(chosenFolder != null)
+		{
+			c.text = chosenFolder.fsName;			
+		}
+		else
+		{
+			JSUI.debug("User either closed the browse dialog without chosing a target folder, or pointed to an invalid resource"); 
+		}
+
+		// use onChanging callback so "exists" indicator is properly refreshed after selecting file or folder.
+		c.onChanging();
+		if(JSUI.autoSave) JSUI.saveIniFile();
+	}
+	
     if(showFixedOption)
     {
         if(JSUI.PREFS[ propName+'UseFixed' ] != undefined) toggle.update();
     }
 
-    // running onChanging() event before returning will initiate "createFolder" button status if needed
+	this.Components[propName] = c;
+	groupObjectsArray.push( [c, propName] );
+
+    // running onChanging() event before returning component will initiate "createFolder" button status if relevant
 	c.onChanging();
 	
+	return c;
+};
+
+// swatch thingie
+Object.prototype.addRectangle = function(propName, obj)
+{	
+	// var	mattingImagePicker = win.add('iconbutton', undefined, undefined, {name:'coloroption1', style: 'toolbutton'});
+	// mattingImagePicker.size = [200, 50];
+
+	// pickerColor = new SolidColor();
+	// pickerColor.rgb.hexValue = "46c0ff";
+
+	// mattingImagePicker.fillBrush = mattingImagePicker.graphics.newBrush( mattingImagePicker.graphics.BrushType.SOLID_COLOR, [ pickerColor.rgb.red/256, pickerColor.rgb.green/256, pickerColor.rgb.blue/256, 1] );
+	// mattingImagePicker.text = "";
+	// mattingImagePicker.textPen = mattingImagePicker.graphics.newPen (mattingImagePicker.graphics.PenType.SOLID_COLOR,[1,1,1], 1);
+	// mattingImagePicker.onDraw = customDraw;
+
+	// function customDraw()
+	// { 
+	// 	with( this )
+	// 	{
+	// 		graphics.drawOSControl();
+	// 		graphics.rectPath( 0, 0, size[0], size[1]);
+	// 		graphics.fillPath( fillBrush );
+	// 	}
+	// }
+	var obj = obj != undefined ? obj : {};
+
+	var c = this.add('iconbutton', undefined, undefined, {name: propName.toLowerCase(), style: 'toolbutton'});
+	this.Components[propName] = c;
+
+	//var	mattingImagePicker = win.add('iconbutton', undefined, undefined, {name:'coloroption1', style: 'toolbutton'});
+	// c.size = [200, 50];
+	c.size = [ obj.width != undefined ? obj.width : 50, (obj.height != undefined ? obj.height : 50) ];
+
+	var rectCol = new SolidColor();
+	rectCol.rgb.hexValue = obj.hexValue != undefined ? obj.hexValue : "ffffff";
+
+	var textCol = new SolidColor();
+	textCol.rgb.hexValue = obj.textHexValue != undefined ? obj.textHexValue : "000000";
+
+	c.fillBrush = c.graphics.newBrush( c.graphics.BrushType.SOLID_COLOR, [ rectCol.rgb.red/256, rectCol.rgb.green/256, rectCol.rgb.blue/256, 1] );
+	c.text = obj.text != undefined ? obj.text : "";
+	if(c.text) c.textPen = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR,[ textCol.rgb.red/256, textCol.rgb.green/256, textCol.rgb.blue/256 ], 1);
+	c.onDraw = customDraw;
+
+	function customDraw()
+	{ 
+		with( this )
+		{
+			graphics.drawOSControl();
+			graphics.rectPath( 0, 0, size[0], size[1]);
+			graphics.fillPath( fillBrush );
+		}
+	}
 
 	return c;
 };
@@ -2297,7 +2541,7 @@ Object.prototype.addDropDownList = function(propName, obj)
 		
 	this.Components[propName] = c;
 
-	
+	// callbacks
 	c.onChange = function()
 	{
 		var currentValue = JSUI.PREFS[propName];
@@ -2315,13 +2559,21 @@ Object.prototype.addDropDownList = function(propName, obj)
 			}
 		}
 		if(JSUI.autoSave && changed) JSUI.saveIniFile();
+		if(obj.onChangedFunction != undefined && changed)
+		{
+		//	if($.level) $.writeln("DropDownList component onChangedFunction() start");
+			obj.onChangedFunction();
+	//		if($.level) $.writeln("DropDownList component onChangedFunction() COMPLETE");
+		}
 	}
 
 	c.update = function()
 	{
 		c.selection = JSUI.PREFS[propName];
 		//c.onChange();
-	} 
+	}
+
+	
 
 	return c;
 };
@@ -2539,6 +2791,27 @@ Object.prototype.addButton = function(imgNameStr, obj)
 			}
 		}
 	}
+	else
+	{
+
+		// if onClickFunction defined
+		if(obj.onClickFunction != undefined)
+		{
+			c.onClick = obj.onClickFunction;
+		}
+		// otherwise if URL available
+		else if( obj.url != undefined)
+		{
+			if(typeof obj.url == "string" )
+			{
+				c.onClick = function ()
+				{
+					JSUI.launchURL( obj.url );
+				}
+			}
+		}
+
+	}
 
 	return c;
 };
@@ -2556,7 +2829,8 @@ Object.prototype.addImage = function(obj)
 
 	var scriptUIstates = JSUI.getScriptUIStates( obj );
 
-	if(scriptUIstates.active != undefined)
+	// if(scriptUIstates.active != undefined)
+	if(scriptUIstates != undefined)
 	{
 		var c = this.add('image', undefined, scriptUIstates.active);
 	}
@@ -2586,8 +2860,10 @@ Object.prototype.addIconButton = function(obj)
 	}
 
 	var scriptUIstates = JSUI.getScriptUIStates( obj );
+	
+	//if(scriptUIstates == undefined) return;
 
-	if(scriptUIstates.active != undefined)
+	if(scriptUIstates != undefined)
 	{
 		var c = this.add('iconbutton', undefined, scriptUIstates.active, {style: "toolbutton"});
 	}
@@ -2596,12 +2872,40 @@ Object.prototype.addIconButton = function(obj)
 		// fallback in case image does not exist
 		var c = this.add('button', undefined, "[Invalid URI: " + obj.imgFile + "]");
 	}
+	
+	// add scriptuistates object container
+	c.scriptUIstates = scriptUIstates; 
 
 	if(obj.width) c.preferredSize.width = obj.width;
 	if(obj.height) c.preferredSize.height = obj.height;
 	if(obj.alignment) c.alignment = obj.alignment;
 	if(obj.helpTip) c.helpTip = obj.helpTip;
 	
+	// update callback: update the UI based on the true/false value
+	c.update = function( scriptUIStatesObj )
+	{
+		if(scriptUIStatesObj == undefined)
+		{
+			var scriptUIStatesObj = this.scriptUIstates;
+		}
+
+		if($.level) $.writeln(propName + ": Using " + scriptUIStatesObj.active);
+
+		if(JSUI.isCS6)
+		{
+			// update ScriptUI images used by mouseevents
+			this.states.normalState = this.value ? scriptUIStatesObj.normalState : scriptUIStatesObj.normalStateInactive;
+			this.states.overState = this.value ? scriptUIStatesObj.overState : scriptUIStatesObj.overStateInactive;
+			this.states.downState = scriptUIStatesObj.downState;
+
+			if(this.image != this.states.normalState) this.image = this.states.normalState;
+		}
+		else
+		{
+			this.image = this.value ? scriptUIStatesObj.active : scriptUIStatesObj.inactive;
+		}
+	};
+
 	return c;
 };
 
