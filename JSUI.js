@@ -80,6 +80,9 @@
 		- tweaked addDropDownList with obj.onChangedFunction
 		- added JSUI.launchURL() + basic inline .url property for addButton()
 
+	0.978
+		- tweaks to addBrowseForFolderWidget
+			- warning message for unsaved document (forces fixed expath location)
 
 	TODO
 	- make imgFile property accept existing ScriptUIStates object ( if typeof imgFile == "object" and instanceof file, create from filename, otherwise test for .active/.inactive properties) 
@@ -107,7 +110,7 @@
 JSUI = function(){}; 
 
 /* version	*/
-JSUI.version = "0.977";
+JSUI.version = "0.978";
 
 // do some of the stuff differently if operating UI dialogs from ESTK
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -671,12 +674,20 @@ JSUI.confirm = function( obj )
 	obj.width = obj.width != undefined ? obj.width : 400; 
 	obj.height = obj.height != undefined ? obj.height : 200; 
 
-	obj.imgFile = obj.imgFile != undefined ? obj.imgFile : "/img/Photoshop" + (JSUI.isCS6 ? "CS6" : "CC" ) + "_96px.png";
+	// obj.imgFile = obj.imgFile != undefined ? obj.imgFile : "/img/Photoshop" + (JSUI.isCS6 ? "CS6" : "CC" ) + "_96px.png";
+	obj.imgFile = obj.imgFile != undefined ? obj.imgFile : "/img/" + ( JSUI.isPhotoshop ? "Photoshop" : "Illustrator") + (JSUI.isPhotoshop && JSUI.isCS6 ? "CS6" : "CC" ) + "_96px.png";
 
 	obj.orientation = "column";
 	obj.alignChildren = "left";
 
-	var confirmDlg = JSUI.createDialog( obj );
+	try
+	{
+		var confirmDlg = JSUI.createDialog( obj );
+	}
+	catch(e)
+	{
+		return confirm( obj.message, undefined, obj.title );
+	}
 
 	// either show custom confirm window...
 	if(confirmDlg != undefined)
@@ -684,10 +695,10 @@ JSUI.confirm = function( obj )
 		return confirmDlg;
 	}
 	// ... or fallback to default system stuff 
-	else
-	{	
-		return confirm( obj.message, undefined, obj.title );
-	}
+	// else
+	// {	
+	// 	return confirm( obj.message, undefined, obj.title );
+	// }
 };
 
 // prompt user
@@ -775,6 +786,7 @@ JSUI.getScriptUIStates = function( obj )
 	var testImage, imgFileUp, imgFileOver, imgFileDown, disabledImgFile, disabledImgFileOver;
 	var imgFileUpExists, imgFileOverExists, imgFileDownExists, disabledImgFileExists, disabledImgFileOver = false;
 
+	var proceed = false;
 	if(obj.imgFile != undefined)
 	{
 		if(typeof obj.imgFile == "string")
@@ -829,6 +841,8 @@ JSUI.getScriptUIStates = function( obj )
 		// prepare image file URIs accordingly
 		if(obj.imgFile.exists)
 		{
+			proceed = true;
+
 			imgFileUp = new File(obj.imgFile.toString().replace(/\.(png)$/i, "_up.png"));
 			imgFileOver = new File(obj.imgFile.toString().replace(/\.(png)$/i, "_over.png"));
 			imgFileDown = new File(obj.imgFile.toString().replace(/\.(png)$/i, "_down.png"));
@@ -917,6 +931,10 @@ JSUI.getScriptUIStates = function( obj )
 		return;
 	}
 
+	if(!proceed)
+	{
+		return null;
+	} 
 	// ScriptUI.newImage (normal, disabled, pressed, rollover);
 	obj.active = ScriptUI.newImage(obj.imgFile, imgFileUp, imgFileDown, imgFileOver);
 	obj.inactive = ScriptUI.newImage(disabledImgFile, disabledImgFile, imgFileDown, disabledImgFileOver);
@@ -1196,20 +1214,36 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 	var scriptUIstates = JSUI.getScriptUIStates( obj );
 
 	// if image file is found, add iconbutton
-	if(obj.imgFile != undefined && scriptUIstates.active != undefined)
+	if(obj.imgFile != undefined && obj.imgFile != null)
 	{
-		if($.level) $.writeln("Adding [" + propName + "] toggle iconbutton" + (obj.array ? ' with radiobutton behavior' : '') + "\n");
-		var c = this.add('iconbutton', undefined, scriptUIstates.active, {style: "toolbutton"});
+		if(scriptUIstates != null) // && scriptUIstates.active != null)
+		{
+			if(scriptUIstates.active != undefined) // && scriptUIstates.active != null)
+			{
+				if($.level) $.writeln("Adding [" + propName + "] toggle iconbutton" + (obj.array ? ' with radiobutton behavior' : '') + "\n");
+				var c = this.add('iconbutton', undefined, scriptUIstates.active, {style: "toolbutton"});
+		
+				// let's add a .value container property, it makes everything so much easier
+				c.value = JSUI.PREFS[propName] != undefined ? (typeof JSUI.PREFS[propName] == "boolean" ? JSUI.PREFS[propName] : false) : false;
+			}
+			else
+			{
+				if($.level) $.writeln("Fallback: " + (obj.array ? 'radiobutton' : 'checkbox') + "\n");
+				var c = (obj.array ? this.addRadioButton(propName, obj) : this.addCheckBox(propName, obj) );
+				c.value = JSUI.PREFS[propName] != undefined ? (typeof JSUI.PREFS[propName] == "boolean" ? JSUI.PREFS[propName] : false) : false;
 
-		// let's add a .value container property, it makes everything so much easier
-		c.value = JSUI.PREFS[propName] != undefined ? (typeof JSUI.PREFS[propName] == "boolean" ? JSUI.PREFS[propName] : false) : false;
+				// return ;
+			}
+	
+		}
+
 	}
 	// if imgFile does not exist, fallback to checkbox or radiobutton component 
-	else
-	{
-		if($.level) $.writeln("Fallback: " + (obj.array ? 'radiobutton' : 'checkbox') + "\n");
-		return (obj.array ? this.addRadioButton(propName, obj) : this.addCheckBox(propName, obj) );
-	}
+	// else
+	// {
+	// 	if($.level) $.writeln("Fallback: " + (obj.array ? 'radiobutton' : 'checkbox') + "\n");
+	// 	return (obj.array ? this.addRadioButton(propName, obj) : this.addCheckBox(propName, obj) );
+	// }
 
 	if(obj.width != undefined) c.preferredSize.width = obj.width;
 	if(obj.height != undefined) c.preferredSize.height = obj.height;
@@ -1715,8 +1749,6 @@ myWindow.onShow = function ()
 {
 	myText.active = true; 
 }
-
-
 		*/
 	
 //	var obj = obj != undefined ? obj : {};
@@ -1737,7 +1769,9 @@ myWindow.onShow = function ()
 	var imgFile;
 	var imgFileExists = false;
 	var prefsBypass = false;
+	var showUnsavedFileWarning = false; 
 	var useGroup = false;
+	var wasDynamic = false;
 
 	// let's deal with automatically created objects (group, indicator, label)
 	var groupObjectsArray = [];
@@ -1756,6 +1790,7 @@ myWindow.onShow = function ()
 		useGroup = obj.specs.useGroup != undefined ? obj.specs.useGroup : false;
 		hasImage = obj.specs.hasImage != undefined ? obj.specs.hasImage : false;
 		prefsBypass = obj.specs.prefsBypass != undefined ? obj.specs.prefsBypass : false;
+		showUnsavedFileWarning = obj.specs.showUnsavedFileWarning != undefined ? obj.specs.showUnsavedFileWarning : false;
 
 		if(hasImage && obj.specs.imgFile != undefined)
 		{
@@ -1767,7 +1802,33 @@ myWindow.onShow = function ()
 	// create group (optional)
 	if(useGroup)
 	{
+		if(prefsBypass && showUnsavedFileWarning) 
+		{
+			// if we're told that the active document has not been saved to disk, forced fixed export path (browsewidget toggle button will also be automatically disabled)
+			if( JSUI.PREFS[ propName+'UseFixed' ] != undefined)
+			{
+				wasDynamic = JSUI.PREFS[ propName+'UseFixed' ];
+				JSUI.PREFS[ propName+'UseFixed' ] = true;
+				wasDynamic = wasDynamic != JSUI.PREFS[ propName+'UseFixed' ];
+			}
+
+			var ug = this.addRow( { spacing: obj.specs.groupSpecs.spacing != undefined ? obj.specs.groupSpecs.spacing : 0 } );
+			var warningImg = ug.addImage( { imgFile: "/img/warningSign.png" } );
+			var warningText = ug.addStaticText( { justify: "left", width: 275, height: 26, multiline: true, alignment: "center", text: "WARNING: Document has not been saved to disk.\nForcing fixed export path mode." } );
+
+			this.Components[propName+'UnsavedWarningGroup'] = ug;
+			groupObjectsArray.push( [ug, propName+'UnsavedWarningGroup'] );
+
+			this.Components[propName+'UnsavedWarningImage'] = warningImg;
+			groupObjectsArray.push( [warningImg, propName+'UnsavedWarningImage'] );
+
+			this.Components[propName+'UnsavedWarningText'] = warningText;
+			groupObjectsArray.push( [warningText, propName+'UnsavedWarningText'] );
+		}
+
 		var g = this.add('group');
+		// var g = this.addRow( { spacing: obj.specs.groupSpecs.spacing != undefined ? obj.specs.groupSpecs.spacing : 0 } );
+
 		
 		if(obj.specs.groupSpecs)
 		{
@@ -1803,7 +1864,6 @@ myWindow.onShow = function ()
 	// if source/target file/folder needs an 'exists' indication, add read-only checkbox as an indicator next to the edittext component
 	if(addIndicator)
 	{
-
 		if(useGroup)
 		{
 			var d = g.add('checkbox', undefined, '');
@@ -1833,6 +1893,20 @@ myWindow.onShow = function ()
 	{
 		var c = this.add('edittext', undefined, obj.text != undefined ? decodeURI (obj.text) : propName, {multiline:obj.multiline, readonly: readonly});
 	}
+
+	// if( JSUI.STYLE )
+	// if( obj.style )
+	// {
+		c.graphics.font = ScriptUI.newFont(JSUI.isWindows ? "Tahoma" : "Arial", "REGULAR", 10);
+	// }
+
+	// store previous status to be used as custom dialog onClose()
+	if(prefsBypass && showUnsavedFileWarning) 
+	{
+		c.wasDynamic = wasDynamic;
+		// alert( "c.wasDynamic: " + c.wasDynamic );
+	}
+
 	this.Components[propName] = c;
 	groupObjectsArray.push( [c, propName] );
 
@@ -2088,6 +2162,15 @@ myWindow.onShow = function ()
 		c.text = new File( JSUI.PREFS[propName] ).fsName;	
 	}
 
+	// if(prefsBypass && showUnsavedFileWarning) 
+	// {
+	// 	c.onCloseDialog = function()
+	// 	{
+	// 		if(JSUI.PREFS[ propName+'UseFixed' ] != undefined) JSUI.PREFS[ propName+'UseFixed' ] = c.wasDynamic;
+	// 	}
+	// }
+
+
 	return c;
 };
 
@@ -2164,14 +2247,16 @@ Object.prototype.addBrowseForFileReplace = function(propName, obj)
 	- manages toggling between fixed folder vs dynamic folder locations
 	- includes support for optional independant onChanging and onToggle functions
 
-var browseWidget = container.addBrowseForFolderWidget( "browseWidget", { characters: 50, useFixedOption: true, imgFiles: ["img/createLocation.png", "img/openLocation.png", "img/browseWidgetUseFixed.png" ],  showFixedToggle: true, onChangingFunction: browseWidgetChangingFn, onToggleFixedFunction: toggleFixedExportPathFn } );
+var browseWidget = container.addBrowseForFolderWidget( "browseWidget", { characters: 50, useFixedOption: true, imgFiles: ["img/createLocation.png", "img/openLocation.png", "img/browseWidgetUseFixed.png" ],  showFixedToggle: true, showUnsavedFileWarning: true, onChangingFunction: browseWidgetChangingFn, onToggleFixedFunction: toggleFixedExportPathFn } );
 
 */
 // JSUI prototyping
 Object.prototype.addBrowseForFolderWidget = function(propName, obj)
 {
 	var obj = obj != undefined ? obj : {};
-	var c = this.addEditText(propName, { label:obj.label, characters: obj.characters ? obj.characters : 45, onChangingFunction: obj.onChangingFunction ? obj.onChangingFunction : undefined, specs:{ prefsBypass: true, browseFolder:true, addIndicator:false, addBrowseButton:true, useGroup:true, groupSpecs:{ alignment: obj.alignment != undefined ? obj.alignment : 'right'}} } );
+	var showUnsavedFileWarning = obj.showUnsavedFileWarning != undefined ? obj.showUnsavedFileWarning : false;
+
+	var c = this.addEditText(propName, { label:obj.label, characters: obj.characters ? obj.characters : 45, onChangingFunction: obj.onChangingFunction ? obj.onChangingFunction : undefined, specs:{ prefsBypass: true, showUnsavedFileWarning: showUnsavedFileWarning, browseFolder:true, addIndicator:false, addBrowseButton:true, useGroup:true, groupSpecs:{ alignment: obj.alignment != undefined ? obj.alignment : 'right'}} } );
 
 	// var showDebugFields = true;
 	var addIndicator = false;
@@ -2184,7 +2269,8 @@ Object.prototype.addBrowseForFolderWidget = function(propName, obj)
 	var browseWidgetFixedURIupdateCount = 0;
 
     var showFixedOption = obj.showFixedToggle != undefined ? obj.showFixedToggle : false;
-    var useFixedOption = obj.useFixedOption != undefined ? obj.useFixedOption : false;
+	var useFixedOption = obj.useFixedOption != undefined ? obj.useFixedOption : false;
+	var showUnsavedFileWarning = obj.showUnsavedFileWarning != undefined ? obj.showUnsavedFileWarning : false;
     var	createLocationImg = JSUI.getScriptUIStates( { imgFile: obj.imgFiles[0] } );
     var	openLocationImg = JSUI.getScriptUIStates( { imgFile: obj.imgFiles[1] } );
 
@@ -2192,12 +2278,13 @@ Object.prototype.addBrowseForFolderWidget = function(propName, obj)
 
     openOrCreateLocation.onClick = function()
     {
-		var testPath = new Folder( JSUI.fsname2uri( encodeURI( c.text.trim() ) ) );
+		// var testPath = new Folder( JSUI.fsname2uri( encodeURI( c.text.trim() ) ) );
+		var testPath = new Folder( c.text.trim() );
 		var pathMatchesSystem = testPath.toString().match( app.path ) != null;
 
 //		alert( testPath.fsName + "\n\npathMatchesSystem: " + pathMatchesSystem);
 
-        if(/*testPath != null &&*/ testPath.exists)
+        if(testPath.exists)
         {
             testPath.execute();
         }
@@ -2277,6 +2364,11 @@ Object.prototype.addBrowseForFolderWidget = function(propName, obj)
 					
 		this.Components[propName+'UseFixed'] = toggle;
 		groupObjectsArray.push( [toggle, propName+'UseFixed'] );
+
+		if(showUnsavedFileWarning)
+		{
+			toggle.enabled = false;
+		}
     }
 
 	// using the file/folder location dialog automatically triggers onChange()
@@ -2561,9 +2653,7 @@ Object.prototype.addDropDownList = function(propName, obj)
 		if(JSUI.autoSave && changed) JSUI.saveIniFile();
 		if(obj.onChangedFunction != undefined && changed)
 		{
-		//	if($.level) $.writeln("DropDownList component onChangedFunction() start");
 			obj.onChangedFunction();
-	//		if($.level) $.writeln("DropDownList component onChangedFunction() COMPLETE");
 		}
 	}
 
