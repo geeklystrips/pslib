@@ -82,9 +82,10 @@
 
 	0.978
 		- tweaks to addBrowseForFolderWidget
-			- warning message for unsaved document (forces fixed expath location)
-
+			- warning message for unsaved document (forces fixed expath location) 
 		- fixes for CS6 styling colors, oops.
+		- added JSUI.message() + JSUI.showInfo() for referring user to specific documentation
+		- added JSUI.randomizeRGBColor() for generating fully random colors (customizable range)
 
 	TODO
 	- make imgFile property accept existing ScriptUIStates object ( if typeof imgFile == "object" and instanceof file, create from filename, otherwise test for .active/.inactive properties) 
@@ -488,7 +489,7 @@ JSUI.createDialog = function( obj )
 	obj.palette = obj.palette != undefined ? obj.palette : false;
 
 	var dlg = new Window( obj.palette ? 'palette' : 'dialog', obj.title + obj.systemInfo + "" + obj.extraInfo, undefined, {closeButton:true/*, borderless:true*/});
-	if(JSUI.isCS6 && JSUI.CS6styling) dlg.darkMode();
+	if(JSUI.isPhotoshop && JSUI.isCS6 && JSUI.CS6styling) dlg.darkMode();
 
 	dlg.alignChildren = obj.alignChildren != undefined ? obj.alignChildren : "fill";
 	dlg.margins = obj.margins != undefined ? obj.margins : 20;
@@ -507,8 +508,20 @@ JSUI.createDialog = function( obj )
 	// display image?
 	if(obj.imgFile)
 	{
-		var imageContainer = dlg.addColumn( { margins: obj.margins ? obj.margins : 0, spacing: obj.spacing != undefined ? obj.spacing : 20} );
-		img = imageContainer.addImage( obj );
+		var imageContainerSpecs = { margins: obj.margins ? obj.margins : 0, spacing: obj.spacing != undefined ? obj.spacing : 20};
+		// var imageContainer = obj.url != undefined ? dlg.addRow( imageContainerSpecs ) : dlg.addColumn( imageContainerSpecs );
+		var imageContainer = dlg.addColumn( imageContainerSpecs );
+			
+		// if URL is provided, let's use app icon
+		if(obj.url != undefined)
+		{
+			obj.imgFile = "/img/" + ( JSUI.isPhotoshop ? "Photoshop" : "Illustrator") + (JSUI.isPhotoshop && JSUI.isCS6 ? "CS6" : "CC" ) + "_96px.png";
+			// img = imageContainer.addImage( obj );
+		}
+		// else
+		// {
+			img = imageContainer.addImage( obj );
+		// }
 
 		// attempt to get image size for layouting
 		try
@@ -535,8 +548,14 @@ JSUI.createDialog = function( obj )
 	//
 	// alert status
 	if(obj.alert)
-	{
+	{	
 		var buttons = messageContainer.addRow( { spacing: 20 } );
+
+		if(obj.url != undefined)
+		{
+			buttons.addButton( { imgFile: "img/Info_48px.png", alignment: "right", helpTip: "See documentation:\n\n"+obj.url, url: obj.url } );
+		}
+
 		buttons.addCloseButton();
 
 		return dlg;
@@ -582,7 +601,17 @@ JSUI.createDialog = function( obj )
 
 		var buttons = messageContainer.addRow( { spacing: obj.spacing } );
  		var cancel = buttons.addButton( { label: "Cancel", name: "cancel", width: 125, height: 44, alignment: "right" });
-		var ok = buttons.addButton( { label: "OK", name: "ok", width: 125, height: 44, alignment: "right" });
+		var ok = buttons.addButton( { label: obj.confirmLabel != undefined ? obj.confirmLabel : "Confirm", name: "ok", onClickFunction: obj.onClickFunction, width: 125, height: 44, alignment: "right" });
+
+		if(obj.onClickFunction != undefined)
+		{
+			ok.onClick = function ()
+			{
+				obj.onClickFunction( textfield.text );
+				dlg.close();
+				return textfield.text;
+			}
+		}
 
 		dlg.center();
 
@@ -653,6 +682,28 @@ JSUI.alert = function( obj )
 	{
 		alert( obj.message );
 	}
+};
+
+// softer version of the above function, which is meant as informative more than a warning
+JSUI.message = function( messageStr )
+{
+	var obj = {};
+	obj.message = messageStr;
+	obj.imgFile = obj.imgFile != undefined ? obj.imgFile : "/img/" + ( JSUI.isPhotoshop ? "Photoshop" : "Illustrator") + (JSUI.isPhotoshop && JSUI.isCS6 ? "CS6" : "CC" ) + "_96px.png";
+
+	JSUI.alert( obj );
+};
+
+// informative message + button to launch URL
+JSUI.showInfo = function( messageStr, urlStr )
+{
+	var obj = {};
+	obj.message = messageStr;
+	obj.imgFile = "/img/Info_48px.png";
+
+	obj.url = urlStr;
+
+	JSUI.alert( obj );
 };
 
 // confirm dialog
@@ -736,18 +787,37 @@ JSUI.prompt = function( obj )
 	obj.orientation = "column";
 	obj.alignChildren = "right";
 
-	var promptDlg = JSUI.createDialog( obj );
+	// var promptDlg = JSUI.createDialog( obj );
 
 	// either show custom confirm window...
-	if(promptDlg != undefined || promptDlg == null)
-	{
-		return promptDlg;
-	}
-	// ... or fallback to default system stuff 
-	else if( promptDlg != null)
-	{
-		return prompt( obj.message, obj.text, obj.title );
-	}
+// 	if(promptDlg != undefined || promptDlg == null)
+// 	{
+// 		return promptDlg;
+// 	}
+// 	// ... or fallback to default system stuff 
+// 	else if( promptDlg != null)
+// 	{
+// 		return prompt( obj.message, obj.text, obj.title );
+// 	}
+// //
+//
+try
+{
+	var promptDlg = JSUI.createDialog( obj );
+}
+catch(e)
+{
+	return prompt( obj.message, obj.text, obj.title );
+}
+
+// either show custom confirm window...
+// if(promptDlg != undefined)
+// {
+	return promptDlg;
+// }
+
+
+
 
 	//return JSUI.createDialog( obj );
 };
@@ -2891,11 +2961,14 @@ Object.prototype.addButton = function(imgNameStr, obj)
 	}
 	else
 	{
-
 		// if onClickFunction defined
 		if(obj.onClickFunction != undefined)
+		// if(obj.onClickFunction)
 		{
-			c.onClick = obj.onClickFunction;
+			c.onClick = function()
+			{
+				obj.onClickFunction();
+			}
 		}
 		// otherwise if URL available
 		else if( obj.url != undefined)
@@ -2908,7 +2981,6 @@ Object.prototype.addButton = function(imgNameStr, obj)
 				}
 			}
 		}
-
 	}
 
 	return c;
@@ -4053,6 +4125,56 @@ JSUI.setLayerObjectColor = function( color )
 	}
 };
 
+/* randomize solidcolor object */
+JSUI.randomizeRGBColor = function( hexStr, rangeFloat )
+{
+	if(JSUI.isPhotoshop)
+	{		
+		var hexStr = hexStr == undefined ? "000000" : typeof hexStr == "object" ? hexStr.rgb.hexValue : hexStr;
+		var rangeFloat = rangeFloat == undefined ? 0.0 : rangeFloat;
+	
+		var c = new SolidColor();
+		c.rgb.hexValue = hexStr;
+	
+		function _randomize( num, max )
+		{
+			var random = Math.random();
+			var flux = rangeFloat * ( num * random );
+		
+			flux = ( random < 0.5 ? (-flux) : flux);
+			flux = parseInt( num + flux);
+			return flux < 0 ? 0 : flux > max ? max : flux;
+		}
+	
+		if(rangeFloat > 0)
+		{
+			c.rgb.red = _randomize(c.rgb.red, 255);
+			c.rgb.green = _randomize(c.rgb.green, 255);		
+			c.rgb.blue = _randomize(c.rgb.blue, 255);
+	
+			// c.hsb.hue = _randomize(colorObj.hsb.hue, 360);
+			// c.hsb.saturation = _randomize(c.hsb.saturation, 100);
+			// c.hsb.brightness = _randomize(c.hsb.brightness, 100);
+		} 
+		else
+		{
+			// fully random RGB
+			c.rgb.red = Math.round(Math.random()*255);
+			c.rgb.green = Math.round(Math.random()*255);
+			c.rgb.blue = Math.round(Math.random()*255);
+	
+			// fully random HSB
+			// c.hsb.hue = Math.round(Math.random()*360);
+			// c.hsb.saturation = Math.round(Math.random()*100);
+			// c.hsb.brightness = Math.round(Math.random()*100);
+		}
+		return c;
+	}
+	else
+	{
+		return;
+	}
+};
 
 
 // DEBUG AREA
