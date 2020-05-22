@@ -39,12 +39,14 @@
         - added "Load from CSV" function
         
     (0.5)
-    - Pslib.propertiesToCSV() upgraded to UTF-8 format
+	- Pslib.propertiesToCSV() upgraded to UTF-8 format
+	
+	(0.6)
+	- added Illustrator document-level XMP editing support.
+	- added Pslib.getXmpDictionary() to allow working 
+	- performances: checking for .isBackgroundLayer status creates issues and delays, and somehow promotes the background layer to a normal layer anyway
+	  it's best to let the try/catch blocks handle it for the cases where it will be actually useful
 */
-
-// these functions are often required when working with code obtained using the ScriptingListener plugin
-cTID = function(s) {return app.charIDToTypeID(s);}
-sTID = function(s) {return app.stringIDToTypeID(s);}
 
 // using and adding functions to Pslib object -- whether or not the library has been loaded
 // this technique makes it easier to create and stabilize additional subfunctions separately before integrating them
@@ -65,7 +67,7 @@ catch(e)
 	
 	// errors are objects that can give you some information about what went wrong 
 	//$.writeln("typeof e.message: " + typeof e.message + "\n\ne:\n" + e + "\n\ne.message:\n" + e.message);
-	//$.writeln(e);
+	//if($.level) $.writeln(e);
 	
 	// create Pslib as a persistent object 
 	// it will remain accessible across most scopes, which is useful when working with panels & actions
@@ -74,8 +76,18 @@ catch(e)
 }
 
 // library version, used in tool window titles. Maybe.
-Pslib.version = 0.5;
+Pslib.version = 0.6;
 Pslib.isPs64bits = BridgeTalk.appVersion.match(/\d\d$/) == '64';
+
+Pslib.isPhotoshop = app.name == "Adobe Photoshop";
+Pslib.isIllustrator = app.name == "Adobe Illustrator";
+
+if(Pslib.isPhotoshop)
+{
+	// these functions are often required when working with code obtained using the ScriptingListener plugin
+	cTID = function(s) {return app.charIDToTypeID(s);}
+	sTID = function(s) {return app.stringIDToTypeID(s);}
+}
 
 // metadata is only supported by Photoshop CS4+
 Pslib.isPsCS4andAbove = parseInt(app.version.match(/^\d.\./)) >= 11;
@@ -205,9 +217,9 @@ Pslib.unloadXMPLibrary = function()
 };
 
 // get layer's existing XMP if present
-Pslib.getXmp = function (layer, createNew)
+Pslib.getXmp = function (target, createNew)
 {
-	var layer = (layer == undefined ? app.activeDocument.activeLayer : layer);
+	var target = (target == undefined ? app.activeDocument.activeLayer : target);
 	var createNew = (createNew == undefined ? false : createNew);
 	var xmp;
 	
@@ -216,14 +228,15 @@ Pslib.getXmp = function (layer, createNew)
 	{
 		try
 		{
-			if($.level) $.writeln("Attempting to get metadata for layer \"" + layer.name + "\"");
-			xmp = new XMPMeta( layer.xmpMetadata.rawData );
+			if($.level) $.writeln("Attempting to get metadata for target \"" + target.name + "\"");
+			xmp = new XMPMeta( Pslib.isIllustrator ? target.XMPString : target.xmpMetadata.rawData );
 		}
 		catch( e )
 		{
-			if($.level) $.writeln("Metadata could not be found for layer \"" + layer.name + "\"" + (createNew ? "\nCreating new XMP object." : "") );
+			if($.level) $.writeln("Metadata could not be found for target \"" + target.name + "\"" + (createNew ? "\nCreating new XMP object." : "") );
 			if(createNew) xmp = new XMPMeta();
 		}
+
 		return xmp;
 	}
 	else
@@ -233,36 +246,25 @@ Pslib.getXmp = function (layer, createNew)
 };
 
 // get property: returns a string
-Pslib.getXmpProperty = function (layer, property)
+Pslib.getXmpProperty = function (target, property)
 {
 	// make sure XMP lib stuff is available
 	if(Pslib.loadXMPLibrary())
 	{
-		var layer = layer == undefined ? app.activeDocument.activeLayer : layer;
+		var target = (target == undefined ? ( Pslib.isIllustrator ? app.activeDocument : app.activeDocument.activeLayer) : target);
 		var value;
 		var xmp;
-		
-		// make sure we're not working with a background layer
-		if(layer.isBackgroundLayer)
-		{
-			if($.level) $.writeln("Metadata cannot exist on a background layer, so it cannot be accessed.");
-			return null;
-		}
 		
 		// access metadata
 		try
 		{
-			xmp = new XMPMeta( layer.xmpMetadata.rawData );
+			xmp = new XMPMeta( Pslib.isIllustrator ? target.XMPString : target.xmpMetadata.rawData );
 			value = decodeURI(xmp.getProperty(Pslib.XMPNAMESPACE, property));
-		
-			// unload library
-		//	Pslib.unloadXMPLibrary();
 			return value;
 		
 		} catch( e ) {
-			if($.level) $.writeln("XMP metadata could not be found for layer \"" + layer.name + "\"");
-		//   xmp = new XMPMeta();
-			return null
+			if($.level) $.writeln("XMP metadata could not be found for target \"" + target.name + "\"");
+			return null;
 		}
 	}
 	else
@@ -272,24 +274,24 @@ Pslib.getXmpProperty = function (layer, property)
 };
 
 // delete specific property
-Pslib.deleteXmpProperty = function (layer, property)
+Pslib.deleteXmpProperty = function (target, property)
 {
 	// load library
 	if(Pslib.loadXMPLibrary())
 	{
-		var layer = layer == undefined ? app.activeDocument.activeLayer : layer;
-		var xmp = Pslib.getXmp(layer);
+		var target = (target == undefined ? ( Pslib.isIllustrator ? app.activeDocument : app.activeDocument.activeLayer) : target);
+		var xmp = Pslib.getXmp(target);
 		
 		try
 		{
 			xmp.deleteProperty(Pslib.XMPNAMESPACE, property);
-			layer.xmpMetadata.rawData = xmp.serialize();
+			if(Pslib.isPhotoshop) target.xmpMetadata.rawData = xmp.serialize();
+			else if(Pslib.isIllustrator) target.XMPString = xmp.serialize();
 			return true;
 		}
 		catch( e )
 		{
-			if($.level) $.writeln("Metadata property could not be deleted from layer \"" + layer.name + "\"");
-			//xmp = new XMPMeta();
+			if($.level) $.writeln("Metadata property could not be deleted from target \"" + target.name + "\"");
 			return false;
 		}
 	}
@@ -305,7 +307,7 @@ Pslib.deleteXmpProperties = function (layer, propertiesArray)
 	// load library
 	if(Pslib.loadXMPLibrary())
 	{
-		var layer = layer == undefined ? app.activeDocument.activeLayer : layer;
+		var target = (target == undefined ? ( Pslib.isIllustrator ? app.activeDocument : app.activeDocument.activeLayer) : target);
 		var xmp = Pslib.getXmp(layer);
 		
 		try
@@ -316,7 +318,8 @@ Pslib.deleteXmpProperties = function (layer, propertiesArray)
 				xmp.deleteProperty(Pslib.XMPNAMESPACE, propertiesArray[i][0]);
 			}
 
-			layer.xmpMetadata.rawData = xmp.serialize();
+			if(Pslib.isPhotoshop) target.xmpMetadata.rawData = xmp.serialize();
+			else if(Pslib.isIllustrator) target.XMPString = xmp.serialize();
 				
 			return true;
 		}
@@ -334,31 +337,25 @@ Pslib.deleteXmpProperties = function (layer, propertiesArray)
 
 // set multiple properties
 // expects a two-dimensional array
-Pslib.setXmpProperties = function (layer, propertiesArray)
+Pslib.setXmpProperties = function (target, propertiesArray)
 {
 	// make sure XMP lib stuff is available
 	if(Pslib.loadXMPLibrary())
 	{
-		var layer = layer == undefined ? app.activeDocument.activeLayer : layer;
+		var target = (target == undefined ? ( Pslib.isIllustrator ? app.activeDocument : app.activeDocument.activeLayer) : target);
 		var prop;
 		var val;
 		var xmp;
 		
-		// make sure we're not working with a background layer
-		if(layer.isBackgroundLayer)
-		{
-			if($.level) $.writeln("XMP Metadata cannot be placed on a background layer. Aborting.");
-			return false;
-		}
-		
 		// access metadata
 		try
 		{
-		   xmp = new XMPMeta( layer.xmpMetadata.rawData );
-		   if($.level) $.writeln("XMP Metadata successfully fetched from layer \"" + layer.name + "\"");
+		//    xmp = new XMPMeta( target.xmpMetadata.rawData );
+		   xmp = new XMPMeta( Pslib.isIllustrator ? target.XMPString : target.xmpMetadata.rawData );
+		   if($.level) $.writeln("XMP Metadata successfully fetched from target \"" + target.name + "\"");
 		} catch( e ) 
 		{
-			if($.level) $.writeln("XMP metadata could not be found for layer \"" + layer.name + "\".\nCreating new XMP metadata container.");
+			if($.level) $.writeln("XMP metadata could not be found for target \"" + target.name + "\".\nCreating new XMP metadata container.");
 			xmp = new XMPMeta(  );
 		}
 	   
@@ -394,20 +391,19 @@ Pslib.setXmpProperties = function (layer, propertiesArray)
 			} 
 			catch( e )
 			{
-				var msg = "Could not place metadata property on provided layer.\n[" + prop + ": " + val +  +"]  " + typeof val + "\n" + e;
+				var msg = "Could not place metadata property on provided target.\n[" + prop + ": " + val +  +"]  " + typeof val + "\n" + e;
 			   if($.level) $.writeln( msg );
-			   else alert(msg);
+			//    else alert(msg);
 			   return false;
 			}
 		}
 
-		// applly and serialize
-		layer.xmpMetadata.rawData = xmp.serialize();
-		if($.level) $.writeln("Provided properties were successfully added to object \"" + layer.name + "\"");
-		
-		// unload library
-	//	Pslib.unloadXMPLibrary();
-		
+		// apply and serialize
+		if(Pslib.isPhotoshop) target.xmpMetadata.rawData = xmp.serialize();
+		else if(Pslib.isIllustrator) target.XMPString = xmp.serialize();
+		// if($.level) $.writeln("Provided properties were successfully added to object \"" + target.name + "\"");
+
+
 		return true;
 	}
 	else
@@ -418,32 +414,25 @@ Pslib.setXmpProperties = function (layer, propertiesArray)
 
 // get multiple properties
 // expects a two-dimensional array, returns an updated copy of that array
-Pslib.getXmpProperties = function (layer, propertiesArray)
+Pslib.getXmpProperties = function (target, propertiesArray)
 {
 	// make sure XMP lib stuff is available
 	if(Pslib.loadXMPLibrary())
 	{
-		var layer = layer == undefined ? app.activeDocument.activeLayer : layer;
+		var target = (target == undefined ? ( Pslib.isIllustrator ? app.activeDocument : app.activeDocument.activeLayer) : target);
 		var prop;
 		var val;
 		var xmp;
 		var updatedArray = [];
 		
-		// make sure we're not working with a background layer
-		if(layer.isBackgroundLayer)
-		{
-			if($.level) $.writeln("XMP Metadata cannot exist on a background layer. Aborting.");
-			return null;
-		}
-		
 		// access metadata
 		try
 		{
-		   xmp = new XMPMeta( layer.xmpMetadata.rawData );
-		   if($.level) $.writeln("XMP Metadata successfully fetched from object \"" + layer.name + "\"");
+		   xmp = new XMPMeta( Pslib.isIllustrator ? target.XMPString : target.xmpMetadata.rawData );
+		   if($.level) $.writeln("XMP Metadata successfully fetched from object \"" + target.name + "\"");
 		} catch( e ) 
 		{
-			if($.level) $.writeln("XMP metadata could not be found for object \"" + layer.name + "\".\nCreating new XMP metadata container.");
+			if($.level) $.writeln("XMP metadata could not be found for object \"" + target.name + "\".\nCreating new XMP metadata container.");
 			xmp = new XMPMeta(  );
 		}
 	   
@@ -463,20 +452,11 @@ Pslib.getXmpProperties = function (layer, propertiesArray)
 				if(propertyExists)
 				{
 					val = decodeURI(xmp.getProperty(Pslib.XMPNAMESPACE, prop));
-//~ 					alert(i + " " + val);
-					//xmp.setProperty(Pslib.XMPNAMESPACE, prop, val);
-					if($.level) $.writeln("\tgetting property: value [" + prop + ": " + val +"]  " + typeof val);
+					if($.level) $.writeln("\tgetting property: [" + prop + ": " + val +"]  " + typeof val);
 					
 					if($.level) $.writeln("\t" + propertiesArray[i][0]+ ": " + val + "\n");
 					updatedArray.push([propertiesArray[i][0], val]);
 				}
-				// if property found and value different, update
-//~ 				else if(propertyExists && xmp.getProperty(Pslib.XMPNAMESPACE, prop).toString() != val.toString() )
-//~ 				{
-//~ 					val = xmp.getProperty(Pslib.XMPNAMESPACE, prop)
-//~ 					//xmp.setProperty(Pslib.XMPNAMESPACE, prop, val);
-//~ 					if($.level) $.writeln("\tupdating [" + prop + ": " + val +"]  " + typeof val);
-//~ 				}
 				else
 				{
 					if($.level) $.writeln("\tProperty not found [" + prop + ": " + val +"]  " + typeof val);
@@ -487,18 +467,9 @@ Pslib.getXmpProperties = function (layer, propertiesArray)
 			{
 				var msg = "Could not fetch metadata property from provided object.\n[" + prop + ": " + val +  +"]  " + typeof val + "\n" + e;
 			   if($.level) $.writeln( msg );
-			   else alert(msg);
 			   return null;
 			}
 		}
-
-		// applly and serialize
-//~ 		layer.xmpMetadata.rawData = xmp.serialize();
-		if($.level) $.writeln("Provided properties were successfully fetched from object \"" + layer.name + "\"");
-		
-		// unload library
-	//	Pslib.unloadXMPLibrary();
-//~ 		alert(updatedArray);
 		return updatedArray;
 	}
 	else
@@ -509,32 +480,25 @@ Pslib.getXmpProperties = function (layer, propertiesArray)
 
 // returns bidimensional array of properties/values present in provided namespace
 // useful for debugging and building UI windows
-Pslib.getPropertiesArray = function (layer)
+Pslib.getPropertiesArray = function (target)
 {
 	// make sure XMP lib stuff is available
 	if(Pslib.loadXMPLibrary())
 	{
-		var layer = layer == undefined ? app.activeDocument.activeLayer : layer;
+		var target = (target == undefined ? ( Pslib.isIllustrator ? app.activeDocument : app.activeDocument.activeLayer) : target);
 		var xmp;
 		var propsArray = [];
-		var propsReport = "";
-		
-		// make sure we're not working with a background layer
-		if(layer.isBackgroundLayer)
-		{
-			if($.level) $.writeln("XMP Metadata cannot exist on a background layer. Aborting.");
-			return null;
-		}
+		// var propsReport = "";
 		
 		// access metadata
 		try
 		{
-		   xmp = new XMPMeta( layer.xmpMetadata.rawData );
-		   if($.level) $.writeln("XMP Metadata successfully fetched from object \"" + layer.name + "\"");
+		   xmp = new XMPMeta( Pslib.isIllustrator ? target.XMPString : target.xmpMetadata.rawData );
+		   if($.level) $.writeln("XMP Metadata successfully fetched from object \"" + target.name + "\"");
 		} catch( e ) 
 		{
-			if($.level) $.writeln("XMP metadata could not be found for object \"" + layer.name + "\".\nCreating new XMP metadata container.");
-			xmp = new XMPMeta(  );
+			if($.level) $.writeln("XMP metadata could not be found for object \"" + target.name + "\".\nCreating new XMP metadata container.");
+			return null;
 		}
 	
 		// XMPConst.ITERATOR_JUST_CHILDREN	XMPConst.ITERATOR_JUST_LEAFNODES	XMPConst.ITERATOR_JUST_LEAFNAMES	XMPConst.ITERATOR_INCLUDE_ALIASES
@@ -547,12 +511,12 @@ Pslib.getPropertiesArray = function (layer)
 			var propName = next.path.replace( Pslib.XMPNAMESPACEPREFIX, "" ); 
 			var propValue = decodeURI(next);
 			propsArray.push([propName, propValue]);
-			propsReport += (propName + "\t" + propValue + "\n");
+			// propsReport += (propName + "\t" + propValue + "\n");
 			next = xmpIter.next();
 		}
 	
-		if($.level) $.writeln(propsReport);
-		if($.level) $.writeln("Properties successfully fetched from object \"" + layer.name + "\"");
+		// if($.level) $.writeln(propsReport);
+		// if($.level) $.writeln("Properties successfully fetched from object \"" + target.name + "\"");
 		
 		return propsArray;
 	}
@@ -562,20 +526,137 @@ Pslib.getPropertiesArray = function (layer)
 	}
 };
 
+
+// returns dictionary object with XMP property values if found (each is null if not found, unless allowEmptyString = true)
+// favors object-notation as input, but also supports unidimensional and bidimensional arrays
+//      var dictionary = { propertyname1: null, propertyname2: null, propertyname3: null }
+//      var oneDimensionArray = [ "propertyname1", "propertyname2", "propertyname3" ];
+//      var twoDimensionArray = [ ["propertyname1", null], ["propertyname2", null], ["propertyname3", null] ];
+// 
+Pslib.getXmpDictionary = function( target, obj, allowEmptyStringBool, typeCaseBool)
+{
+    var target = target == undefined ? app.activeDocument : target;
+    var allowEmptyStringBool = allowEmptyStringBool == undefined ? false : allowEmptyStringBool;
+    var typeCaseBool = typeCaseBool == undefined ? false : typeCaseBool;
+    var tempArr = [];
+    var dict = {};
+
+    // if array, typename is object, but objects typically don't have a length property
+    if( typeof obj == "object" && obj.length != undefined)
+    {
+        // build temporary array to fetch all properties in one call
+        for(var i = 0; i < obj.length; i++)
+        {
+            var index = obj[i];
+            // if bidimensional array 
+            if( typeof index == "object" && index.length > 1)
+            {
+                // manage extra field (typically label display names)
+                if(index.length == 3)
+                {
+                    tempArr.push( [ obj[i][0], null, obj[i][2]]);
+                }
+                else
+                {
+                    tempArr.push( [ obj[i][0], null ]);
+                }                
+            }
+            // if unidimensional array
+            else
+            {
+                tempArr.push( [ obj[i], null ]);
+            }
+        }
+
+    }
+    // otherwise if object
+    else
+    {
+        for (var idx in obj)
+        {
+            // skip members and internal stuff
+            if (idx.charAt(0) == '_' || idx == "Components")
+            {
+                continue;			
+            }
+        
+            tempArr.push( [ idx, null ]);
+        }
+    }
+
+    // fetch XMP values
+    var propertiesArr = Pslib.getXmpProperties( target, tempArr );
+
+	if(propertiesArr != null)
+	{
+		for(var i = 0; i < propertiesArr.length; i++)
+		{
+			var propName = propertiesArr[i][0];
+			var propValue = propertiesArr[i][1];
+
+			// attempt to cast types based on string content
+			if(propValue == 'true' || propValue == 'false')
+			{
+				propValue = (propValue == 'true');
+			}
+			else if(propValue == 'null' || propValue == 'undefined' || propValue == undefined )
+			{
+				propValue = null;
+			}
+			else if( !isNaN(Number(propValue)) )
+			{
+				// Workaround for cases where "000000" which should remain as is
+					// if string has more than one character, if first character is a zero and second character is not a dot (decimals etc)
+					// then number or string was meant to keep its exact present form
+				if(propValue.length > 1 && ( (propValue[0] == "0" || propValue[0] == ".") && (propValue[1] != "." || propValue[1].toLowerCase() != "x") ) ) 
+				{
+
+				}
+
+				//workaround for hex denomination format (also keep as string)
+				else if(Number(propValue) != 0)
+				{
+					if(propValue[0] == "0" && propValue[1].toLowerCase() == "x")
+					{
+	
+					}
+					else
+					{
+						propValue = Number(propValue);
+					}
+				}
+				// otherwise yes, do force number
+				else
+				{
+					propValue = Number(propValue);
+				}
+			}
+				
+			// if($.level) $.writeln( propName + ": " + propValue + "   " + typeof propValue );
+			dict[propName] = propValue == undefined ? (allowEmptyStringBool ? "" : null) : propValue;
+		}
+	}
+ 
+    return dict;
+};
+
+
 // clear XMP : current workaround is to replace current data by empty data
 // this is problematic if you actually want to strip the layer from its metadata object entirely
 // Edit: turns out there is no structural difference between document XMP and layer XMP. 
 // Adobe essentially extended the XMP functionality to layers. A document without an XMP container doesn't make sense, therefore...
-Pslib.clearXmp = function (layer)
+Pslib.clearXmp = function (target)
 {
+	// we do NOT want to delete the illustrator document's XMP source :D
+	if(Pslib.isIllustrator) return false;
 	if(Pslib.loadXMPLibrary())
 	{
-		var layer = layer == undefined ? app.activeDocument.activeLayer : layer;
-		
+		var target = (target == undefined ? ( Pslib.isIllustrator ? app.activeDocument : app.activeDocument.activeLayer) : target);
+		var xmp;
 		// if metadata not found, return
 		try
 		{
-			var xmp = new XMPMeta(layer.xmpMetadata.rawData);
+			xmp = new XMPMeta( Pslib.isIllustrator ? target.XMPString : target.xmpMetadata.rawData );
 		}
 		catch(e)
 		{
@@ -585,9 +666,7 @@ Pslib.clearXmp = function (layer)
 		
 		// if metadata found, replace by empty version
 		var emptyXmp = new XMPMeta();
-		layer.xmpMetadata.rawData = emptyXmp.serialize();
-		
-		//	Pslib.unloadXMPLibrary();
+		if(Pslib.isPhotoshop) target.xmpMetadata.rawData = xmp.serialize();
 			
 		return true;
 	}
@@ -598,9 +677,9 @@ Pslib.clearXmp = function (layer)
 };
 
 // clear entire namespace
-Pslib.clearNamespace = function (layer, namespace)
+Pslib.clearNamespace = function (target, namespace)
 {
-	var layer = layer == undefined ? app.activeDocument.activeLayer : layer;
+	var target = (target == undefined ? ( Pslib.isIllustrator ? app.activeDocument : app.activeDocument.activeLayer) : target);
 	/*
 	if(Pslib.loadXMPLibrary())
 	{
@@ -633,12 +712,12 @@ Pslib.clearNamespace = function (layer, namespace)
 	*/
 
 	// workaround: not friendly on performances, but gets the job done
-	var removePropArray = Pslib.getPropertiesArray(layer);
-	Pslib.deleteXmpProperties(layer, removePropArray);
+	var removePropArray = Pslib.getPropertiesArray(target);
+	Pslib.deleteXmpProperties(target, removePropArray);
 };
 
 // save metadata to XML file
-Pslib.exportLayerMetadata = function (layer, path, alertMsg)
+Pslib.exportLayerMetadata = function (target, path, alertMsg)
 {
 	if(Pslib.loadXMPLibrary())
 	{
@@ -647,18 +726,17 @@ Pslib.exportLayerMetadata = function (layer, path, alertMsg)
 		// verify that xmp data is available
 		   try
 		   {
-			  var xmp = layer.xmpMetadata.rawData.toString();
+			  xmp = new XMPMeta( Pslib.isIllustrator ? target.XMPString.toString() : target.xmpMetadata.rawData.toString() );
 
-			// 
 			if(alertMsg) alert(xmp);
-			//
+	
 		   }
 			catch(e)
 			{
 			   var msg = "";
 			   if(e.message.match("missing") != null)
 			   {	
-				   msg += "There doesn't seem to be any metadata attached to layer \"" + layer.name + "\"";  
+				   msg += "There doesn't seem to be any metadata attached to layer \"" + target.name + "\"";  
 				}
 				if($.level) $.writeln(msg + "\n" + e);
 				else alert(msg + "\n" + e);
@@ -721,10 +799,10 @@ Pslib.exportLayerMetadata = function (layer, path, alertMsg)
 };
 
 // save properties/values to CSV
-Pslib.propertiesToCSV = function(layer, namespace, uri)
+Pslib.propertiesToCSV = function(target, namespace, uri)
 {	
-	var layer = layer == undefined ? app.activeDocument.activeLayer : layer;
-	var propertiesArray = Pslib.getPropertiesArray(layer)
+	var target = (target == undefined ? ( Pslib.isIllustrator ? app.activeDocument : app.activeDocument.activeLayer) : target);
+	var propertiesArray = Pslib.getPropertiesArray(target);
 
 	var report = "";
 
@@ -767,9 +845,9 @@ Pslib.propertiesToCSV = function(layer, namespace, uri)
 };
 
 // save properties/values to CSV
-Pslib.propertiesFromCSV = function(layer, namespace, uri)
+Pslib.propertiesFromCSV = function(target, namespace, uri)
 {	
-	var layer = layer == undefined ? app.activeDocument.activeLayer : layer;
+	var target = (target == undefined ? ( Pslib.isIllustrator ? app.activeDocument : app.activeDocument.activeLayer) : target);
 
 	var csv = new File(uri);
 	var pairs = [];
@@ -809,7 +887,7 @@ Pslib.propertiesFromCSV = function(layer, namespace, uri)
 	
 	if(propertiesArray.length)
 	{
-		success = Pslib.setXmpProperties(layer, propertiesArray);
+		success = Pslib.setXmpProperties(target, propertiesArray);
 	}
 	return success;
 };
@@ -817,14 +895,35 @@ Pslib.propertiesFromCSV = function(layer, namespace, uri)
 // this returns the full active document path without building a histogram in CS2 (also bypasses the 'document not saved' exception)
 Pslib.getDocumentPath = function(doc)
 {
-	var doc = doc != undefined ? doc : app.activeDocument;
-	if(app.activeDocument != doc) app.activeDocument = doc;
-
-	var ref = new ActionReference();
-    ref.putProperty(cTID('Prpr'), cTID('FilR'));
-    ref.putEnumerated(cTID('Dcmn'), cTID('Ordn'), cTID('Trgt'));
-    var desc = executeActionGet(ref);
-    return desc.hasKey(cTID('FilR')) ? desc.getPath(cTID('FilR')) : undefined;
+	if(Pslib.isPhotoshop)
+	{
+		var doc = doc != undefined ? doc : app.activeDocument;
+		if(app.activeDocument != doc) app.activeDocument = doc;
+	
+		var ref = new ActionReference();
+		ref.putProperty(cTID('Prpr'), cTID('FilR'));
+		ref.putEnumerated(cTID('Dcmn'), cTID('Ordn'), cTID('Trgt'));
+		var desc = executeActionGet(ref);
+		return desc.hasKey(cTID('FilR')) ? desc.getPath(cTID('FilR')) : undefined;
+	}
+	else
+	{
+		var docNameNoExt = doc.name.match(/([^\.]+)/)[1];
+		var docFullPath = doc.fullName;
+		var matchesSystem = docFullPath.toString().match( app.path) != null;
+		var defaultExportDir = docNameNoExt.replace(/[\s:\/\\*\?\"\<\>\|]/g, "_") + "-assets";
+		
+		// .fullName pointing to app.path means document has not been saved to disk
+		if(matchesSystem)
+		{
+			targetDirectory = new Folder ( defaultDocPath );
+			"~/" + Folder.desktop.name + "/AiXMPData";
+		}
+		else
+		{
+			targetDirectory = new Folder (docFullPath.parent + "/" + defaultExportDir);
+		}
+	}
 };
 
 "\n";
