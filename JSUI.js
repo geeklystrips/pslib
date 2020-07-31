@@ -87,15 +87,25 @@
 		- added JSUI.message() + JSUI.showInfo() for referring user to specific documentation
 		- added JSUI.randomizeRGBColor() for generating fully random colors (customizable range)
 
-	TODO
-	- make imgFile property accept existing ScriptUIStates object ( if typeof imgFile == "object" and instanceof file, create from filename, otherwise test for .active/.inactive properties) 
-	- also make it accept arrays to bypass default naming scheme (if typeof imgFile == "object" && imgFile.length != undefined)
-	- fallback to placeholder handle for cases where image doesn't exist (use "placeholder.png" if available?)
+	0.9783
+		- added support for directly passing scriptUIstates objects as inlined obj.imgFile to most visual component constructors
+		- edittext component now has default preferredSize width of 300 
+		- added "system" addColorPicker() widget component
+		- added JSUI.writeProperty() to allow writing single property value to custom file (independant of JSUI.PREFS)
+		- added addToggleIconGroup() to internally handle arrays of toggle iconbuttons
+		- tweaked addToggleIconButton() 
+			- support for missing images (will now fall back to regular radiobuttons/checkboxes)
+			- support for ignoring the creation of prefs properties (ToggleIconButton components that are used as containers for a complex widget like addImageGrid)
 
+	TODO
+	- support for hybrid ToggleIconButton component fallback to radiobuttons (if one image is missing instead of all images for radiobuttons)
+	- method for getting which property from toggleiconbutton array is activated
+	- JSUI needs a method for standalone properties that do not need to be saved to INI
+		- bypass based on provided array of strings during toINIstring process?
+	- make imgFile target accept arrays to bypass default naming scheme (if typeof imgFile == "object" && imgFile.length != undefined) or (if imgFile instanceof...)
 	- Scrollable alert support for cases with overflowing content
-	- System color picker wrapper
 	- Better support for JSUI.addImageGrid() types (only supports arrays of strings for now)
-	- save settings to / read from XML
+	- save settings to / read from XML / JSON
 
 	Uses functions adapted from Xbytor's Stdlib.js
 	
@@ -106,14 +116,14 @@
 	toIniString
 	fromIniString
 	readIniFile
-	writeIniFile
+	writeIniFile 
 */
 
 /* persistent namespace	*/
 JSUI = function(){}; 
 
 /* version	*/
-JSUI.version = "0.978";
+JSUI.version = "0.9783";
 
 // do some of the stuff differently if operating UI dialogs from ESTK
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -127,7 +137,8 @@ JSUI.isWin7 = $.os.match(/windows/i) == "Windows" ? $.os.match(" 6.1 Service Pac
 JSUI.isWin10 = $.os.match(/windows/i) == "Windows" ? $.os.match(" 6.2 Service Pack ") != null : false;
 JSUI.is_x64 = JSUI.isWindows ? BridgeTalk.appVersion.match(/\d\d$/) == '64' : true;
 
-JSUI.TOOLNAME = "DEFAULTNAME";	
+JSUI.TOOLNAME = "DEFAULTNAME";
+JSUI.TOOLDISPLAYNAME = JSUI.TOOLNAME;
 
 /*	This kind of data is frequently stored in ~/Library/Application Support.
 	User-specific settings are frequently stored in ~/Library/Preferences
@@ -152,11 +163,13 @@ JSUI.autoSave = false;
 JSUI.PrintINIstringInfo = false;
 JSUI.CS6styling = true;
 
+// this must be invoked for JSUI.INIFILE to be valid
 JSUI.populateINI = function()
 {
 	JSUI.INIFILE = new File(JSUI.USERPREFSFOLDER + "/" + JSUI.TOOLSPREFSFOLDERNAME + "/" + JSUI.TOOLNAME + ".ini");
 	// JSUI.status.message = "JSUI init OK";
 	JSUI.status.message = "";
+	return JSUI.INIFILE.exists;
 }
 
 /* INI prefs framework	*/
@@ -165,6 +178,8 @@ JSUI.status = { progress: 0, percent: "0%", message: "" };
 
 /*  Layout and graphics  */
 JSUI.SPACING = (JSUI.isWindows ? 3 : 1);
+JSUI.DEFAULTEDITTEXTCHARLENGTH = 35;
+JSUI.DEFAULTEDITTEXTWIDTH = 300;
 JSUI.dark = [0.3255, 0.3255, 0.3255];
 JSUI.light = [0.86, 0.86, 0.86];
 JSUI.yellow = [1.0, 0.78, 0.04];
@@ -392,11 +407,19 @@ JSUI.getChar = function(num)
 	return str;
 };
 
+// pads numbers that don't have a minimum of 4 digits
 JSUI.zeropad = function(str)
 {
 	/* padding string with zeroes	*/
 	return (str.length < 2 ? "000" + str :  (str.length < 3 ? "00" + str : (str.length < 4 ? "0" + str : (str) ) ) ); // 40 becomes "0040"
 };
+
+// // pads hex numbers that don't have a minimum of 6 digits
+// JSUI.sixzeropad = function(str)
+// {
+// 	/* padding string with zeroes	*/
+// 	return ( ( (str.length < 2 ? "00000" + str :  (str.length < 3 ? "0000" + str : (str.length < 4 ? "000" + str : (str) ) ) ) ) ); // CC becomes "0000CC"
+// };
 
 // with help from Davide
 // *bows*
@@ -598,10 +621,13 @@ JSUI.createDialog = function( obj )
 	{
 		var textfield = messageContainer.add("edittext", undefined, obj.text != undefined ? obj.text : "DEFAULT STRING");
 		textfield.characters = obj.characters != undefined ? obj.characters : 35;
+		
 
 		var buttons = messageContainer.addRow( { spacing: obj.spacing } );
  		var cancel = buttons.addButton( { label: "Cancel", name: "cancel", width: 125, height: 44, alignment: "right" });
 		var ok = buttons.addButton( { label: obj.confirmLabel != undefined ? obj.confirmLabel : "Confirm", name: "ok", onClickFunction: obj.onClickFunction, width: 125, height: 44, alignment: "right" });
+
+		textfield.active = true;
 
 		if(obj.onClickFunction != undefined)
 		{
@@ -685,9 +711,11 @@ JSUI.alert = function( obj )
 };
 
 // softer version of the above function, which is meant as informative more than a warning
-JSUI.message = function( messageStr )
+JSUI.message = function( messageStr) //, urlStr)
 {
 	var obj = {};
+	// obj.url = urlStr; 
+
 	obj.message = messageStr;
 	obj.imgFile = obj.imgFile != undefined ? obj.imgFile : "/img/" + ( JSUI.isPhotoshop ? "Photoshop" : "Illustrator") + (JSUI.isPhotoshop && JSUI.isCS6 ? "CS6" : "CC" ) + "_96px.png";
 
@@ -807,6 +835,7 @@ try
 }
 catch(e)
 {
+	alert("error!")
 	return prompt( obj.message, obj.text, obj.title );
 }
 
@@ -1255,10 +1284,11 @@ Object.prototype.addCheckBox = function(propName, obj)
 	usage:
 	- the first parameter must be a string that matches the name of the variable
 	- if that name matches a property which belongs to the JSUI.PREFS object, this property will be bound to the value of the checkbox/radiobutton
-	- important: binding will not happen if the variable name does not match the string variable
+	- important: binding will not happen if the variable name does not match the string variable (first param)
 	- the preset value can otherwise be passed as part of the obj parameter { value: true/false }
 	- if an array of variable names (strings) is provided, the radiobutton logic will be applied automatically
 	- images are required (minimum of one per component, full support requires six per component)
+	- component can be forced to ignore/bypass its own prefs (as in the case of addImageGrid) with obj.createProperty = false
 	- a local function can be passed 
 
 	//
@@ -1286,39 +1316,95 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 	// abort if no object provided
 	if(obj == undefined) return;
 
-	var scriptUIstates = JSUI.getScriptUIStates( obj );
+	// obj.createProperty is true by default
+	if(obj.createProperty == undefined) obj.createProperty = true;
+	
+	// component constructor should support valid scriptUIStates
+	var scriptUIstates;
 
+	if(obj.imgFile != undefined && obj.imgFile != null)
+	{
+		scriptUIstates = obj.imgFile.active != undefined ? obj.imgFile : JSUI.getScriptUIStates( obj );
+	}
+	else
+	{
+		scriptUIstates = JSUI.getScriptUIStates( obj );
+	}
+
+	// in case of problems with image files, fallback to radiobutton/checkbox components
+	function _addFallbackComponent( container, propName, obj )
+	{
+		// if($.level) $.writeln("Fallback: " + (obj.array ? 'radiobutton' : 'checkbox') + "\n");
+		var c = (obj.array ? container.addRadioButton(propName, obj) : container.addCheckBox(propName, obj) );
+
+		// if property does not exist, create if asked
+		if(JSUI.PREFS[propName] == undefined)
+		{
+			if(obj.createProperty)
+			{
+				JSUI.PREFS[propName] = false;
+			}
+		}
+		else
+		{	// if property is present but shouldn't, remove it if not welcome.
+			if(!obj.createProperty)
+			{
+				delete JSUI.PREFS[propName];
+			}
+		}
+
+		if(JSUI.PREFS[propName] != undefined)
+		{
+			c.value = (typeof JSUI.PREFS[propName] == "boolean" ? JSUI.PREFS[propName] : false);
+		}
+		return c;
+	};
+	
 	// if image file is found, add iconbutton
 	if(obj.imgFile != undefined && obj.imgFile != null)
 	{
-		if(scriptUIstates != null) // && scriptUIstates.active != null)
+		if(scriptUIstates != null)
 		{
 			if(scriptUIstates.active != undefined) // && scriptUIstates.active != null)
 			{
-				if($.level) $.writeln("Adding [" + propName + "] toggle iconbutton" + (obj.array ? ' with radiobutton behavior' : '') + "\n");
-				var c = this.add('iconbutton', undefined, scriptUIstates.active, {style: "toolbutton"});
+				// if($.level) $.writeln("Adding [" + propName + "] toggle iconbutton" + (obj.array ? ' with radiobutton behavior' : '') + "\n");
+				var c = this.add('iconbutton', undefined, scriptUIstates.active, {style: "toolbutton" });
+				
+				// if property does not exist, create if asked
+				if(JSUI.PREFS[propName] == undefined)
+				{
+					if(obj.createProperty)
+					{
+						JSUI.PREFS[propName] = false;
+					}
+				}
+				else
+				{	// if property is present but shouldn't, remove it if not welcome.
+					if(!obj.createProperty)
+					{
+						delete JSUI.PREFS[propName];
+					}
+				}
 		
-				// let's add a .value container property, it makes everything so much easier
-				c.value = JSUI.PREFS[propName] != undefined ? (typeof JSUI.PREFS[propName] == "boolean" ? JSUI.PREFS[propName] : false) : false;
+				if(JSUI.PREFS[propName] != undefined)
+				{
+					c.value = (typeof JSUI.PREFS[propName] == "boolean" ? JSUI.PREFS[propName] : false);
+				}
 			}
 			else
 			{
-				if($.level) $.writeln("Fallback: " + (obj.array ? 'radiobutton' : 'checkbox') + "\n");
-				var c = (obj.array ? this.addRadioButton(propName, obj) : this.addCheckBox(propName, obj) );
-				c.value = JSUI.PREFS[propName] != undefined ? (typeof JSUI.PREFS[propName] == "boolean" ? JSUI.PREFS[propName] : false) : false;
-
-				// return ;
+				var c = _addFallbackComponent( this, propName, obj );
 			}
-	
 		}
-
+		else
+		{
+			var c = _addFallbackComponent( this, propName, obj );
+		}
 	}
-	// if imgFile does not exist, fallback to checkbox or radiobutton component 
-	// else
-	// {
-	// 	if($.level) $.writeln("Fallback: " + (obj.array ? 'radiobutton' : 'checkbox') + "\n");
-	// 	return (obj.array ? this.addRadioButton(propName, obj) : this.addCheckBox(propName, obj) );
-	// }
+	else
+	{
+		var c = _addFallbackComponent( this, propName, obj );
+	}
 
 	if(obj.width != undefined) c.preferredSize.width = obj.width;
 	if(obj.height != undefined) c.preferredSize.height = obj.height;
@@ -1335,7 +1421,7 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 	c.scriptUIstates = scriptUIstates; 
 
 	// fix for unwanted borders and outlines (CS6 & CC+) -- requires onDraw + eventListener
-	if(JSUI.isCS6)
+	if(JSUI.isCS6 && c.scriptUIstates != undefined)
 	{
 		var refImage = c.scriptUIstates.normalState;
 
@@ -1391,7 +1477,8 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 
 	c.onClick = function()
 	{ 
-		if(obj.array != undefined)
+		// if using a set of radiobuttons
+		if(obj.array != undefined && this.scriptUIstates != undefined)
 		{ 
 			//in the case where the initial value of the clicked object is true, skip the whole thing
 			var currentValue = JSUI.PREFS[ propName ] != undefined ? JSUI.PREFS[ propName ] : false;
@@ -1404,11 +1491,13 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 
 					if(component != undefined)
 					{
-						// this doesn't work!
+						// this doesn't work -- because value is not technically a boolean (1 or 0)
 						// component.value = !component.value;
 
 						component.value = isCurrentComponent ? !component.value : false;
-						if(JSUI.PREFS[ propName ] != undefined)
+
+						// don't create property if it's not already present.
+						if(JSUI.PREFS[ obj.array[i] ] != undefined)
 						{
 							JSUI.PREFS[ obj.array[i] ] = component.value;
 						}
@@ -1417,12 +1506,59 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 				}
 			}
 		}
-		else
+		// if image checkbox
+		else if( obj.array == undefined && this.scriptUIstates != undefined )
 		{
 			this.value = !this.value;
-			JSUI.PREFS[ propName ] = this.value;
-			this.update();
-			if($.level) JSUI.debug("\n" + propName + ": " + JSUI.PREFS[propName] + "\n"+propName+".image: " + c.image); 
+
+			if(JSUI.PREFS[ propName ] != undefined)
+			{
+				if( JSUI.PREFS[ propName ] != this.value)
+				{
+					JSUI.PREFS[ propName ] = this.value;
+					this.update();
+				}
+			}
+		}
+		else if( this.scriptUIstates == undefined )
+		{
+			// this.value = !this.value;
+
+			// if(JSUI.PREFS[ propName ] != undefined)
+			// {
+			// 	JSUI.PREFS[ propName ] = this.value;
+			// }
+
+			// regular radiobutton
+			if(obj.array != undefined)
+			{
+				for(var i = 0; i < obj.array.length; i++)
+				{
+					var component = this.Components[ obj.array[i] ];
+					var isCurrentComponent = (component == this);
+					if(component != undefined)
+					{
+						if(JSUI.PREFS[ obj.array[i] ] != undefined)
+						{
+							JSUI.PREFS[ obj.array[i] ] = isCurrentComponent ? this.value : !this.value;
+							if($.level) JSUI.debug("\n" + obj.array[i] + ": " + JSUI.PREFS[obj.array[i]]); 
+						}
+					}
+				}
+			}
+			// regular checkbox
+			else
+			{
+				if(JSUI.PREFS[ propName ] != undefined)
+				{
+					JSUI.PREFS[ propName ] = this.value;
+					// if($.level) JSUI.debug("\n" + propName + ": " + JSUI.PREFS[propName]); 
+				}
+			}
+
+			// don't update
+			// this.update();
+			// if($.level) JSUI.debug("\n" + propName + ": " + JSUI.PREFS[propName] + "\n"+propName+".image: " + c.image); 
 		}
 
 		// debug display only
@@ -1434,8 +1570,9 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 				var bool = JSUI.PREFS[ obj.array[i] ];
 				str += "  " + obj.array[i] + ": " + (bool ? bool.toString().toUpperCase() : bool);
 			}
-			if($.level) JSUI.debug((str ? "\n[" + str + " ]" : "") + "\n" + propName + ": " + JSUI.PREFS[propName] + "\n"+propName+".image: " + c.image); 
+			if($.level) JSUI.debug((str ? "\n[" + str + " ]" : "") + "\n" + propName + ": " + JSUI.PREFS[propName] + ( this.scriptUIstates != undefined ? ("\n"+propName+".image: " + c.image) : "") ); 
 		}
+
 		if(JSUI.autoSave) JSUI.saveIniFile();
 		if(obj.onClickFunction) obj.onClickFunction();
 	}
@@ -1443,12 +1580,18 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 	// update callback: update the UI based on the true/false value
 	c.update = function( scriptUIStatesObj )
 	{
+		// if not a graphics component, just skip the whole thing
+		if(this.scriptUIstates == undefined)
+		{
+			return;
+		}
+
 		if(scriptUIStatesObj == undefined)
 		{
 			var scriptUIStatesObj = this.scriptUIstates;
 		}
 
-		if($.level) $.writeln(propName + ": Using " + scriptUIStatesObj.active);
+		// if($.level) $.writeln(propName + ": Using " + scriptUIStatesObj.active);
 
 		if(JSUI.isCS6)
 		{
@@ -1470,6 +1613,100 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 	if(JSUI.PREFS[ propName ] != undefined) c.update();
 
 	return c;
+};
+
+// auto-group radiobuttons (self-sufficient)
+/*
+
+var obj = {   propertyNames: ['one', 'two', 'three'], 										// individual property names
+                        labels: ['One.', 'Two...', 'Three!'],
+                        helpTips: ['(Number one)', '(Number two)', '(Number three)'],
+						createProperties: false, 											// default is true: false will still use values from INI if present
+																							// typically used to keep toggleIconButton values out of the INI file because they are used as part of a complex widget (such as addImageGrid)
+                        images: ["img/one.png", "img/two.png","img/three.png"],
+                        selection: 0, 														// optional: make sure this does not conflict with JSUI.PREFS object properties 
+                        onClickFunction: function(){ if($.level) $.writeln("Oh HAI! Iz clicked."); }
+					};
+container.addToggleIconGroup( obj );
+
+*/
+Object.prototype.addToggleIconGroup = function( obj )
+{
+    // abort if no object provided
+    if(obj == undefined) return;
+
+    if(obj.propertyNames == undefined) return;
+
+    var componentsArray = [];
+    var iniPropertiesPresent = false;
+    var selectionPresent = false;
+
+    // look for existing properties in INI file
+    var arraySelectionIndex = 0;
+    for(var i = 0; i < obj.propertyNames.length; i++)
+    {
+        if(JSUI.PREFS[obj.propertyNames[i]] != undefined)
+        {
+            iniPropertiesPresent = true;
+        }
+        if(JSUI.PREFS[obj.propertyNames[i]])
+        {
+            arraySelectionIndex = i;
+        }
+    }
+
+    for(var i = 0; i < obj.propertyNames.length; i++ )
+    {
+		// inline declaration fails for some reason...?
+        // var iconObj = { 
+        //     array: obj.propertyNames,
+        //     createProperty: obj.createProperties,
+        //     label: obj.labels[i],
+        //     helpTip: obj.toolTips[i],
+        //     imgFile: obj.images[i],
+        //     selection: obj.selection,
+        //     onClickFunction: obj.onClickFunction
+        // };
+        // var toggleButtonObjSpecs = { imgFile: defaultImg, createProperty: obj.createProperties };
+        var iconObj = {};
+        iconObj.array = obj.propertyNames;
+        iconObj.createProperty = obj.createProperties;
+        iconObj.label = obj.labels[i];
+        iconObj.helpTip = obj.helpTips[i];
+        iconObj.imgFile = obj.images[i];
+        iconObj.selection = arraySelectionIndex != 0 ? arraySelectionIndex : obj.selection;  // iniPropertiesPresent ?
+        iconObj.onClickFunction = obj.onClickFunction;
+
+        var c = this.addToggleIconButton( obj.propertyNames[i], iconObj );
+
+        // determine which component will be active by default
+        if(iconObj.selection != undefined)
+        {
+            if(iconObj.selection == i)
+            {
+                // if using toggleiconbutton (images) c.value is either 0 or 1
+                if(iconObj.imgFile != undefined) c.value = 1;
+                else c.value = true;
+
+                selectionPresent = true;
+            }
+        }
+        c.update();
+        componentsArray.push(c);
+        this.Components[obj.propertyNames[i]] = c;
+    }
+
+    // if using radiobuttons and no selection was specified in the process, turn on first object in the list
+    if(obj.array && !selectionPresent)
+    {
+        if(iconObj.imgFile != undefined) componentsArray[0].value = 1;
+        else componentsArray[0].value = true;
+    }
+
+    // for cases where JSUI.PREFS default object declaration contains presets, use those instead
+    // in accordance with the radiobutton logic, the last object that is true has priority over the others
+
+    return componentsArray;
 };
 
 // visually update array of controls (typically a group of toggle icon buttons)
@@ -1589,7 +1826,7 @@ Object.prototype.addImageGrid = function(propName, obj)
 		{
 			var itemName = propName + "Row" + row + "Id" + item;
 			// helptip is screwed up!
-			var iconbutton = r.addToggleIconButton(itemName, { imgFile: obj.imgFile, array: jsuiStrArr, helpTip: obj.strArray[ ( row > 0 ? row * obj.columns : 0 ) + item ] });
+			var iconbutton = r.addToggleIconButton(itemName, { imgFile: obj.imgFile, array: jsuiStrArr, createProperty: false, helpTip: obj.strArray[ ( row > 0 ? row * obj.columns : 0 ) + item ] });
 			jsuiComponentArr.push(iconbutton);
 
 			// override onClick event
@@ -1965,10 +2202,14 @@ myWindow.onShow = function ()
 	if(useGroup)
 	{
 		var c = g.add('edittext', undefined, obj.text != undefined ? decodeURI (obj.text) : propName, {multiline:obj.multiline, readonly: readonly});
+		// if(obj.height) c.preferredSize.height = obj.height;
+		// if(obj.width) c.preferredSize.width = obj.width;
 	}
 	else 
 	{
 		var c = this.add('edittext', undefined, obj.text != undefined ? decodeURI (obj.text) : propName, {multiline:obj.multiline, readonly: readonly});
+		// if(obj.height) c.preferredSize.height = obj.height;
+		// if(obj.width) c.preferredSize.width = obj.width;
 	}
 
 	// store previous status to be used as custom dialog onClose()
@@ -1988,7 +2229,6 @@ myWindow.onShow = function ()
 	{
 		try
 		{
-
 			if(hasImage && imgFileExists)
 			{
 				var imgFileUp = new File(imgFile.toString().replace(/\.(png)$/i, "_up.png"));
@@ -2106,12 +2346,28 @@ myWindow.onShow = function ()
 
 	//
 	}
-	
-	// oh that's right, this is still technically an edittext component
-	/*c.characters = obj.characters != undefined ? obj.characters : JSUI.CHARLENGTH;*/
-	if(obj.characters) c.characters = obj.characters;
 
-	if(obj.width) c.preferredSize.width = obj.width;
+	// Photoshop CS6 does not seem to like this block here
+	//
+		if(obj.characters)// && (JSUI.isPhotoshop && !JSUI.isCS6)) 
+		{
+			c.characters = obj.characters ? obj.characters : JSUI.DEFAULTEDITTEXTCHARLENGTH;
+		}
+		// alert(propName+": " + c.characters + " chars    bounds: "+c.size );
+
+		// let's force a default size of 300 for cases where width and characters are both undefined
+		if(obj.width == undefined) // && obj.characters == undefined)
+		{
+			c.preferredSize.width = JSUI.DEFAULTEDITTEXTWIDTH;
+		}
+		else
+		{
+			c.preferredSize.width = obj.width;
+		}
+		//
+	//
+	//
+
 	if(obj.height) c.preferredSize.height = obj.height;
 	if(obj.alignment) c.alignment = obj.alignment;
 	if(obj.helpTip) c.helpTip = obj.helpTip;
@@ -2143,7 +2399,6 @@ myWindow.onShow = function ()
 			c.text = decodeURI(obj.text);	
 		}
 	}
-	
 	
 	// using the file/folder location dialog automatically triggers onChange()
 	// workaround is to refer to onChanging function
@@ -2193,10 +2448,13 @@ myWindow.onShow = function ()
 			}
 			else
 			{
-				// JSUI.PREFS[propName] = isNaN(c.text) ? encodeURI (c.text) : Number(c.text);
-				// empty string allowed!
-				JSUI.PREFS[propName] = (c.text == "") ? "" : (isNaN(c.text) ? encodeURI (c.text) : Number(c.text));
-				JSUI.debug(propName + ": " + JSUI.PREFS[propName] + " [" + typeof JSUI.PREFS[propName] + "]"); 
+				if(!prefsBypass)
+				{
+					// JSUI.PREFS[propName] = isNaN(c.text) ? encodeURI (c.text) : Number(c.text);
+					// empty string allowed!
+					JSUI.PREFS[propName] = (c.text == "") ? "" : (isNaN(c.text) ? encodeURI (c.text) : Number(c.text));
+					JSUI.debug(propName + ": " + JSUI.PREFS[propName] + " [" + typeof JSUI.PREFS[propName] + "]"); 
+				}
 			}
 		}
 		if(obj.onChangingFunction) obj.onChangingFunction();
@@ -2246,7 +2504,7 @@ Object.prototype.addBrowseForFolder = function(propName, obj)
 {
 	var obj = obj != undefined ? obj : {};
 	// var c = this.addEditText(propName, { text: obj.text != undefined ? obj.text : new Folder(JSUI.PREFS[propName]).fsName, label:obj.label, characters: obj.characters ? obj.characters : 45, specs:{ browseFolder:true, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{ alignment: obj.alignment != undefined ? obj.alignment : 'right'}} } );
-	var c = this.addEditText(propName, { text: obj.text != undefined ? obj.text : new Folder(JSUI.PREFS[propName]).fsName, label:obj.label, characters: obj.characters ? obj.characters : 45, onChangingFunction: obj.onChangingFunction ? obj.onChangingFunction : undefined, specs:{ browseFolder:true, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{ alignment: obj.alignment != undefined ? obj.alignment : 'right'}} } );
+	var c = this.addEditText(propName, { text: obj.text != undefined ? obj.text : new Folder(JSUI.PREFS[propName]).fsName, label:obj.label, characters: obj.characters ? obj.characters : 4, width: obj.width ? obj.width : 300, onChangingFunction: obj.onChangingFunction ? obj.onChangingFunction : undefined, specs:{ browseFolder:true, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{ alignment: obj.alignment != undefined ? obj.alignment : 'right'}} } );
 
 	return c;
 };
@@ -2257,7 +2515,7 @@ Object.prototype.addBrowseForFolder = function(propName, obj)
 Object.prototype.addBrowseForFile = function(propName, obj)
 {
 	var obj = obj != undefined ? obj : {};
-	var c = this.addEditText(propName, { label:obj.label, /*text: obj.text != undefined ? obj.text : new File(JSUI.PREFS[propName]).fsName,*/ characters: obj.characters ? obj.characters : 45, specs:{ browseFile:true, openFile: obj.openFile != undefined ? obj.openFile : true, filter:obj.filter, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{ alignment: obj.alignment != undefined ? obj.alignment : 'right', spacing: obj.spacing}, hasImage:false/*, imgFile: (JSUI.URI + "/img/BrowseForFile.png") */}, } );
+	var c = this.addEditText(propName, { label:obj.label, /*text: obj.text != undefined ? obj.text : new File(JSUI.PREFS[propName]).fsName,*/ characters: obj.characters ? obj.characters : 45, width: obj.width ? obj.width : 300, onChangingFunction: obj.onChangingFunction ? obj.onChangingFunction : undefined, specs:{ browseFile:true, openFile: obj.openFile != undefined ? obj.openFile : true, filter:obj.filter, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{ alignment: obj.alignment != undefined ? obj.alignment : 'right', spacing: obj.spacing}, hasImage:false/*, imgFile: (JSUI.URI + "/img/BrowseForFile.png") */}, } );
 
 	/*
 			// example: get file types from array
@@ -2323,11 +2581,8 @@ Object.prototype.addBrowseForFolderWidget = function(propName, obj)
 
 	var c = this.addEditText(propName, { label:obj.label, characters: obj.characters ? obj.characters : 45, onChangingFunction: obj.onChangingFunction ? obj.onChangingFunction : undefined, specs:{ prefsBypass: true, showUnsavedFileWarning: showUnsavedFileWarning, browseFolder:true, addIndicator:false, addBrowseButton:true, useGroup:true, groupSpecs:{ alignment: obj.alignment != undefined ? obj.alignment : 'right'}} } );
 
-	// var showDebugFields = true;
 	var addIndicator = false;
 	var groupObjectsArray = [];
-
-	var useFixedChanged = false;
 
 	var useFixedToggleCount = 0;
 	var browseWidgetURIupdateCount = 0;
@@ -2580,28 +2835,9 @@ Object.prototype.addBrowseForFolderWidget = function(propName, obj)
 };
 
 // swatch thingie
+// must update for Illustrator support
 Object.prototype.addRectangle = function(propName, obj)
 {	
-	// var	mattingImagePicker = win.add('iconbutton', undefined, undefined, {name:'coloroption1', style: 'toolbutton'});
-	// mattingImagePicker.size = [200, 50];
-
-	// pickerColor = new SolidColor();
-	// pickerColor.rgb.hexValue = "46c0ff";
-
-	// mattingImagePicker.fillBrush = mattingImagePicker.graphics.newBrush( mattingImagePicker.graphics.BrushType.SOLID_COLOR, [ pickerColor.rgb.red/256, pickerColor.rgb.green/256, pickerColor.rgb.blue/256, 1] );
-	// mattingImagePicker.text = "";
-	// mattingImagePicker.textPen = mattingImagePicker.graphics.newPen (mattingImagePicker.graphics.PenType.SOLID_COLOR,[1,1,1], 1);
-	// mattingImagePicker.onDraw = customDraw;
-
-	// function customDraw()
-	// { 
-	// 	with( this )
-	// 	{
-	// 		graphics.drawOSControl();
-	// 		graphics.rectPath( 0, 0, size[0], size[1]);
-	// 		graphics.fillPath( fillBrush );
-	// 	}
-	// }
 	var obj = obj != undefined ? obj : {};
 
 	var c = this.add('iconbutton', undefined, undefined, {name: propName.toLowerCase(), style: 'toolbutton'});
@@ -2785,7 +3021,17 @@ Object.prototype.addButton = function(imgNameStr, obj)
 		}
 	}
 
-	var scriptUIstates = JSUI.getScriptUIStates( obj );
+	// var scriptUIstates = JSUI.getScriptUIStates( obj );
+	// component constructor should support valid scriptUIStates
+	var scriptUIstates;
+	if(obj.imgFile != undefined && obj.imgFile != null)
+	{
+		scriptUIstates = obj.imgFile.active != undefined ? obj.imgFile : JSUI.getScriptUIStates( obj );
+	}
+	else
+	{
+		scriptUIstates = JSUI.getScriptUIStates( obj );
+	}
 	
 	if(obj.imgFile != undefined && scriptUIstates.active != undefined)
 	{
@@ -2980,6 +3226,14 @@ Object.prototype.addButton = function(imgNameStr, obj)
 					JSUI.launchURL( obj.url );
 				}
 			}
+
+			// c.updateURL = function( urlStr )
+			// {
+			// 	c.onClick = function ()
+			// 	{
+			// 		JSUI.launchURL( urlStr );
+			// 	}
+			// }
 		}
 	}
 
@@ -2997,12 +3251,26 @@ Object.prototype.addImage = function(obj)
 		return c;
 	}
 
-	var scriptUIstates = JSUI.getScriptUIStates( obj );
+	// var scriptUIstates = JSUI.getScriptUIStates( obj );
+		// component constructor should support valid scriptUIStates
+		var scriptUIstates;
+		// c.scriptUIstates = scriptUIstates; 
+
+		if(obj.imgFile != undefined && obj.imgFile != null)
+		{
+			scriptUIstates = obj.imgFile.active != undefined ? obj.imgFile : JSUI.getScriptUIStates( obj );
+		}
+		else
+		{
+			scriptUIstates = JSUI.getScriptUIStates( obj );
+		}
 
 	// if(scriptUIstates.active != undefined)
 	if(scriptUIstates != undefined)
+	// if(scriptUIstates != null)
 	{
 		var c = this.add('image', undefined, scriptUIstates.active);
+		// c.scriptUIstates = scriptUIstates; 
 	}
 	else
 	{		
@@ -3014,6 +3282,31 @@ Object.prototype.addImage = function(obj)
 	if(obj.height) c.preferredSize.height = obj.height;
 	if(obj.alignment) c.alignment = obj.alignment;
 	if(obj.helpTip) c.helpTip = obj.helpTip;
+
+	// update callback: update the UI based on the true/false value
+	// c.update = function( scriptUIStatesObj )
+	// {
+	// 	if(scriptUIStatesObj == undefined)
+	// 	{
+	// 		var scriptUIStatesObj = this.scriptUIstates;
+	// 	}
+
+	// 	if($.level) $.writeln(propName + ": Using " + scriptUIStatesObj.active);
+
+	// 	if(JSUI.isCS6)
+	// 	{
+	// 		// update ScriptUI images used by mouseevents
+	// 		this.states.normalState = this.value ? scriptUIStatesObj.normalState : scriptUIStatesObj.normalStateInactive;
+	// 		this.states.overState = this.value ? scriptUIStatesObj.overState : scriptUIStatesObj.overStateInactive;
+	// 		this.states.downState = scriptUIStatesObj.downState;
+
+	// 		if(this.image != this.states.normalState) this.image = this.states.normalState;
+	// 	}
+	// 	else
+	// 	{
+	// 		this.image = this.value ? scriptUIStatesObj.active : scriptUIStatesObj.inactive;
+	// 	}
+	// };
 	
 	return c;
 };
@@ -3029,7 +3322,17 @@ Object.prototype.addIconButton = function(obj)
 		return c;
 	}
 
-	var scriptUIstates = JSUI.getScriptUIStates( obj );
+	// var scriptUIstates = JSUI.getScriptUIStates( obj );
+		// component constructor should support valid scriptUIStates
+		var scriptUIstates;
+		if(obj.imgFile != undefined && obj.imgFile != null)
+		{
+			scriptUIstates = obj.imgFile.active != undefined ? obj.imgFile : JSUI.getScriptUIStates( obj );
+		}
+		else
+		{
+			scriptUIstates = JSUI.getScriptUIStates( obj );
+		}
 	
 	//if(scriptUIstates == undefined) return;
 
@@ -3074,6 +3377,187 @@ Object.prototype.addIconButton = function(obj)
 		{
 			this.image = this.value ? scriptUIStatesObj.active : scriptUIStatesObj.inactive;
 		}
+	};
+
+	return c;
+};
+
+// original script by Mehmet Sensoy
+// https://forums.creativecow.net/thread/227/37093
+//
+// var picker =  container.addColorPicker("picker", { label: "Color", value: "FF00dd", width: 64, height: 64, helpTip: "Choose color using system color picker"});
+Object.prototype.addColorPicker = function(propName, obj)
+{
+	// add support for text label, grouping, orientation, 
+
+	var obj = obj != undefined ? obj : {};
+
+	var defaultValue = obj.value != undefined ? obj.value.toString() : (JSUI.isPhotoshop ? app.foregroundColor.rgb.hexValue : "FFFFFF");
+	var useGroup = obj.useGroup != undefined ? obj.useGroup : true;
+	var groupObjectsArray = [];
+
+	if(useGroup)
+	{
+		var g;
+
+		if(obj.orientation != undefined)
+		{
+			if(obj.orientation == "column")
+			{
+				g = this.addColumn( { alignChildren: "left" } );
+			}
+			else
+			{
+				g = this.addRow( { alignChildren: "left" } );
+			}
+		}
+		else
+		{
+			g = this.addRow( { alignChildren: "left" } );
+		}
+	}
+
+	var l;
+	var label = obj.label != undefined ? obj.label : "";
+
+	if(obj.label != undefined)
+	{
+		if(useGroup)
+		{
+			l = g.add('statictext', undefined, label);
+		}
+		else
+		{
+			l = this.add('statictext', undefined, label);
+		}
+	
+		// if(JSUI.STYLE) l.graphics.font = JSUI.STYLE;
+		groupObjectsArray.push( [l, propName+'Label'] );
+	}
+
+	var c = useGroup ? g.add('iconbutton', undefined, undefined, {name:propName, style: 'toolbutton'}) : this.add('iconbutton', undefined, undefined, {name:propName, style: 'toolbutton'});
+	c.size = [ obj.width != undefined ? obj.width : 48, obj.height != undefined ? obj.height : 48];
+	c.helpTip = obj.helpTip != undefined ? obj.helpTip : "Choose color using system color picker";
+
+	// Photoshop CS6 requires a width, apparently?
+	var editTextObj = { characters: 6, width: 50, text: defaultValue, onChangingFunction: updatePicker, helpTip: "Enter hexadecimal RGB value\n(i.e: FFFFFF)", specs:{ prefsBypass: true } };
+
+	var hexEdittext = useGroup ? g.addEditText(propName+"Text", editTextObj ) : this.addEditText( propName+"Text", editTextObj );
+	groupObjectsArray.push( [hexEdittext, propName+'Text'] );
+
+	this.Components[propName] = c;
+	this.Components[propName+"Text"] = hexEdittext;
+
+	// app-specific color structure rules
+	var pickerColor = JSUI.isPhotoshop ? new SolidColor() : new RGBColor();
+
+	// get normalized values (0.0 - 1.0)
+	var pickerColorRed = JSUI.HexToR(defaultValue) /255;
+	var pickerColorGreen = JSUI.HexToG(defaultValue) /255;
+	var pickerColorBlue = JSUI.HexToB(defaultValue) /255;
+
+	if(JSUI.isPhotoshop)
+	{
+		pickerColor.rgb.hexValue = defaultValue;
+	}
+	else
+	{
+		pickerColor.red = JSUI.HexToR(defaultValue) /255;
+		pickerColor.green = JSUI.HexToG(defaultValue) /255;
+		pickerColor.blue = JSUI.HexToB(defaultValue) /255;
+	}
+
+	c.fillBrush = c.graphics.newBrush( c.graphics.BrushType.SOLID_COLOR, [ pickerColorRed, pickerColorGreen, pickerColorBlue, 1] );
+	c.text = "";
+	c.textPen = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR,[1,1,1], 1);
+	c.onDraw = customDraw;
+
+	function customDraw()
+	{ 
+		with( this )
+		{
+			graphics.drawOSControl();
+			graphics.rectPath( 0, 0, size[0], size[1]);
+			graphics.fillPath( fillBrush );
+			if( text ) graphics.drawString( text, textPen, (size[0] - graphics.measureString(text, graphics.font, size[0])[0])/2, 3, graphics.font);
+		}
+	};
+
+	function colorpicker (result_color)
+	{
+		var color_decimal = $.colorPicker(); // returns integer
+		if (color_decimal<0) return null;
+
+		var color_hexadecimal = color_decimal.toString(16);
+		var hex = parseInt(color_hexadecimal, 16);
+		// var color_rgb = hexToRGB(hex);
+		var color_rgb = [hex >> 16,  hex >> 8 & 0xFF,  hex & 0xFF];
+		var result_color = [color_rgb[0] / 255, color_rgb[1] / 255, color_rgb[2] / 255]; 
+		var hexStr = JSUI.RGBtoHex(color_rgb[0], color_rgb[1], color_rgb[2]);
+		// pickerColor.rgb.hexValue = hexStr;
+		JSUI.PREFS[propName] = hexStr;
+
+		return result_color;
+	};
+
+	// update picker color
+	function updatePicker()
+	{
+		var str = hexEdittext.text.trim();
+		
+		// if str length is exactly 6 chars
+		if(str.length == 6)
+		{
+			// check for valid hex color string...?
+
+			// get normalized values (0.0 - 1.0)
+			var r = JSUI.HexToR(str) /255;
+			var g = JSUI.HexToG(str) /255;
+			var b = JSUI.HexToB(str) /255;
+
+			try
+			{
+				c.fillBrush = c.graphics.newBrush(c.graphics.BrushType.SOLID_COLOR, [r, g, b]);
+				c.notify("onDraw");
+
+				JSUI.PREFS[propName] = str;
+			}
+			catch(e)
+			{
+				if($.level) $.writeln("Error with hexadecimal color string format\n\n" + e);
+			}
+		}
+		else
+		{
+			if($.level) $.writeln("\tHexColor: Invalid character string");
+		}
+	};
+
+	c.onClick = function( rgbArr )
+	{
+		var color = rgbArr != undefined ? rgbArr : colorpicker();
+		if (color === null) return;	// dialog dismissed
+
+		this.fillBrush = this.graphics.newBrush(this.graphics.BrushType.SOLID_COLOR, color);
+		// no need to call w.update() 
+		// no need to reassign onDraw for the button, it's done already
+		// call onDraw for the button:
+		this.notify("onDraw");
+
+		hexEdittext.text = JSUI.PREFS[propName];
+		hexEdittext.onChange();
+	};
+
+	c.hide = function()
+	{
+		c.visible = false;
+		hexEdittext.visible = false;
+	};
+
+	c.show = function()
+	{
+		c.visible = true;
+		hexEdittext.visible = true;
 	};
 
 	return c;
@@ -3660,7 +4144,9 @@ JSUI.writeToFile = function(fptr, str, encoding)
 
 	file.open("w") || throwFileError(file, "Unable to open output file "); 
 	if (encoding)
-	{file.encoding = encoding;}
+	{
+		file.encoding = encoding;
+	}
 	file.write(str); 
 	file.close();
 };
@@ -3696,7 +4182,7 @@ JSUI.toIniString = function(obj)
 
 		if (typeof val == "string" || typeof val == "number" || typeof val == "boolean" )
 		{
-			if(idx == "textureid") alert("empty: " + idx + ": " + val);
+			// if(idx == "textureid") alert("empty: " + idx + ": " + val);
 /*
 			if( !isNaN(Number(val)) )
 			{
@@ -3906,6 +4392,41 @@ JSUI.writeIniFile = function(fptr, obj, header)
  		JSUI.reflectProperties(obj, "\n[WRITING TO INI STRING:]");
  	}
 	JSUI.writeToFile(fptr,str);
+};
+
+// write/modify a single property value to/from  INI file
+// without affecting the current scope's JSUI.PREFS values
+JSUI.writeProperty = function(file, propertyName, propertyValue, header)
+{
+	var file = file != undefined ? file : JSUI.INIFILE;
+	var header = header != undefined ? header : JSUI.TOOLNAME;
+
+	// validate header with # and carriage return if needed
+	if(header)
+	{
+		if(header[0] != "#") header = "#" + header;
+		if(header[header.length-1] != "\n") header += "\n";
+	}
+	else
+	{
+		header = ("# " + JSUI.TOOLNAME + " Settings [jsuiLib v" + JSUI.version + "]\n");
+	}
+	var fileRef = new File(file);
+	var nObj = {};
+
+	if(fileRef.exists)
+	{
+		var str = JSUI.readFromFile(file, true);
+
+		// if header present, keep as is?
+		//
+		
+		nObj = JSUI.fromIniString(str, nObj, true);
+	}
+	
+	// add/replace property value
+	nObj[propertyName] = propertyValue;
+	JSUI.writeIniFile(file, nObj, header);
 };
 
 JSUI.saveIniFile = function()
@@ -4176,12 +4697,80 @@ JSUI.randomizeRGBColor = function( hexStr, rangeFloat )
 	}
 };
 
+// RGB hex functions
+
+// hex string to Photoshop/Illustrator color object
+JSUI.hexToRGB = function ( hexStr )
+{
+    var hex = hexStr != undefined ? hexStr : "000000";
+
+	// illustrator does not have a direct hexValue property
+	if(JSUI.isIllustrator)
+	{
+		var color = new RGBColor();
+		color.red = JSUI.HexToR(hex);
+		color.green = JSUI.HexToG(hex);
+		color.blue = JSUI.HexToB(hex);
+		return color;
+	}
+	else if(JSUI.isPhotoshop)
+	{
+		var color = new SolidColor();
+		color.rgb.hexValue = hex;
+		return color;
+	}
+
+    return;
+};
+
+// RGBA values to hexadecimal string
+JSUI.RGBtoHex = function(r, g, b, a)
+{
+	return JSUI.toHex(r) + JSUI.toHex(g) + JSUI.toHex(b) + (a != undefined ? JSUI.toHex(a) : "")
+};
+
+// Number to 
+JSUI.toHex = function(n)
+{
+	if (n == null) return "00";
+	n = parseInt(n); 
+	if (n == 0 || isNaN(n)) return "00";
+	n = Math.max(0, n); 
+	n = Math.min(n, 255); 
+	N = Math.round(n);
+	return "0123456789ABCDEF".charAt((n-n%16)/16) + "0123456789ABCDEF".charAt(n%16);
+};
+
+JSUI.cutHex = function(h)
+{
+	if(h.charAt(0)=="#") h = h.substring(1,7); else if(h.charAt(0)=="0" && h.charAt(1)=="x") h = h.substring(2,8); return h;
+};
+
+JSUI.HexToR = function(h) 
+{
+	return parseInt((JSUI.cutHex(h)).substring(0,2), 16);
+};
+
+JSUI.HexToG = function(h) 
+{
+	return parseInt((JSUI.cutHex(h)).substring(2,4), 16);
+};
+
+JSUI.HexToB = function(h)
+{
+	return parseInt((JSUI.cutHex(h)).substring(4,6), 16);
+};
+
+JSUI.HexToA = function(h)
+{
+	return parseInt((JSUI.cutHex(h)).substring(6,8), 16);
+};
 
 // DEBUG AREA
 
 if($.level)
 {
 	// let's confirm that the file was properly included
-	$.writeln("\nJSUI.js successfully loaded by " + app.name + " " + app.version);
+	$.writeln("\nJSUI.js v" + JSUI.version + " successfully loaded by " + app.name + " " + app.version);
 }
 //EOF
