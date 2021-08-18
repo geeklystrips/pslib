@@ -100,6 +100,14 @@
 	0.9785
 		- added Illustrator support to JSUI.getDocumentFullPath()
 
+	0.9786
+		- adding image dependencies
+		- adding Adobe Illustrator support to JSUI.prompt()
+		- bugfix/workaround for JSUI.createDialog() to simulate imageSize array in cases where image file does not exist
+		- workaround for addImage() to actually display invalid URI message instead of crashing
+		- addColorPicker() can now save to INI (routine was missing)
+		- addEditText() fix for width vs characters property in a context where the parent container has alignChildren set to "fill"
+
 	TODO
 	- colorPicker hexString TextEdit should have support for an onChangingFunction
 	- support for hybrid ToggleIconButton component fallback to radiobuttons (if one image is missing instead of all images for radiobuttons)
