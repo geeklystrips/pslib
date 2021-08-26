@@ -99,6 +99,9 @@ Pslib.isPsCS5 = (app.version.match(/^12\./) != null);
 Pslib.isPsCS4 = (app.version.match(/^11\./) != null);
 Pslib.isPsCS3 = (app.version.match(/^10\./) != null);
 
+// Ps & Ai 2020+
+Pslib.is2020andAbove = Pslib.isPhotoshop ? (parseInt(app.version.match(/^\d.\./)) >= 21) : (parseInt(app.version.match(/^\d.\./)) >= 24); 
+
 // #############  PER-LAYER METADATA FUNCTIONS
 
 // define default namespace

@@ -6,7 +6,7 @@
 
 */
 
-#include "jsui.js";
+#include "jsui.js"
 
 #target photoshop;
 

@@ -101,15 +101,28 @@
 		- added Illustrator support to JSUI.getDocumentFullPath()
 
 	0.9786
+		- adding JSUI.is2020andAbove boolean
 		- adding image dependencies
-		- adding Adobe Illustrator support to JSUI.prompt()
+			img/PhotoshopCS6_96px.png	#87c1fb, #09004f
+			img/PhotoshopCC_96px.png	#26c9ff, #061e26, #d9f5ff,  #ffffff
+			img/IllustratorCC_96px.png	#
+			// Ps 2020+		#31a8ff, #001e36, #ffffff
+			// Ai 2020+ 	#ff9a00, #330000, #ffffff
+
+			img/placeholder.png
+			img/Info_48px.png
+			img/SaveSettings.png
+			img/WarningSign_48px.png
+			img/WarningSign.png
+			img/Info_48px.png
+
+		- adding Illustrator support to JSUI.prompt()
 		- bugfix/workaround for JSUI.createDialog() to simulate imageSize array in cases where image file does not exist
 		- workaround for addImage() to actually display invalid URI message instead of crashing
-		- addColorPicker() can now save to INI (routine was missing)
 		- addEditText() fix for width vs characters property in a context where the parent container has alignChildren set to "fill"
 
 	TODO
-	- colorPicker hexString TextEdit should have support for an onChangingFunction
+	- colorPicker hexString TextEdit should have support for an onChangingFunction (?)
 	- support for hybrid ToggleIconButton component fallback to radiobuttons (if one image is missing instead of all images for radiobuttons)
 	- method for getting which property from toggleiconbutton array is activated
 	- JSUI needs a method for standalone properties that do not need to be saved to INI
@@ -135,13 +148,15 @@
 JSUI = function(){}; 
 
 /* version	*/
-JSUI.version = "0.9785";
+JSUI.version = "0.9786";
 
-// do some of the stuff differently if operating UI dialogs from ESTK
+// do some of the stuff differently depending on $.level and software version
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
 JSUI.isPhotoshop = app.name == "Adobe Photoshop";
 JSUI.isIllustrator = app.name == "Adobe Illustrator";
-JSUI.isCS6 = JSUI.isPhotoshop ? app.version.match(/^13\./) != null : false;
+JSUI.isCS6 = JSUI.isPhotoshop ? app.version.match(/^13\./) != null : false; // photoshop-specific
+JSUI.is2020andAbove = JSUI.isPhotoshop ? (parseInt(app.version.match(/^\d.\./)) >= 21) : (parseInt(app.version.match(/^\d.\./)) >= 24); 
+
 
 /*	 system properties	*/
 JSUI.isWindows = $.os.match(/windows/i) == "Windows";
@@ -189,9 +204,10 @@ JSUI.PREFS = {};
 JSUI.status = { progress: 0, percent: "0%", message: "" };
 
 /*  Layout and graphics  */
-JSUI.SPACING = (JSUI.isWindows ? 3 : 1);
+JSUI.SPACING = (JSUI.isWindows ? 3 : 1); // results will vary depending on OS and version of Adobe software
 JSUI.DEFAULTEDITTEXTCHARLENGTH = 35;
-JSUI.DEFAULTEDITTEXTWIDTH = 300;
+JSUI.DEFAULTEDITTEXTWIDTH = 300; // problematic if edittext is in container with alignChildren set to "fill"
+
 JSUI.dark = [0.3255, 0.3255, 0.3255];
 JSUI.light = [0.86, 0.86, 0.86];
 JSUI.yellow = [1.0, 0.78, 0.04];
@@ -254,7 +270,7 @@ JSUI.uri2url = function(uri)
 	return url;
 };
 
-/* convert file system name to URI	"C:\Program Files\Adobe" becomes "c/Program Files/Adobe"*/
+/* convert file system name to URI	"C:\Program Files\Adobe" becomes "c/Program Files/Adobe"	*/
 JSUI.fsname2uri = function(fsname) 
 {
 	var uri = fsname;
@@ -295,7 +311,7 @@ JSUI.launchURL = function(url)
 };
 
 
-/* print object properties to javascript console (with ExtendScript Toolkit only)	*/
+/* print object properties to javascript console	*/
 JSUI.reflectProperties = function(obj, msg)
 {
 	if(msg && $.level)
@@ -811,7 +827,7 @@ JSUI.prompt = function( obj )
 	obj.width = obj.width != undefined ? obj.width : 500; 
 	obj.height = obj.height != undefined ? obj.height : 200; 
 
-	obj.imgFile = obj.imgFile != undefined ? obj.imgFile : "/img/Photoshop" + (JSUI.isCS6 ? "CS6" : "CC" ) + "_96px.png";
+	obj.imgFile = obj.imgFile != undefined ? obj.imgFile : "/img/" + (JSUI.isPhotoshop ? "Photoshop" : "Illustrator") + (JSUI.isCS6 ? "CS6" : "CC" ) + "_96px.png";
 
 	obj.orientation = "column";
 	obj.alignChildren = "right";
@@ -836,7 +852,7 @@ try
 }
 catch(e)
 {
-	alert("error!")
+	//alert("error!")
 	return prompt( obj.message, obj.text, obj.title );
 }
 
@@ -2203,14 +2219,10 @@ myWindow.onShow = function ()
 	if(useGroup)
 	{
 		var c = g.add('edittext', undefined, obj.text != undefined ? decodeURI (obj.text) : propName, {multiline:obj.multiline, readonly: readonly});
-		// if(obj.height) c.preferredSize.height = obj.height;
-		// if(obj.width) c.preferredSize.width = obj.width;
 	}
 	else 
 	{
 		var c = this.add('edittext', undefined, obj.text != undefined ? decodeURI (obj.text) : propName, {multiline:obj.multiline, readonly: readonly});
-		// if(obj.height) c.preferredSize.height = obj.height;
-		// if(obj.width) c.preferredSize.width = obj.width;
 	}
 
 	// store previous status to be used as custom dialog onClose()
@@ -2349,22 +2361,39 @@ myWindow.onShow = function ()
 	}
 
 	// Photoshop CS6 does not seem to like this block here
-	//
-		if(obj.characters)// && (JSUI.isPhotoshop && !JSUI.isCS6)) 
-		{
-			c.characters = obj.characters ? obj.characters : JSUI.DEFAULTEDITTEXTCHARLENGTH;
-		}
-		// alert(propName+": " + c.characters + " chars    bounds: "+c.size );
 
-		// let's force a default size of 300 for cases where width and characters are both undefined
-		if(obj.width == undefined) // && obj.characters == undefined)
-		{
-			c.preferredSize.width = JSUI.DEFAULTEDITTEXTWIDTH;
-		}
-		else
-		{
-			c.preferredSize.width = obj.width;
-		}
+	// if both obj.characters and obj.width are provided, favor obj.width
+	if( !isNaN(obj.characters) && !isNaN(obj.width) )
+	{
+		c.preferredSize.width = obj.width;
+	}
+	else if( !isNaN(obj.characters) )
+	{
+		c.characters = obj.characters;
+	}
+	else if( !isNaN(obj.width) )
+	{
+		c.preferredSize.width = obj.width;
+	}
+	else
+	{
+		c.preferredSize.width = JSUI.DEFAULTEDITTEXTWIDTH;
+	}
+
+		// if( !isNaN(obj.characters) )// && (JSUI.isPhotoshop && !JSUI.isCS6)) 
+		// {
+		// 	c.characters = obj.characters ? obj.characters : JSUI.DEFAULTEDITTEXTCHARLENGTH;
+		// }
+
+		// // let's force a default size of 300 for cases where width and characters are both undefined
+		// if(obj.width == undefined) // && obj.characters == undefined)
+		// {
+		// 	c.preferredSize.width = JSUI.DEFAULTEDITTEXTWIDTH;
+		// }
+		// else
+		// {
+		// 	c.preferredSize.width = obj.width;
+		// }
 		//
 	//
 	//
@@ -2835,6 +2864,124 @@ Object.prototype.addBrowseForFolderWidget = function(propName, obj)
 	return c;
 };
 
+
+// force integer edittext  (rounds value, 128.12 becomes 128)
+// var intNum = container.addNumberInt("intNum", { label: "int" });
+Object.prototype.addNumberInt = function(propName, obj)
+{
+    // to do: force negative or positive?
+	obj.text = obj.text != undefined ? obj.text : (JSUI.PREFS[propName] != undefined ? JSUI.PREFS[propName] : "");
+	var readonly = obj.readonly != undefined ? obj.readonly : false;
+
+    var g = this.add('group');
+    g.orientation = "row";
+
+    var label = obj.label != undefined ? obj.label : propName;
+    var l = g.add('statictext', undefined, label);
+
+    var c = g.add('edittext', undefined, obj.text, { readonly: readonly });
+
+    if(obj.characters)// && (JSUI.isPhotoshop && !JSUI.isCS6)) 
+    {
+        c.characters = obj.characters ? obj.characters : JSUI.DEFAULTEDITTEXTCHARLENGTH;
+    }
+    else if( !isNaN(obj.width) )
+    {
+        c.preferredSize.width = obj.width;
+    }
+
+    if( !isNaN(obj.height) ) c.preferredSize.height = obj.height;
+	if(obj.alignment) c.alignment = obj.alignment;
+	if(obj.helpTip) c.helpTip = obj.helpTip;
+	if(obj.disabled) c.enabled = !obj.disabled;
+
+    if(JSUI.isCS6 && JSUI.CS6styling) c.dialogDarkMode();
+
+    c.onChange = function()
+    {
+        var str = c.text.trim();
+        var num = Number(str);
+        var round = Math.round(num);
+
+        if(!isNaN(round))
+        {
+            c.text = round;
+            JSUI.PREFS[propName] = round;
+            JSUI.debug(propName + ": " + JSUI.PREFS[propName] + " [" + typeof JSUI.PREFS[propName] + "]"); 
+    
+          //  c.onChanging();
+            if(JSUI.autoSave) JSUI.saveIniFile();
+            if(obj.onChangingFunction) obj.onChangingFunction();
+        }
+    };
+
+    c.onChanging = function()
+   {
+       var str = c.text.trim();
+
+        // if(str.match(/0x/i) != null)
+        // {
+            //JSUI.PREFS[propName] = encodeURI (c.text.trim());
+            //JSUI.PREFS[propName] = Number(str);
+            JSUI.PREFS[propName] = parseInt(str);
+            JSUI.debug(propName + ": " + JSUI.PREFS[propName] + " [" + typeof JSUI.PREFS[propName] + "]"); 
+        //}
+        if(obj.onChangingFunction) obj.onChangingFunction();
+   }; 
+
+   this.Components[propName] = c;
+
+    return c;
+};
+
+// force float edittext with fixed decimals (default is 1, 128 changes into 128.0)
+// var floatNum = container.addNumberFloat("floatNum", { label: "float", decimals: 4 });
+Object.prototype.addNumberFloat = function(propName, obj)
+{
+    // inherit logic from int edittext component
+    var c = this.addNumberInt(propName, obj);
+    
+    // override callbacks
+    c.onChange = function()
+    {
+        var str = c.text.trim();
+        var num = Number(str);
+        var numFloat = num.toFixed( !isNaN(obj.decimals) ? obj.decimals : 1 );
+
+        if(!isNaN(num))
+        {
+            c.text = numFloat;
+            JSUI.PREFS[propName] = c.text; // numFloat
+            JSUI.debug(propName + ": " + JSUI.PREFS[propName] + " [" + typeof JSUI.PREFS[propName] + "]"); 
+
+            if(JSUI.autoSave) JSUI.saveIniFile();
+            if(obj.onChangingFunction) obj.onChangingFunction();
+        }
+    };
+
+    c.onChanging = function()
+   {
+        var str = c.text.trim();
+
+        var num = Number(str);
+        var numFloat = num.toFixed( !isNaN(obj.decimals) ? obj.decimals : 1 );
+
+        if(!isNaN(num))
+        {
+            JSUI.PREFS[propName] = numFloat;
+            JSUI.debug(propName + ": " + JSUI.PREFS[propName] + " [" + typeof JSUI.PREFS[propName] + "]"); 
+
+            if(obj.onChangingFunction) obj.onChangingFunction();
+        }
+   }; 
+
+    if(!isNaN(obj.decimals))
+    {
+        c.text = Number(c.text).toFixed( obj.decimals);
+    }
+    return c;
+};
+
 // swatch thingie
 Object.prototype.addRectangle = function(propName, obj)
 {	
@@ -2854,23 +3001,23 @@ Object.prototype.addRectangle = function(propName, obj)
         var textCol = new SolidColor();
         textCol.rgb.hexValue = obj.textHexValue;
 
-        var rectRed = rectCol.rgb.red/256;
-        var rectGreen = rectCol.rgb.green/256; 
-        var rectBlue = rectCol.rgb.blue/256; 
+        var rectRed = rectCol.rgb.red/255;
+        var rectGreen = rectCol.rgb.green/255; 
+        var rectBlue = rectCol.rgb.blue/255; 
 
-        var textRed = textCol.rgb.red/256;
-        var textGreen = textCol.rgb.green/256; 
-        var textBlue = textCol.rgb.blue/256; 
+        var textRed = textCol.rgb.red/255;
+        var textGreen = textCol.rgb.green/255; 
+        var textBlue = textCol.rgb.blue/255; 
     }
     else if(JSUI.isIllustrator)
     {
-        var rectRed = JSUI.HexToR(obj.hexValue)/256;
-        var rectGreen = JSUI.HexToG(obj.hexValue)/256;
-        var rectBlue = JSUI.HexToB(obj.hexValue)/256;
+        var rectRed = JSUI.HexToR(obj.hexValue)/255;
+        var rectGreen = JSUI.HexToG(obj.hexValue)/255;
+        var rectBlue = JSUI.HexToB(obj.hexValue)/255;
 
-        var textRed = JSUI.HexToR(obj.textHexValue)/256;
-        var textGreen = JSUI.HexToG(obj.textHexValue)/256;
-        var textBlue = JSUI.HexToB(obj.textHexValue)/256;
+        var textRed = JSUI.HexToR(obj.textHexValue)/255;
+        var textGreen = JSUI.HexToG(obj.textHexValue)/255;
+        var textBlue = JSUI.HexToB(obj.textHexValue)/255;
     }
 
 	c.fillBrush = c.graphics.newBrush( c.graphics.BrushType.SOLID_COLOR, [ rectRed, rectGreen, rectBlue, 1] );
@@ -3579,6 +3726,17 @@ Object.prototype.addColorPicker = function(propName, obj)
 		c.visible = true;
 		hexEdittext.visible = true;
 	};
+
+	// update picker component from external call
+	c.update = function(hexStr)
+	{
+		if(hexStr)
+		{
+			hexEdittext.text = hexStr;
+			updatePicker();
+		//	alert("updating: " + hexStr)
+		}
+	}
 
 	return c;
 };
@@ -4764,13 +4922,13 @@ JSUI.hexToRGBobj = function ( hexStr )
     return;
 };
 
-// RGBA values to hexadecimal string
+// RGBA values to hexadecimal string (255, 0, 128) becomes "FF0080"
 JSUI.RGBtoHex = function(r, g, b, a)
 {
 	return JSUI.toHex(r) + JSUI.toHex(g) + JSUI.toHex(b) + (a != undefined ? JSUI.toHex(a) : "")
 };
 
-// Number to 
+// Number to hex 128 becomes "80"
 JSUI.toHex = function(n)
 {
 	if (n == null) return "00";
