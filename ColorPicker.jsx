@@ -53,51 +53,54 @@ function Main()
 
     JSUI.PREFS = JSUI.readIniFile(new _prefs());    
     
-    var win = JSUI.createDialog( { title: JSUI.TOOLNAME, orientation: "column", alignChildren: "left" } );
+    var win = JSUI.createDialog( { title: JSUI.TOOLNAME, orientation: "column", width: 400 }); //, alignChildren: "left" } );
 
-    var colorPicker1 = win.addColorPicker("colorPicker1", { label: "Color 1", value: JSUI.PREFS.colorPicker1, /*onChangingFunction: _updateRGBvalues,*/ width: 32, height: 32, helpTip: "Choose color using system color picker"});
+    // add panel for first set of color picker controls
+    var panel1 = win.addPanel( { label: "Custom Controls", alignment: "fill"} );
 
-    var color1Row = win.addRow();
+    // cannot use obj.onChangingFunction here  
+    var colorPicker1 = panel1.addColorPicker("colorPicker1", { label: "Color 1", value: JSUI.PREFS.colorPicker1, onClickFunction: _updateRGBvalues, width: 32, height: 32, spacing: 20, helpTip: "Choose color using system color picker"});
+
+    var color1Row = panel1.addRow( { spacing: 25} );
     var col1 = color1Row.addColumn();
     var col2 = color1Row.addColumn();
 
-    var colorPicker2 = win.addColorPicker("colorPicker2", { label: "Color 2", value: JSUI.PREFS.colorPicker2, width: 32, height: 32, helpTip: "Choose color using system color picker"});
+    // add panel for first set of color picker controls
+    var panel2 = win.addPanel( { label: "Generic Controls", alignment: "fill"} );
+    var colorPicker2 = panel2.addColorPicker("colorPicker2", { label: "Color 2", value: JSUI.PREFS.colorPicker2, width: 32, height: 32, helpTip: "Choose color using system color picker"});
 
-    var rgb_R = col1.addEditText("rgb_R", { label: "R", value: JSUI.PREFS.rgb_R, width: 40, specs: { useGroup: true, orientation: "row"} });
-    var rgb_G = col1.addEditText("rgb_G", { label: "G", value: JSUI.PREFS.rgb_G, width: 40, specs: { useGroup: true, orientation: "row"} });
-    var rgb_B = col1.addEditText("rgb_B", { label: "B", value: JSUI.PREFS.rgb_B, width: 40, specs: { useGroup: true, orientation: "row"} });
+    var rgb_R = col1.addEditText("rgb_R", { label: "R", value: JSUI.PREFS.rgb_R, characters: 4, specs: { useGroup: true, orientation: "row"} });
+    var rgb_G = col1.addEditText("rgb_G", { label: "G", value: JSUI.PREFS.rgb_G, characters: 4, specs: { useGroup: true, orientation: "row"} });
+    var rgb_B = col1.addEditText("rgb_B", { label: "B", value: JSUI.PREFS.rgb_B, characters: 4, specs: { useGroup: true, orientation: "row"} });
     
-    var rgb_nR = col2.addEditText("rgb_nR", { label: "R", value: JSUI.PREFS.rgb_nR, width: 75, specs: { useGroup: true, orientation: "row"} });
-    var rgb_nG = col2.addEditText("rgb_nG", { label: "G", value: JSUI.PREFS.rgb_nG, width: 75, specs: { useGroup: true, orientation: "row"} });
-    var rgb_nB = col2.addEditText("rgb_nB", { label: "B", value: JSUI.PREFS.rgb_nB, width: 75, specs: { useGroup: true, orientation: "row"} });
+    var rgb_nR = col2.addEditText("rgb_nR", { label: "R", value: JSUI.PREFS.rgb_nR, characters: 10, specs: { useGroup: true, orientation: "row"} });
+    var rgb_nG = col2.addEditText("rgb_nG", { label: "G", value: JSUI.PREFS.rgb_nG, characters: 10, specs: { useGroup: true, orientation: "row"} });
+    var rgb_nB = col2.addEditText("rgb_nB", { label: "B", value: JSUI.PREFS.rgb_nB, characters: 10, specs: { useGroup: true, orientation: "row"} });
 
-    var color2Row = win.addRow();
+    var color2Row = panel2.addRow(  { spacing: 25} );
     var col21 = color2Row.addColumn();
     var col22 = color2Row.addColumn();
 
-    var rgb2_R = col21.addNumberInt("rgb2_R", { label: "R", value: JSUI.PREFS.rgb2_R, width: 40, onChangingFunction: _updateRGB2values });
-    var rgb2_G = col21.addNumberInt("rgb2_G", { label: "G", value: JSUI.PREFS.rgb2_G, width: 40, onChangingFunction: _updateRGB2values });
-    var rgb2_B = col21.addNumberInt("rgb2_B", { label: "B", value: JSUI.PREFS.rgb2_B, width: 40, onChangingFunction: _updateRGB2values });
+    var rgb2_R = col21.addNumberInt("rgb2_R", { label: "R", value: JSUI.PREFS.rgb2_R, characters: 4, step:8, clamp: true, min: 0, max: 255, onChangingFunction: _updateRGB2values });
+    var rgb2_G = col21.addNumberInt("rgb2_G", { label: "G", value: JSUI.PREFS.rgb2_G, characters: 4, clamp: true, min: 0, max: 255, onChangingFunction: _updateRGB2values });
+    var rgb2_B = col21.addNumberInt("rgb2_B", { label: "B", value: JSUI.PREFS.rgb2_B, characters: 4, clamp: [0, 255], controls: true, onChangingFunction: _updateRGB2values });
     
-    var rgb2_nR = col22.addNumberFloat("rgb2_nR", { label: "R", value: JSUI.PREFS.rgb2_nR, width: 75, decimals: 5 });
-    var rgb2_nG = col22.addNumberFloat("rgb2_nG", { label: "G", value: JSUI.PREFS.rgb2_nG, width: 75, decimals: 5 });
-    var rgb2_nB = col22.addNumberFloat("rgb2_nB", { label: "B", value: JSUI.PREFS.rgb2_nB, width: 75, decimals: 5 });
+    var rgb2_nR = col22.addNumberFloat("rgb2_nR", { label: "R", value: JSUI.PREFS.rgb2_nR, characters: 10, decimals: 8, step: 0.05, clamp: [0.0, 1.0], onChangingFunction: _udpateRGB2ints  });
+    var rgb2_nG = col22.addNumberFloat("rgb2_nG", { label: "G", value: JSUI.PREFS.rgb2_nG, characters: 10, decimals: 8, step: 0.05, clamp: [0.0, 1.0], onChangingFunction: _udpateRGB2ints  });
+    var rgb2_nB = col22.addNumberFloat("rgb2_nB", { label: "B", value: JSUI.PREFS.rgb2_nB, characters: 10, decimals: 8, step: 0.05, clamp: true, min: 0, max: 1.0, onChangingFunction: _udpateRGB2ints  });
 
-   // var intTest = win.addNumberInt("intTest", { label: "int", value: JSUI.PREFS.intTest, characters: 6, helpTip: "I AM INTEGER LOL" });
-   // var floatTest = win.addNumberFloat("floatTest", { label: "float", value: JSUI.PREFS.floatTest, characters: 12, decimals: 3, helpTip: "I AM FLOAT LOL" });
 	var winButtonsRow = win.addRow( { alignChildren:'fill', alignment: "center", margins: 15 } );
 
 	if($.level)
 	{
-        debugTxt = win.addStaticText( { width:300, text:"[Debug text goes here...]\n[...and here.]", disabled:true, multiline:true, height:100 } );       
-        winButtonsRow.addOpenINILocationButton( { label: "Reveal Settings" } );
+        debugTxt = win.addStaticText( { width:325, text:"[Debug text goes here...]\n[...and here.]", disabled:true, multiline:true, height:100 } );       
+      //  winButtonsRow.addOpenINILocationButton( { label: "Reveal Settings" } );
     }
 
     function _updateRGBvalues()
     {
         var hex = parseInt(JSUI.PREFS.colorPicker1, 16);
 
-	//	var rgb = [hex >> 16,  hex >> 8 & 0xFF,  hex & 0xFF];
         var r = hex >> 16;
         var g = hex >> 8 & 0xFF;
         var b = hex & 0xFF;
@@ -110,61 +113,39 @@ function Main()
         rgb_nG.text = g / 255;
         rgb_nB.text = b / 255;
 
-        // var hex2 = parseInt(JSUI.PREFS.colorPicker2, 16);
-
-        // var r2 = hex2 >> 16;
-        // var g2 = hex2 >> 8 & 0xFF;
-        // var b2 = hex2 & 0xFF;
-
-        // rgb2_R.text = r2;
-        // rgb2_G.text = g2;
-        // rgb2_B.text = b2;
-
-        // rgb2_nR.text = r2 / 255;
-        // rgb2_nG.text = g2 / 255;
-        // rgb2_nB.text = b2 / 255;
-
-		//var result_color = [rgb[0] / 255, rgb[1] / 255, rgb[2] / 255]; 
-       //if($.level) $.writeln("Updating textfields: " + r + ", " + g + ", " + b);
+        // trigger saving preferences
+       if(JSUI.autoSave) JSUI.saveIniFile();
     };
 
     function _updateRGB2values()
     {
-       // var hex = parseInt(JSUI.PREFS.colorPicker2, 16);
-
-	//	var rgb = [hex >> 16,  hex >> 8 & 0xFF,  hex & 0xFF];
-        // var r = hex >> 16;
-        // var g = hex >> 8 & 0xFF;
-        // var b = hex & 0xFF;
-
-        // rgb2_R.text = r;
-        // rgb2_G.text = g;
-        // rgb2_B.text = b;
-
-        // rgb2_nR.text = r / 255;
-        // rgb2_nG.text = g / 255;
-        // rgb2_nB.text = b / 255;
+      //  if($.level) $.writeln( "R:"+rgb2_R.text+" G:" +rgb2_G.text+" B:" + rgb2_B.text + "  Hex: " + JSUI.RGBtoHex(rgb2_R.text, rgb2_G.text, rgb2_B.text));
         var hexStr = JSUI.RGBtoHex(rgb2_R.text, rgb2_G.text, rgb2_B.text);
 
         // update picker color from modified field values
         colorPicker2.update(hexStr);
     };
 
+    function _udpateRGB2ints()
+    {
+        rgb2_R.text = parseInt(Number(rgb2_nR.text * 255));
+        rgb2_G.text = parseInt(Number(rgb2_nG.text * 255));
+        rgb2_B.text = parseInt(Number(rgb2_nB.text * 255));
+
+        var hexStr = JSUI.RGBtoHex(rgb2_R.text, rgb2_G.text, rgb2_B.text);
+
+        // update picker color from modified field values
+        colorPicker2.update(hexStr);
+
+    };
+
     winButtonsRow.addCloseButton();     
 
-    // testing for invalid image URI
-    //win.addImage( { imgFile: "img/oh_hai.png"} );
-
-    // add event listener on Window ?
-    //win.addEventListener( "updateRGB", _updateRGBvalues, false);
-   // rgb_R.addEventListener( "mouseover", _updateRGBvalues, false);
-
-  //  _updateRGBvalues();
-  //  _updateRGB2values();
+   // apply individual values to R, G, B fields based on current HexString values (from INI if found, or default prefs object)
+    _updateRGBvalues();
+    _updateRGB2values();
 
     win.center();
 	win.show();
-
-   // JSUI.prompt( { message: "oh HAI!", imgFile: "img/placeholder.png" } );
 }
 

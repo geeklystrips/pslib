@@ -9,15 +9,21 @@
 	- general layout 
 	- added function to Load properties/values from CSV file
 	- tooltips
+
+	TODO
+	- add "/img/DocMetadata.png" & "/img/LayerMetadata.png"
 */
+
+#include "Pslib.jsx"
+#include "jsui.js"
 
 #target photoshop
 
-//@show include
-//@include "Pslib.jsx"
-
 var useDoc = useDoc != undefined ? useDoc : false;
 var XMPObj = null;
+
+JSUI.TOOLNAME = "XMP Metadata Editor";
+JSUI.populateINI();
 
 try
 {
@@ -46,19 +52,25 @@ function Main()
 	var style = ScriptUI.newFont("Arial", "REGULAR", 18);
 
 	// build dialog window
-	var win = new Window('dialog', (useDoc ? "Document" : "Layer") + " Metadata Editor " + "[" + (useDoc ? new File (Pslib.getDocumentPath(doc)).fsName : layerObject.name) + "]  v" + Pslib.version + "  " + (Pslib.isPs64bits ? "x64" : "x32"), undefined, {closeButton: true});
-	win.alignChildren = 'fill';
+//	var win = new Window('dialog', (useDoc ? "Document" : "Layer") + " Metadata Editor " + "[" + (useDoc ? new File (Pslib.getDocumentPath(doc)).fsName : layerObject.name) + "]  v" + Pslib.version + "  " + (Pslib.isPs64bits ? "x64" : "x32"), undefined, {closeButton: true});
+//	win.alignChildren = 'fill';
+
+	var win = JSUI.createDialog( { title: /*JSUI.TOOLNAME*/(useDoc ? "Document" : "Layer") + " Metadata Editor " + "[" + (useDoc ? new File (Pslib.getDocumentPath(doc)).fsName : layerObject.name) + "]  v" + Pslib.version + "  " + (Pslib.isPs64bits ? "x64" : "x32"), orientation: "column", alignChildren: "left" } );
+
 	
-	var maingroup = win.add('group');
-	maingroup.orientation = "row";
-	maingroup.alignChildren = 'fill';
+	// var maingroup = win.add('group');
+	// maingroup.orientation = "row";
+	// maingroup.alignChildren = 'fill';
+	var maingroup = win.addRow();
 	
-	var propxmp = maingroup.add('group');
-	propxmp.orientation = "column";
-	propxmp.alignChildren = 'fill';
+	// var propxmp = maingroup.add('group');
+	// propxmp.orientation = "column";
+	// propxmp.alignChildren = 'fill';
+	var propxmp = maingroup.addColumn();
 	
-	var layerObjectPanel = propxmp.add('panel', undefined, "Target Object");
-	layerObjectPanel.alignChildren = 'left';
+	// var layerObjectPanel = propxmp.add('panel', undefined, "Target Object");
+	// layerObjectPanel.alignChildren = 'left';
+	var layerObjectPanel = propxmp.addPanel( { label: "Target Object" } );
 	
 	var layerObjectGroup = layerObjectPanel.add('group');
 	var layerNameField =  layerObjectGroup.add('statictext', undefined, "Name:");
@@ -85,16 +97,19 @@ function Main()
 	layerHeightField.enabled = false;
 	layerObjectCoordsGroup.add('statictext', undefined, layerInfo.height);
 	
-	try
-	{
-		var imgPath = new File( File($.fileName).parent.parent + (useDoc ? "/img/DocMetadata.png" : "/img/LayerMetadata.png"));
-		var img = layerObjectGroup.add('iconbutton', undefined, ScriptUI.newImage(imgPath, imgPath, imgPath, imgPath));
-		img.alignment = "right";
-	}
-	catch(e)
-	{
+	// try
+	// {
+	// 	var imgPath = new File( File($.fileName).parent + (useDoc ? "/img/DocMetadata.png" : "/img/LayerMetadata.png"));
+	// 	var img = layerObjectGroup.add('iconbutton', undefined, ScriptUI.newImage(imgPath, imgPath, imgPath, imgPath));
+	// 	img.alignment = "right";
+	// }
+	// catch(e)
+	// {
 		
-	}
+	// }
+
+	layerObjectGroup.addImage( { imgFile: "img/"+(useDoc ? "DocMetadata" : "LayerMetadata")+".png" });
+
 
 	if(!useDoc)
 	{

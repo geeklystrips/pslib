@@ -123,6 +123,7 @@
 
 	TODO
 	- colorPicker hexString TextEdit should have support for an onChangingFunction (?)
+	- add clamping support for int/float, + safeguard for "," being used as a delimiter
 	- support for hybrid ToggleIconButton component fallback to radiobuttons (if one image is missing instead of all images for radiobuttons)
 	- method for getting which property from toggleiconbutton array is activated
 	- JSUI needs a method for standalone properties that do not need to be saved to INI
@@ -2867,21 +2868,60 @@ Object.prototype.addBrowseForFolderWidget = function(propName, obj)
 
 // force integer edittext  (rounds value, 128.12 becomes 128)
 // var intNum = container.addNumberInt("intNum", { label: "int" });
+//
+// optional increment/decrement buttons: 
+// var intNum = container.addNumberInt("intNum", { label: "int", controls: true });
 Object.prototype.addNumberInt = function(propName, obj)
 {
     // to do: force negative or positive?
 	obj.text = obj.text != undefined ? obj.text : (JSUI.PREFS[propName] != undefined ? JSUI.PREFS[propName] : "");
-	var readonly = obj.readonly != undefined ? obj.readonly : false;
+	obj.readonly = obj.readonly ? true : false;
+	obj.controls = obj.controls != undefined ? obj.controls : true; // show increase/decrease controls by default
+	// obj.controls = obj.controls ? true : false;
+	//obj.decimals = obj.decimals != undefined ? obj.decimals : 0;
 
-    var g = this.add('group');
-    g.orientation = "row";
+	if(obj.clamp)
+	{
+		// simple array clamping logic
+		// { clamp: [0, 255] }
+		if( typeof obj.clamp != "string" && typeof obj.clamp != "boolean")
+		{
+			if(obj.clamp.length == 2)
+			{
+				obj.min = !isNaN(obj.clamp[0]) ? obj.clamp[0] : 0;
+				obj.max = !isNaN(obj.clamp[1]) ? obj.clamp[1] : null;
+			}
+		}
+		// boolean clamping logic
+		// { clamp: true, min:0, max:255 }
+		else if (typeof obj.clamp == "boolean")
+		{
+			obj.clamp = obj.clamp ? true : false;
+			obj.min = !isNaN(obj.min) ? obj.min : 0;
+			obj.max = !isNaN(obj.max) ? obj.max : 255;
+		}
+	}
+
+	// support incrementing/decrementing steps (default value = 1)
+	obj.step = !isNaN(obj.step) ? obj.step : 1;
+
+	// force using group
+    var g = this.addRow( { spacing: !isNaN(obj.spacing) ? obj.spacing : JSUI.SPACING, alignment: "left" } );
 
     var label = obj.label != undefined ? obj.label : propName;
     var l = g.add('statictext', undefined, label);
+    var c = g.add('edittext', undefined, obj.text, { readonly: obj.readonly });
 
-    var c = g.add('edittext', undefined, obj.text, { readonly: readonly });
+	if(obj.controls)
+	{
+		var dec = g.addButton( { label: "-", width:10 } );
+		dec.onClick = function () { c.decrement(); if(obj.onChangingFunction) obj.onChangingFunction(); };
+	
+		var inc = g.addButton( { label: "+", width:10 } );
+		inc.onClick = function () { c.increment(); if(obj.onChangingFunction) obj.onChangingFunction(); };	
+	}
 
-    if(obj.characters)// && (JSUI.isPhotoshop && !JSUI.isCS6)) 
+    if(obj.characters)
     {
         c.characters = obj.characters ? obj.characters : JSUI.DEFAULTEDITTEXTCHARLENGTH;
     }
@@ -2897,16 +2937,27 @@ Object.prototype.addNumberInt = function(propName, obj)
 
     if(JSUI.isCS6 && JSUI.CS6styling) c.dialogDarkMode();
 
+	// bug with cursor position with default onChanging()...?
+
     c.onChange = function()
     {
         var str = c.text.trim();
         var num = Number(str);
-        var round = Math.round(num);
+        num = Math.round(num);
 
-        if(!isNaN(round))
+        if(!isNaN(num))
         {
-            c.text = round;
-            JSUI.PREFS[propName] = round;
+			if(obj.clamp)
+			{
+				if(num > obj.max) num = obj.max;
+				if(num < obj.min) num = obj.min;
+			}
+			// if( num != Math.round(Number(str)) )
+			// {
+
+			// }
+            c.text = num;
+            JSUI.PREFS[propName] = num;
             JSUI.debug(propName + ": " + JSUI.PREFS[propName] + " [" + typeof JSUI.PREFS[propName] + "]"); 
     
           //  c.onChanging();
@@ -2917,17 +2968,79 @@ Object.prototype.addNumberInt = function(propName, obj)
 
     c.onChanging = function()
    {
-       var str = c.text.trim();
+    //    var str = c.text.trim();
 
         // if(str.match(/0x/i) != null)
         // {
             //JSUI.PREFS[propName] = encodeURI (c.text.trim());
             //JSUI.PREFS[propName] = Number(str);
-            JSUI.PREFS[propName] = parseInt(str);
-            JSUI.debug(propName + ": " + JSUI.PREFS[propName] + " [" + typeof JSUI.PREFS[propName] + "]"); 
-        //}
+        //     JSUI.PREFS[propName] = parseInt(str);
+        //     JSUI.debug(propName + ": " + JSUI.PREFS[propName] + " [" + typeof JSUI.PREFS[propName] + "]"); 
+        // //}
         if(obj.onChangingFunction) obj.onChangingFunction();
    }; 
+
+//    c.validate = function( num )
+//    {
+// 		var str = num != undefined ? num : c.text.trim();
+// 		var num = parseInt(str);
+
+// 		if(!isNaN(num))
+// 		{
+// 			if(obj.clamp)
+// 			{
+// 				if(num > obj.max) num = obj.max;
+// 				if(num < obj.min) num = obj.min;
+// 			}
+
+// 			//c.text = num;
+// 		}
+//    }
+
+   c.increment = function()
+   {
+		var str = c.text.trim();
+		var num = obj.decimals != undefined ? Number(str).toFixed( obj.decimals ) : parseInt(str);
+
+		if(!isNaN(num))
+		{
+			num = Number(num);
+			if( !isNaN(obj.decimals) ) num = Number(num.toFixed( obj.decimals ));
+			num += obj.step;
+		
+			if(obj.clamp)
+			{
+				if(num > obj.max) num = obj.max;
+				if(num < obj.min) num = obj.min;
+			}
+
+			c.text = !isNaN(obj.decimals) ? num.toFixed( obj.decimals ) : num;
+			JSUI.PREFS[propName] = num;
+			JSUI.debug(propName + ": " + JSUI.PREFS[propName] + " [" + typeof JSUI.PREFS[propName] + "]"); 
+		}
+   };
+
+   c.decrement = function()
+   {
+		var str = c.text.trim();
+		var num = obj.decimals != undefined ? Number(str).toFixed( obj.decimals ) : parseInt(str);
+
+		if(!isNaN(num))
+		{
+			num = Number(num);
+			if( !isNaN(obj.decimals) ) num = Number(num.toFixed( obj.decimals ));
+			num -= obj.step;
+
+			if(obj.clamp)
+			{
+				if(num > obj.max) num = obj.max;
+				if(num < obj.min) num = obj.min;
+			}
+			c.text = !isNaN(obj.decimals) ? num.toFixed( obj.decimals ) : num;
+			JSUI.PREFS[propName] = num;
+			JSUI.debug(propName + ": " + JSUI.PREFS[propName] + " [" + typeof JSUI.PREFS[propName] + "]"); 
+		}
+   };
 
    this.Components[propName] = c;
 
@@ -2940,13 +3053,14 @@ Object.prototype.addNumberFloat = function(propName, obj)
 {
     // inherit logic from int edittext component
     var c = this.addNumberInt(propName, obj);
+	obj.decimals = !isNaN(obj.decimals) ? obj.decimals : 1;
     
     // override callbacks
     c.onChange = function()
     {
         var str = c.text.trim();
         var num = Number(str);
-        var numFloat = num.toFixed( !isNaN(obj.decimals) ? obj.decimals : 1 );
+        var numFloat = num.toFixed( obj.decimals );
 
         if(!isNaN(num))
         {
@@ -2961,24 +3075,24 @@ Object.prototype.addNumberFloat = function(propName, obj)
 
     c.onChanging = function()
    {
-        var str = c.text.trim();
+        // var str = c.text.trim();
 
-        var num = Number(str);
-        var numFloat = num.toFixed( !isNaN(obj.decimals) ? obj.decimals : 1 );
+        // var num = Number(str);
+        // var numFloat = num.toFixed( obj.decimals );
 
-        if(!isNaN(num))
-        {
-            JSUI.PREFS[propName] = numFloat;
-            JSUI.debug(propName + ": " + JSUI.PREFS[propName] + " [" + typeof JSUI.PREFS[propName] + "]"); 
+        // if(!isNaN(num))
+        // {
+        //     JSUI.PREFS[propName] = numFloat;
+        //     JSUI.debug(propName + ": " + JSUI.PREFS[propName] + " [" + typeof JSUI.PREFS[propName] + "]"); 
 
-            if(obj.onChangingFunction) obj.onChangingFunction();
-        }
+        //     if(obj.onChangingFunction) obj.onChangingFunction();
+        // }
    }; 
 
-    if(!isNaN(obj.decimals))
-    {
+    // if(!isNaN(obj.decimals))
+    // {
         c.text = Number(c.text).toFixed( obj.decimals);
-    }
+    // }
     return c;
 };
 
@@ -3552,7 +3666,7 @@ Object.prototype.addIconButton = function(obj)
 // original script by Mehmet Sensoy
 // https://forums.creativecow.net/thread/227/37093
 //
-// var picker =  container.addColorPicker("picker", { label: "Color", value: "FF00dd", width: 64, height: 64, helpTip: "Choose color using system color picker"});
+// var picker =  container.addColorPicker("picker", { label: "Color", value: "FF00dd", width: 64, height: 64, onClickFunction: { alert("Hi from onClick()!") }, helpTip: "Choose color using system color picker"});
 Object.prototype.addColorPicker = function(propName, obj)
 {
 	// add support for text label, grouping, orientation, 
@@ -3582,6 +3696,8 @@ Object.prototype.addColorPicker = function(propName, obj)
 		{
 			g = this.addRow( { alignChildren: "left" } );
 		}
+
+		g.spacing = !isNaN(obj.spacing) ? obj.spacing : JSUI.SPACING;
 	}
 
 	var l;
@@ -3607,9 +3723,11 @@ Object.prototype.addColorPicker = function(propName, obj)
 	c.helpTip = obj.helpTip != undefined ? obj.helpTip : "Choose color using system color picker";
 
 	// Photoshop CS6 requires a width, apparently?
-	var editTextObj = { characters: 6, width: 50, text: defaultValue, onChangingFunction: updatePicker, helpTip: "Enter hexadecimal RGB value\n(i.e: FFFFFF)", specs:{ prefsBypass: true } };
+	var editTextObj = { characters: 6, /*width: 50,*/ text: defaultValue, onChangingFunction: updatePicker, helpTip: "Enter hexadecimal RGB value\n(i.e: FFFFFF)", specs:{ prefsBypass: true } };
 
 	var hexEdittext = useGroup ? g.addEditText(propName+"Text", editTextObj ) : this.addEditText( propName+"Text", editTextObj );
+	hexEdittext.graphics.font = ScriptUI.newFont("Arial", "BOLD", 16);
+
 	groupObjectsArray.push( [hexEdittext, propName+'Text'] );
 
 	this.Components[propName] = c;
@@ -3712,7 +3830,13 @@ Object.prototype.addColorPicker = function(propName, obj)
 		this.notify("onDraw");
 
 		hexEdittext.text = JSUI.PREFS[propName];
-		hexEdittext.onChange();
+		hexEdittext.onChange(); // this triggers the modification to INI file
+		//c.update();
+		if(obj.onClickFunction)
+		{
+		//	alert(selectionArr[0] + "\n" + selectionArr[1]);
+			obj.onClickFunction( );
+		}
 	};
 
 	c.hide = function()
