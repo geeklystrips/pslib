@@ -2874,18 +2874,23 @@ Object.prototype.addBrowseForFolderWidget = function(propName, obj)
 Object.prototype.addNumberInt = function(propName, obj)
 {
     // to do: force negative or positive?
+
+	var groupObjectsArray = [];
+
 	obj.text = obj.text != undefined ? obj.text : (JSUI.PREFS[propName] != undefined ? JSUI.PREFS[propName] : "");
 	obj.readonly = obj.readonly ? true : false;
 	obj.controls = obj.controls != undefined ? obj.controls : true; // show increase/decrease controls by default
 	// obj.controls = obj.controls ? true : false;
 	//obj.decimals = obj.decimals != undefined ? obj.decimals : 0;
 
+	// based on typeof .clamp property
 	if(obj.clamp)
 	{
-		// simple array clamping logic
+		// if neither string nor boolean...
 		// { clamp: [0, 255] }
 		if( typeof obj.clamp != "string" && typeof obj.clamp != "boolean")
 		{
+			// ... assume array
 			if(obj.clamp.length == 2)
 			{
 				obj.min = !isNaN(obj.clamp[0]) ? obj.clamp[0] : 0;
@@ -2905,19 +2910,32 @@ Object.prototype.addNumberInt = function(propName, obj)
 	// support incrementing/decrementing steps (default value = 1)
 	obj.step = !isNaN(obj.step) ? obj.step : 1;
 
+	// add color rectangle logic
+	var addRect = obj.hexValue != undefined;
+	obj.hexValue = obj.hexValue != undefined ? obj.hexValue : "FFFFFF";
+
 	// force using group
     var g = this.addRow( { spacing: !isNaN(obj.spacing) ? obj.spacing : JSUI.SPACING, alignment: "left" } );
 
     var label = obj.label != undefined ? obj.label : propName;
     var l = g.add('statictext', undefined, label);
+	groupObjectsArray.push( [l, "rect"] );
+	if(addRect)
+	{
+		var rect = g.addRectangle( "rect", { hexValue: obj.hexValue, width: 15, height:10 });
+		groupObjectsArray.push( [rect, "rect"] );
+	}
     var c = g.add('edittext', undefined, obj.text, { readonly: obj.readonly });
+
+	
+	//groupObjectsArray.push( [c, propName] );
 
 	if(obj.controls)
 	{
-		var dec = g.addButton( { label: "-", width:10 } );
+		var dec = g.addButton( { label: "-", width:10, helpTip: "Decrease value by " + obj.step } );
 		dec.onClick = function () { c.decrement(); if(obj.onChangingFunction) obj.onChangingFunction(); };
 	
-		var inc = g.addButton( { label: "+", width:10 } );
+		var inc = g.addButton( { label: "+", width:10, helpTip: "Increase value by " + obj.step } );
 		inc.onClick = function () { c.increment(); if(obj.onChangingFunction) obj.onChangingFunction(); };	
 	}
 
@@ -3042,6 +3060,16 @@ Object.prototype.addNumberInt = function(propName, obj)
 		}
    };
 
+   	// experimental: provide a way to arbitrarily enable/disable the whole thing from outside
+	c.enableStatus = function ( bool )
+	{
+		for(var i = 0; i < groupObjectsArray.length; i++)
+		{
+			groupObjectsArray[i][0].enabled = bool;
+			if($.level) $.writeln( groupObjectsArray[i][1] + " enabled status: " + bool ); 
+		}
+	}
+
    this.Components[propName] = c;
 
     return c;
@@ -3085,7 +3113,7 @@ Object.prototype.addNumberFloat = function(propName, obj)
         //     JSUI.PREFS[propName] = numFloat;
         //     JSUI.debug(propName + ": " + JSUI.PREFS[propName] + " [" + typeof JSUI.PREFS[propName] + "]"); 
 
-        //     if(obj.onChangingFunction) obj.onChangingFunction();
+             if(obj.onChangingFunction) obj.onChangingFunction();
         // }
    }; 
 
@@ -3096,7 +3124,8 @@ Object.prototype.addNumberFloat = function(propName, obj)
     return c;
 };
 
-// swatch thingie
+// draw rectangle -- propName is superfluous in this case as it does not need to be bound to local settings / INI
+// var rect = container.addRectangle( "rect", { hexValue: "FF80FF" size: [ 100, 100 ], helpTip: "Hover for tooltip!" } );
 Object.prototype.addRectangle = function(propName, obj)
 {	
     var obj = obj != undefined ? obj : {};
@@ -3105,7 +3134,7 @@ Object.prototype.addRectangle = function(propName, obj)
 
 	var c = this.add('iconbutton', undefined, undefined, {name: propName.toLowerCase(), style: 'toolbutton'});
 	this.Components[propName] = c;
-	c.size = [ obj.width != undefined ? obj.width : 50, (obj.height != undefined ? obj.height : 50) ];
+	c.size = [ !isNaN(obj.width) ? obj.width : 50, !isNaN(obj.height) ? obj.height : 50 ];
 
     if(JSUI.isPhotoshop)
     {
@@ -3685,16 +3714,16 @@ Object.prototype.addColorPicker = function(propName, obj)
 		{
 			if(obj.orientation == "column")
 			{
-				g = this.addColumn( { alignChildren: "left" } );
+				g = this.addColumn( { alignChildren: obj.alignChildren != undefined ? obj.alignChildren : "left" } );
 			}
 			else
 			{
-				g = this.addRow( { alignChildren: "left" } );
+				g = this.addRow( { alignChildren: obj.alignChildren != undefined ? obj.alignChildren : "left" } );
 			}
 		}
 		else
 		{
-			g = this.addRow( { alignChildren: "left" } );
+			g = this.addRow( { alignChildren: obj.alignChildren != undefined ? obj.alignChildren : "left" } );
 		}
 
 		g.spacing = !isNaN(obj.spacing) ? obj.spacing : JSUI.SPACING;

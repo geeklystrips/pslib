@@ -72,10 +72,14 @@ function Main()
 	// layerObjectPanel.alignChildren = 'left';
 	var layerObjectPanel = propxmp.addPanel( { label: "Target Object" } );
 	
-	var layerObjectGroup = layerObjectPanel.add('group');
-	var layerNameField =  layerObjectGroup.add('statictext', undefined, "Name:");
-	layerNameField.enabled = false;
-	var layerNameField2 =  layerObjectGroup.add('statictext', undefined, layerInfo.name);
+	// var layerObjectGroup = layerObjectPanel.add('group');
+	// var layerNameField =  layerObjectGroup.add('statictext', undefined, "Name:");
+	// layerNameField.enabled = false;
+	// var layerNameField2 =  layerObjectGroup.add('statictext', undefined, layerInfo.name);
+	var layerObjectGroup = layerObjectPanel.addRow();
+	layerObjectGroup.addStaticText( { text: "Name:", disabled: true } );
+	var layerNameField2 = layerObjectGroup.addStaticText( { text: layerInfo.name } );
+
 	layerNameField2.graphics.font = style;
 
 	var layerTypeField =  layerObjectGroup.add('statictext', undefined, "Type:");
