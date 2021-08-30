@@ -116,6 +116,10 @@
 			img/WarningSign.png
 			img/Info_48px.png
 
+		- adding basic JSON implementation
+			JSUI.writeJSONfile()
+			JSUI.toJSONstring()
+
 		- adding Illustrator support to JSUI.prompt()
 		- bugfix/workaround for JSUI.createDialog() to simulate imageSize array in cases where image file does not exist
 		- workaround for addImage() to actually display invalid URI message instead of crashing
@@ -187,6 +191,7 @@ var userData = prompt("Folder.userData value:", userData.fsName);
 JSUI.USERPREFSFOLDER = Folder.userData;
 JSUI.TOOLSPREFSFOLDERNAME = "pslib";
 JSUI.INIFILE = JSUI.USERPREFSFOLDER + "/" + JSUI.TOOLSPREFSFOLDERNAME + "/" + JSUI.TOOLNAME + ".ini";
+JSUI.JSONFILE = JSUI.USERPREFSFOLDER + "/" + JSUI.TOOLSPREFSFOLDERNAME + "/" + JSUI.TOOLNAME + ".json";
 JSUI.autoSave = false;
 JSUI.PrintINIstringInfo = false;
 JSUI.CS6styling = true;
@@ -198,7 +203,16 @@ JSUI.populateINI = function()
 	// JSUI.status.message = "JSUI init OK";
 	JSUI.status.message = "";
 	return JSUI.INIFILE.exists;
-}
+};
+
+// this must be invoked for JSUI.INIFILE to be valid
+JSUI.populateJSON = function()
+{
+	JSUI.JSONFILE = new File(JSUI.USERPREFSFOLDER + "/" + JSUI.TOOLSPREFSFOLDERNAME + "/" + JSUI.TOOLNAME + ".json");
+	// JSUI.status.message = "JSUI init OK";
+	JSUI.status.message = "";
+	return JSUI.JSONFILE.exists;
+};
 
 /* INI prefs framework	*/
 JSUI.PREFS = {};
@@ -4513,7 +4527,6 @@ JSUI.toIniString = function(obj)
 
 		if (typeof val == "string" || typeof val == "number" || typeof val == "boolean" )
 		{
-			// if(idx == "textureid") alert("empty: " + idx + ": " + val);
 /*
 			if( !isNaN(Number(val)) )
 			{
@@ -4564,8 +4577,6 @@ JSUI.toIniString = function(obj)
 		// get all the JSUI function objects through here
 		else
 		{
-//~ 			var val = obj[idx];
-//~ 			alert("Houla!\n\n" + idx+"\n\n" + val);
 			
 		}
 	} 
@@ -4574,7 +4585,7 @@ JSUI.toIniString = function(obj)
 };
 
 // fromIniString adjustments (type = true: attempts to infer type based on value)
-JSUI.fromIniString=function(str,obj, type)
+JSUI.fromIniString = function (str, obj, type)
 {
 	var type = type != undefined ? type : false;
 	
@@ -4679,6 +4690,174 @@ JSUI.fromIniString=function(str,obj, type)
 	return obj;
 };
 
+// reconstruct object from JSON string
+// support for complex strings is ... cumbersome
+JSUI.fromJSONstring = function (str, obj)
+{
+	if(!obj) { obj = {} };
+
+	var lines = str.split(/\r|\n/);
+	var rexp = new RegExp(/([^:]+):(.*)$/);
+
+	if($.level) $.writeln("Reconstructing object from JSON string...");
+	for(var i = 0; i < lines.length; i++)
+	{
+		var line = lines[i].trim();
+
+		if( !line || line.charAt(0) == '{' || line.charAt(0) == '}')
+		{ continue }
+
+		var ar = rexp.exec(line);
+		if(!ar)
+		{
+			alert("Bad line in config file: \""+line+"\"");
+			return
+		}
+		
+		// assign variables
+		var prop = ar[1].trim().replace(/\"/g, ""); // remove double quotes
+		// var value = ar[2].trim().replace(/[,]+$/, ""); // remove trailing comma
+		var value = decodeURI(ar[2].trim().replace(/[,]+$/, "")); // decodeURI/remove trailing comma
+
+		// remove leading/trailing doublequotes
+		if( value.charAt(0) == '"' && value.charAt(value.length-1) == '"')
+		{
+			value = value.substring(1, value.length-1);
+		}
+
+		// if($.level) $.writeln("\t"+prop+": " + value + "    [" + typeof value + "]");
+
+		// empty string? leave as is
+		if(value == '')
+		{
+			obj[prop] = value;
+		}
+		// force Boolean
+		else if(value == 'true' || value == 'false')
+		{
+			obj[prop] = (value == 'true');
+		}
+	
+		// null means null, right?
+		else if(value == 'null')
+		{
+			obj[prop] = null;
+		}
+
+		// case for Arrays: if first and last characters are brackets...
+		else if( value[0] == "[" && value[value.length-1] == "]")
+		{			
+			// trim brackets from string
+			value = value.replace('[', '');
+			value = value.replace(']', '');
+			obj[prop] = value.split(',');
+			// some form of decodeURI should probably happen at this stage too (?)
+		}
+		
+		// force Number
+		else if( !isNaN(Number(value)) )
+		{
+			// Workaround for cases where "000000" which should remain as is
+			
+			// if string has more than one character, 
+			// and if first character is a zero
+			// and second character is not a dot (decimals etc)
+			// then number or string was meant to keep its exact present form 
+			if(value.length > 1 && ( (value[0] == "0" || value[0] == ".") && (value[1] != "." || value[1].toLowerCase() != "x") ) )  obj[prop] = value;
+
+			//workaround for hex denomination format (also keep as string)
+			else if(Number(value) != 0)
+			{
+				if(value[0] == "0" && value[1].toLowerCase() == "x") obj[prop] = value;
+				else obj[prop] = Number(value);
+			}
+			
+			// else do force number
+			else
+			{
+				obj[prop] = Number(value);
+			}
+		}
+		else 	// leave as current string
+		{
+			obj[prop] = value;
+		}
+		// review
+		var typeOf = typeof obj[prop];
+		if($.level) $.writeln("\t"+prop+": " + value + "    [" + (typeOf != "object" ? typeOf : (typeOf == "object" && obj[prop].length != undefined ? "array" : typeOf)) + "]");
+	}
+	return obj;
+};
+
+// object to JSON string
+// making whitespace optional sure is cute, but it's going to keep us from reconstructing object on the other end, so let's avoid it for now
+JSUI.toJSONstring = function(obj, whitespaceBool)
+{
+	// if not specified, whitespace is included
+	var whitespaceBool = whitespaceBool != undefined ? whitespaceBool : true;
+	var space = whitespaceBool ? " " : "";
+	var cR = whitespaceBool ? "\n" : "";
+	var tab = whitespaceBool ? "\t" : "";
+
+	var str = '{'+cR;
+
+	for (var idx in obj)
+	{
+		// ignore member properties / reserved
+		if (idx.charAt(0) == '_' || idx == "Components")
+		{
+			continue;			
+		}
+	
+		var val = obj[idx];
+
+		if (typeof val == "string" )
+		{
+			// encodeURI!
+			str += (tab+'"'+idx + '":"'+ encodeURI(val) + ('",'+cR) );
+		}
+		else if (typeof val == "number" || typeof val == "boolean")
+		{
+			str += (tab+'"'+idx + '":'+ val + ',' + cR);
+		}
+
+		else if( typeof val == "object" )
+		{
+			// if object has a length, we have ourselves an array!
+			 if(idx.length)
+			{
+				str += (tab+'"'+idx + '":[');
+				for(var i = 0; i < val.length; i++ )
+				{
+					var arrayValue = val[i];
+
+					if (typeof arrayValue == "string" )
+					{
+						str += ('"'+ encodeURI(arrayValue) + '"');
+					}
+					else if (typeof arrayValue == "number" || typeof arrayValue == "boolean")
+					{
+						str += (arrayValue);
+					}
+					if(i < val.length-1) str += ("," + space);
+				}
+				str += ('],'+ cR);
+			}
+			// support complex objects (?) here
+			else
+			{		
+				// support null too!
+			}
+		}
+	} 
+	str += ("}" + cR);
+	
+	// hack to remove last comma
+	str = str.replace(","+cR+"}"+cR, cR+"}");
+
+	return str;
+};
+
 JSUI.readIniFile = function(obj, fptr, type)
 {
 	var fptr = fptr != undefined ? fptr : JSUI.INIFILE;
@@ -4723,6 +4902,45 @@ JSUI.writeIniFile = function(fptr, obj, header)
  		JSUI.reflectProperties(obj, "\n[WRITING TO INI STRING:]");
  	}
 	JSUI.writeToFile(fptr,str);
+};
+
+JSUI.writeJSONfile = function(fptr, obj)
+{
+	var fptr = fptr != undefined ? fptr : JSUI.JSONFILE;
+	var obj = obj != undefined ? obj : JSUI.PREFS;
+	
+	var str = "";
+	str += JSUI.toJSONstring(obj);
+	
+	if($.level && JSUI.PrintINIstringInfo) 
+ 	{
+ 		JSUI.reflectProperties(obj, "\n[WRITING TO JSON STRING:]");
+ 	}
+	JSUI.writeToFile(fptr,str);
+};
+
+JSUI.readJSONfile = function(obj, fptr, type)
+{
+	var fptr = fptr != undefined ? fptr : JSUI.JSONFILE;
+	var obj = obj != undefined ? obj : JSUI.PREFS;
+	var type = type != undefined ? type : true;
+	
+	if(!obj)
+	{
+		obj = {};
+	}
+
+	fptr = JSUI.convertFptr(fptr);
+	
+	if(!fptr.exists)
+	{
+		return obj;
+	}
+
+	var str = JSUI.readFromFile(fptr,type);
+	var nObj = JSUI.fromJSONstring(str,obj);
+
+	return nObj;
 };
 
 // write/modify a single property value to/from  INI file
@@ -4793,7 +5011,7 @@ JSUI.openIniFileLocation = function()
 	}
 	catch(e)
 	{
-		alert("Error opening settings file:\n\n" + JSUI.INIFILE.paren.fsName + "\n\n" + e);
+		alert("Error opening settings file:\n\n" + JSUI.INIFILE.parent.fsName + "\n\n" + e);
 	}
 };
 
@@ -4822,7 +5040,7 @@ JSUI.isPower2 = function(n)
 	// 		n = sr;
 	// 	}
 	// }
-	var n = n = Math.floor(n);
+	var n = Math.floor(n);
 	if( n > 0 )
 	{
 		while( n % 2 == 0)
@@ -5081,7 +5299,7 @@ JSUI.RGBtoHex = function(r, g, b, a)
 	return JSUI.toHex(r) + JSUI.toHex(g) + JSUI.toHex(b) + (a != undefined ? JSUI.toHex(a) : "")
 };
 
-// Number to hex 128 becomes "80"
+// Number to hex string (128 becomes "80")
 JSUI.toHex = function(n)
 {
 	if (n == null) return "00";

@@ -16,6 +16,7 @@
 
 JSUI.TOOLNAME = "JSUI ColorPicker";
 JSUI.populateINI();
+JSUI.populateJSON();
 JSUI.autoSave = true;
 
 
@@ -29,9 +30,9 @@ function Main()
         this.colorPicker1 = "FF8000";
         this.colorPicker2 = "0080FF";
 
-        this.rgb_R = "0";
-        this.rgb_G = "0";
-        this.rgb_B = "0";
+        this.rgb_R = 0;
+        this.rgb_G = 0;
+        this.rgb_B = 0;
 
         this.rgb_nR = "0.0";
         this.rgb_nG = "0.0";
@@ -44,9 +45,6 @@ function Main()
         this.rgb2_nR = "0.0";
         this.rgb2_nG = "0.0";
         this.rgb2_nB = "0.0";
-
-        this.intTest = "1.2345";
-        this.floatTest = "0.00231";
 
 		return this;
 	}
@@ -94,7 +92,7 @@ function Main()
 	if($.level)
 	{
         debugTxt = win.addStaticText( { width:325, text:"[Debug text goes here...]\n[...and here.]", disabled:true, multiline:true, height:100 } );       
-      //  winButtonsRow.addOpenINILocationButton( { label: "Reveal Settings" } );
+        winButtonsRow.addOpenINILocationButton( { label: "Reveal Settings" } );
     }
 
     // this function updates values for edittext fields based on the current colorpicker1's hexString 
@@ -176,7 +174,41 @@ function Main()
     _updateRGBvalues( true, true, false );
     _updateRGB2values();
 
+    //
+    // // testing JSON stuff
+    // var obj = {};
+    // obj.bool = true;
+    // obj.num = 1.23;
+    // obj.str = "oh HAI iz STRING lol";
+    //  obj.strArr = [ "one", "two", "three"];
+    //  obj.numArr = [ 1, 2, 3];
+    //  obj.boolArr = [ true, true, false];
+
+    //  // convert object to JSON string
+    // var jsonStr = JSUI.toJSONstring ( obj );
+
+  //   var jsonStr = JSUI.toJSONstring (JSUI.PREFS);
+    //if($.level) $.writeln(jsonStr);
+  //  JSUI.writeJSONfile( JSUI.JSONFILE, JSUI.PREFS );
+   
+   // write to JSON file 
+    // JSUI.writeJSONfile( JSUI.JSONFILE, JSUI.PREFS );
+  //  JSUI.writeJSONfile( JSUI.JSONFILE, obj );
+
+   // read from JSON file
+  //var newObj = JSUI.readJSONfile( {}, JSUI.JSONFILE );
+
+  //alert("colorPicker1: " + newObj.colorPicker1);
+  //alert("str: " + newObj.str);
+
+  // JSUI.reflectProperties( newObj );
+    // var newObj = JSUI.fromJSONstring(  );
+    //
+    //
+
     win.center();
 	win.show();
+
+
 }
 
