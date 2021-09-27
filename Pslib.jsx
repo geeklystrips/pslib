@@ -46,6 +46,9 @@
 	- added Pslib.getXmpDictionary() to allow working 
 	- performances: checking for .isBackgroundLayer status creates issues and delays, and somehow promotes the background layer to a normal layer anyway
 	  it's best to let the try/catch blocks handle it for the cases where it will be actually useful
+
+	(0.61)
+	- bugfix for XMP to XML dump (wrongly using XMPmeta)
 */
 
 // using and adding functions to Pslib object -- whether or not the library has been loaded
@@ -729,7 +732,7 @@ Pslib.exportLayerMetadata = function (target, path, alertMsg)
 		// verify that xmp data is available
 		   try
 		   {
-			  xmp = new XMPMeta( Pslib.isIllustrator ? target.XMPString.toString() : target.xmpMetadata.rawData.toString() );
+			  xmp = Pslib.isIllustrator ? target.XMPString.toString() : target.xmpMetadata.rawData.toString();
 
 			if(alertMsg) alert(xmp);
 	

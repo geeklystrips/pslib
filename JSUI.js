@@ -3322,7 +3322,6 @@ Object.prototype.addDropDownList = function(propName, obj)
 	var sourcepath = container.addEditText( { name:"sourcepath", text:new Folder(prefsObj.sourcepath).fsName, prefs:prefsObj } );		
 	var browsebtn = container.addButton( {label:"Browse...", prefs:prefsObj, specs:{ prefs:prefsObj, browseFolder:true, textfield:sourcepath, prop:"sourcepath"} } );
 */
-//Object.prototype.addButton = function(obj)
 Object.prototype.addButton = function(imgNameStr, obj)
 {
 	//if(obj == undefined) return;
@@ -3560,6 +3559,24 @@ Object.prototype.addButton = function(imgNameStr, obj)
 			// }
 		}
 	}
+
+	return c;
+};
+
+// pre-made wrapper for .addButton for launching URL with more info
+Object.prototype.addInfoButton = function( obj )
+{
+	var obj = obj ? obj : {};
+	obj.message = obj.message ? obj.message : "Press this button for more detailed information on our wiki.";
+	obj.url = obj.url ? obj.url : JSUI.TOOLHELP;
+	obj.imgFile = obj.imgFile ? obj.imgFile : "/img/Info_48px.png";
+
+	var c = this.addButton( obj );
+
+	c.onClick = function()
+	{
+		JSUI.launchURL( obj.url );
+	};
 
 	return c;
 };
