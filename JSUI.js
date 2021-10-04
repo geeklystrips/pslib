@@ -117,6 +117,7 @@
 			img/Info_48px.png
 
 		- adding basic JSON implementation
+			JSUI.readJSONfile()
 			JSUI.writeJSONfile()
 			JSUI.toJSONstring()
 
@@ -124,6 +125,14 @@
 		- bugfix/workaround for JSUI.createDialog() to simulate imageSize array in cases where image file does not exist
 		- workaround for addImage() to actually display invalid URI message instead of crashing
 		- addEditText() fix for width vs characters property in a context where the parent container has alignChildren set to "fill"
+
+	0.9787
+		- adding JSUI.saveJSONfile() wrapper
+		- adding basic XML implementation
+			JSUI.readXMLfile()
+			JSUI.toXML() (serializes object to XML structure)
+			JSUI.writeXMLfile()
+			JSUI.saveXMLfile() (wrapper)
 
 	TODO
 	- colorPicker hexString TextEdit should have support for an onChangingFunction (?)
@@ -153,7 +162,7 @@
 JSUI = function(){}; 
 
 /* version	*/
-JSUI.version = "0.9786";
+JSUI.version = "0.9787";
 
 // do some of the stuff differently depending on $.level and software version
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -192,6 +201,7 @@ JSUI.USERPREFSFOLDER = Folder.userData;
 JSUI.TOOLSPREFSFOLDERNAME = "pslib";
 JSUI.INIFILE = JSUI.USERPREFSFOLDER + "/" + JSUI.TOOLSPREFSFOLDERNAME + "/" + JSUI.TOOLNAME + ".ini";
 JSUI.JSONFILE = JSUI.USERPREFSFOLDER + "/" + JSUI.TOOLSPREFSFOLDERNAME + "/" + JSUI.TOOLNAME + ".json";
+JSUI.XMLFILE = JSUI.USERPREFSFOLDER + "/" + JSUI.TOOLSPREFSFOLDERNAME + "/" + JSUI.TOOLNAME + ".xml";
 JSUI.autoSave = false;
 JSUI.PrintINIstringInfo = false;
 JSUI.CS6styling = true;
@@ -205,7 +215,7 @@ JSUI.populateINI = function()
 	return JSUI.INIFILE.exists;
 };
 
-// this must be invoked for JSUI.INIFILE to be valid
+// this must be invoked for JSUI.JSONFILE to be valid
 JSUI.populateJSON = function()
 {
 	JSUI.JSONFILE = new File(JSUI.USERPREFSFOLDER + "/" + JSUI.TOOLSPREFSFOLDERNAME + "/" + JSUI.TOOLNAME + ".json");
@@ -213,6 +223,16 @@ JSUI.populateJSON = function()
 	JSUI.status.message = "";
 	return JSUI.JSONFILE.exists;
 };
+
+// this must be invoked for JSUI.XMLFILE to be valid
+JSUI.populateXML = function()
+{
+	JSUI.XMLFILE = new File(JSUI.USERPREFSFOLDER + "/" + JSUI.TOOLSPREFSFOLDERNAME + "/" + JSUI.TOOLNAME + ".xml");
+	// JSUI.status.message = "JSUI init OK";
+	JSUI.status.message = "";
+	return JSUI.XMLFILE.exists;
+};
+
 
 /* INI prefs framework	*/
 JSUI.PREFS = {};
@@ -312,12 +332,43 @@ JSUI.launchURL = function(url)
 {
 	try
 	{
-		var u = new File(Folder.temp + '/JSUITmpURL.url');
+		// var u = new File(Folder.temp + '/JSUITmpURL.url');
+		var u = new File(Folder.userData + '/JSUITmpURL.url');
 		u.open('w');
 		u.writeln('[InternetShortcut]\nURL=' + url + '\n');
 		u.close();
-		u.execute();
+
+		if(JSUI.isWindows)
+		{
+			u.execute();
+		}
+		// else
+		// {
+			// this does not work
+		// 	app.system ( u.fsName );
+
+		//https://www.ps-scripts.com/viewtopic.php?f=75&t=9572&start=10
+		// in javascript, approximately:
+		//
+		// $.setenv('arg1_name','arg1_value')
+		// new File("appname").exec()
+
+		// and in the app:
+		//
+		// char *arg = getenv('arg1_name')
+
+		// }
+
 		u.remove(); 
+
+		// .execute() on macOS seems to bring up the File location instead of opening the URL
+		// workaround: show prompt...?
+		if(!JSUI.isWindows)
+		{
+			var msg = "Hello macOS user!\n\nArbitrarily launching URLs is no longer considered safe by Apple.\nThat is okay, just be who you are. Manually copy it to your favorite browser.";
+			var ttl = "URL Prompt";
+			JSUI.prompt( { message: msg, text: url, title: ttl } );
+		}
 	}
 	catch(e)
 	{  
@@ -348,14 +399,7 @@ JSUI.reflectProperties = function(obj, msg)
 			continue;
 		}
 	
-/*		if(typeof obj[val] == "string")
-		{
-			quotes += "\"";
-		}	*/
-	
-		str += "\t" + val + ":\t\t" + obj[val] + "\t\t[" + typeof obj[val] + "]\n";
-	/*	if($.level) $.writeln(msg);
-		str+=msg	*/
+		str += "\t" + val + ":\t\t" + obj[val] + "\t\t[" + (typeof obj[val] == "object" ? (obj[val].length != undefined ? "array" : "object") : typeof obj[val]) + "]\n";
 	}
 	if($.level) $.writeln(str);
 	return str;
@@ -4500,6 +4544,11 @@ JSUI.convertFptr = function(fptr)
 
 JSUI.writeToFile = function(fptr, str, encoding)
 {
+	//var success = false;
+
+	// encoding should be either "utf8" or "ascii" (?)
+	//var encoding = encoding != undefined ? encoding : false;
+
 	var file = JSUI.convertFptr(fptr);
 	if(!file.parent.exists)
 	{	file.parent.create();}
@@ -4721,6 +4770,7 @@ JSUI.fromJSONstring = function (str, obj)
 	{
 		var line = lines[i].trim();
 
+		// skip opening and closing curly brackets
 		if( !line || line.charAt(0) == '{' || line.charAt(0) == '}')
 		{ continue }
 
@@ -4767,8 +4817,47 @@ JSUI.fromJSONstring = function (str, obj)
 			// trim brackets from string
 			value = value.replace('[', '');
 			value = value.replace(']', '');
+
+		//	var removeDoubleQuotes = value.match('/\"/') != null;
 			obj[prop] = value.split(',');
+
+		//	alert(value); // + "\nremoveDoubleQuotes:" + removeDoubleQuotes)
+
 			// some form of decodeURI should probably happen at this stage too (?)
+
+			// store copy
+			// var arrayCopy = obj[prop];
+			// var updateArray = false;
+
+			// if array chunks were stored as strings by previous JSON conversion operation
+			// remove leading and trailing quotes for each chunk if present
+			//if(obj[prop][0][0] == "\"")
+			for(var j = 0; j < obj[prop].length; j++)
+			{
+				var chunk = obj[prop][j].trim();
+
+				if(typeof chunk == "string")
+				{
+				//	chunk = chunk.trim();
+
+					if(chunk.length > 0 )
+					{
+						if( chunk[0] == "\"" && chunk[chunk.length-1] == "\"" )
+						{
+							var update = chunk;
+
+							// trim quotes from string
+							 update = update.replace(/\"/g, '');
+
+							// only replace array item if content is different
+							if(update != chunk)
+							{
+								obj[prop][j] = update;
+							}
+						}
+					}
+				}
+			}
 		}
 		
 		// force Number
@@ -4821,6 +4910,8 @@ JSUI.toJSONstring = function(obj, whitespaceBool)
 	for (var idx in obj)
 	{
 		// ignore member properties / reserved
+		//if(val == "__proto__" || val == "__count__" || val == "__class__" || val == "reflect" || val == "Components" || val == "typename") continue;    
+
 		if (idx.charAt(0) == '_' || idx == "Components")
 		{
 			continue;			
@@ -4841,7 +4932,8 @@ JSUI.toJSONstring = function(obj, whitespaceBool)
 		else if( typeof val == "object" )
 		{
 			// if object has a length, we have ourselves an array!
-			 if(idx.length)
+			// ... beware of empty arrays, they will be ignored
+			if(idx.length != undefined)
 			{
 				str += (tab+'"'+idx + '":[');
 				for(var i = 0; i < val.length; i++ )
@@ -4873,6 +4965,177 @@ JSUI.toJSONstring = function(obj, whitespaceBool)
 	str = str.replace(","+cR+"}"+cR, cR+"}");
 
 	return str;
+};
+
+// read XML file (bind to object properties?)
+JSUI.readXMLfile = function(obj, fptr, type)
+{
+	var fptr = fptr != undefined ? fptr : JSUI.XMLFILE;
+	var obj = obj != undefined ? obj : JSUI.PREFS;
+	var type = type != undefined ? type : true;
+	
+	if(!obj)
+	{
+		obj = {};
+	}
+
+	fptr = JSUI.convertFptr(fptr);
+	
+	if(!fptr.exists)
+	{
+		return obj;
+	}
+
+	var str = JSUI.readFromFile(fptr,type);
+	var nObj = JSUI.fromJSONstring(str,obj);
+
+	return nObj;
+};
+
+// "serialize" Object to XML structure
+//
+// default output format: 
+// obj.property == <property>value</>
+//
+JSUI.toXML = function(obj, name, attrBool)
+{
+	if(obj == undefined || obj == null) return;
+	attrBool = attrBool != undefined ? attrBool : false;
+
+    try
+    {
+        var child = new XML('<' + name + '/>');
+
+		if($.level) $.writeln(name + ":");
+    	var props = obj.reflect.properties;
+
+        for (var i in props)
+        {
+			// get property name
+			var p = props[i];
+
+			// skip if internal object member or part of Components
+			if(p == "length" || p == "__proto__" || p == "__count__" || p == "__class__" || p == "reflect" || p == "Components" || p == "typename") continue;   
+
+			// store corresponding object value
+			var v = obj[p];
+
+			var quotes = "";
+
+			if($.level) $.writeln("\t" + i + ": " + p + "  " + v );
+
+			// if object
+            if(typeof v == "object")
+            {
+				// if object has length, treat as array
+				if(v.length != undefined) 
+				{
+					// var arr = v;
+
+					var arrNode = new XML('<' + p + '/>');
+
+					for (var a = 0; a < v.length; a++)
+					{
+						var nodeName = v[a];
+
+						if(attrBool)
+						{
+							arrNode.@[nodeName] = p;
+						}
+						else
+						{
+							// arrNode.appendChild(new XML('<' + nodeName + '/>'));
+							arrNode.appendChild(new XML('<'+p+'>' + nodeName + '</'+p+'>' ));
+							// arrNode.appendChild(new XML('<>' + nodeName + '</>' ));
+							// if(p == "length") continue;	
+						//	if(node == "length") continue;	
+							// var subNode = JSUI.toXML(node, a);
+							// if(subNode != null)
+							// {
+							// //	child.@[v] = ""; 
+							// 	arrNode.appendChild(new XML('<' + a + '/>'));
+							// }
+						}
+					}
+					child.appendChild(arrNode);
+				}
+				// treat as object
+				else
+				{
+					var xmlChild = JSUI.toXML(v, p, attrBool);
+					if(xmlChild != null) child.appendChild(xmlChild);
+				}
+            }
+            else
+            {
+				// treat as string
+				if(attrBool)
+				{
+					child.@[p] = encodeURI(v);
+				}
+				else
+				{
+					// var subNode = new XML('<' + p + '/>' )
+					var subNode = new XML('<'+p+'>' + encodeURI(v) + '</'+p+'>' );
+					// var subNode = new XML('<>' + v + '</>' );
+					//subNode.Value = v;
+					child.appendChild(subNode);
+				}
+
+            }
+        }
+        return child;
+    }
+    catch(e)
+    {
+        if($.level) $.writeln(e);
+        return null;
+    }
+};
+
+JSUI.writeXMLfile = function(xml, file) //, whitespaceBool)
+{
+	// abort if there is nothing to work with
+	if(xml == null)
+	{
+		return false;
+	}
+
+	// if file object is not provided, assume we want to save content to internally-managed XML file
+	if(file == undefined)
+	{
+		// check if XMLFILE file object was effectively populated
+		if( JSUI.XMLFILE instanceof File)
+		{
+			file = JSUI.XMLFILE;
+		}
+		else
+		{
+			return false;
+		}
+	}
+
+	var xmlStr = xml.toXMLString();
+	JSUI.writeToFile( file, xmlStr, "UTF-8");
+
+	return file.exists;
+};
+
+// wrapper for saving JSUI.PREFS to XML 
+JSUI.saveXMLfile = function()
+{
+	// abort if internal XMLFILE file object was not effectively populated
+	if( !(JSUI.XMLFILE instanceof File))
+	{
+		return false;
+	}
+
+	var xmlStr = JSUI.toXML(JSUI.PREFS, "JSUIPREFS");
+	if(!xmlStr) return false;
+
+	JSUI.writeToFile( JSUI.XMLFILE, xmlStr, "UTF-8");
+
+	return JSUI.XMLFILE.exists;
 };
 
 JSUI.readIniFile = function(obj, fptr, type)
@@ -4934,6 +5197,21 @@ JSUI.writeJSONfile = function(fptr, obj)
  		JSUI.reflectProperties(obj, "\n[WRITING TO JSON STRING:]");
  	}
 	JSUI.writeToFile(fptr,str);
+};
+
+// wrapper for saving JSON prefs
+JSUI.saveJSONfile = function()
+{
+	// abort if JSONFILE file object was not effectively populated
+	if( !(JSUI.JSONFILE instanceof File))
+	{
+		return false;
+	}
+
+	var jsonStr = JSUI.toJSONstring(JSUI.PREFS);
+	JSUI.writeToFile( JSUI.JSONFILE, jsonStr, "UTF-8");
+
+	return JSUI.JSONFILE.exists;
 };
 
 JSUI.readJSONfile = function(obj, fptr, type)

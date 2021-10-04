@@ -174,38 +174,6 @@ function Main()
     _updateRGBvalues( true, true, false );
     _updateRGB2values();
 
-    //
-    // // testing JSON stuff
-    // var obj = {};
-    // obj.bool = true;
-    // obj.num = 1.23;
-    // obj.str = "oh HAI iz STRING lol";
-    //  obj.strArr = [ "one", "two", "three"];
-    //  obj.numArr = [ 1, 2, 3];
-    //  obj.boolArr = [ true, true, false];
-
-    //  // convert object to JSON string
-    // var jsonStr = JSUI.toJSONstring ( obj );
-
-  //   var jsonStr = JSUI.toJSONstring (JSUI.PREFS);
-    //if($.level) $.writeln(jsonStr);
-  //  JSUI.writeJSONfile( JSUI.JSONFILE, JSUI.PREFS );
-   
-   // write to JSON file 
-    // JSUI.writeJSONfile( JSUI.JSONFILE, JSUI.PREFS );
-  //  JSUI.writeJSONfile( JSUI.JSONFILE, obj );
-
-   // read from JSON file
-  //var newObj = JSUI.readJSONfile( {}, JSUI.JSONFILE );
-
-  //alert("colorPicker1: " + newObj.colorPicker1);
-  //alert("str: " + newObj.str);
-
-  // JSUI.reflectProperties( newObj );
-    // var newObj = JSUI.fromJSONstring(  );
-    //
-    //
-
     win.center();
 	win.show();
 

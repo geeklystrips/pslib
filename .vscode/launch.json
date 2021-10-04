@@ -38,6 +38,27 @@
             "name": "JSUITestWindow_AutoSave.jsx",
             "program": "${workspaceFolder}/JSUITestWindow_AutoSave.jsx",
             "stopOnEntry": false
+        },
+        {
+            "type": "extendscript-debug",
+            "request": "launch",
+            "name": "JSUITest_JSON.jsx",
+            "program": "${workspaceFolder}/JSUITest_JSON.jsx",
+            "stopOnEntry": false
+        },
+        {
+            "type": "extendscript-debug",
+            "request": "launch",
+            "name": "JSUITest_XML.jsx",
+            "program": "${workspaceFolder}/JSUITest_XML.jsx",
+            "stopOnEntry": false
+        },
+        {
+            "type": "extendscript-debug",
+            "request": "launch",
+            "name": "ScriptWhisperer.jsx",
+            "program": "${workspaceFolder}/ScriptWhisperer.jsx",
+            "stopOnEntry": false
         }
     ]
 }
