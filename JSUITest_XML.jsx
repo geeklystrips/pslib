@@ -98,8 +98,13 @@ function Main()
 
 
       /*
+        // this is ... backwards.
 
-
+      <Output bool="true" num="1.23" str="oh%20HAI%20iz%20%3CSTRING%3E%20lol">
+        <strArr one="strArr" two="strArr" three="strArr"/>
+        <numArr 1="numArr" 2="numArr" 3="numArr"/>
+        <boolArr true="boolArr" false="boolArr"/>
+      </Output>
 
 
 
