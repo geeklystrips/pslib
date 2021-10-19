@@ -96,9 +96,11 @@ function Main()
 
       JSUI.writeXMLfile( xmlattr, new File(JSUI.XMLFILE.parent + "/writeCustomXML_Attr.xml"));
 
+  //    alert(xmlattr.toXMLString());
+
 
       /*
-        // this is ... backwards.
+        // this is ... backwards. Don't use with arrays!
 
       <Output bool="true" num="1.23" str="oh%20HAI%20iz%20%3CSTRING%3E%20lol">
         <strArr one="strArr" two="strArr" three="strArr"/>
@@ -110,12 +112,14 @@ function Main()
 
       */
 
+
 if(xml != null)
 {
   var xmlStr = xml.toXMLString();
 
   //   JSUI.alert(xmlStr);
-   if($.level) $.writeln(xmlStr);
+  // if($.level) $.writeln(xmlStr);
 }
+
 
 };

@@ -12,6 +12,9 @@
 
 	TODO
 	- add "/img/DocMetadata.png" & "/img/LayerMetadata.png"
+
+	- option to avoid isBackgroundLayer status check (faster, will cause error if user tries to add tag to background layer)
+	
 */
 
 #include "Pslib.jsx"

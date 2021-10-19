@@ -129,10 +129,12 @@
 	0.9787
 		- adding JSUI.saveJSONfile() wrapper
 		- adding basic XML implementation
-			JSUI.readXMLfile()
+			JSUI.readXMLfile() 	// for constructing JSUI.PREFS object properties from stored XML
 			JSUI.toXML() (serializes object to XML structure)
 			JSUI.writeXMLfile()
 			JSUI.saveXMLfile() (wrapper)
+
+			JSUI.XMLfromFile() // load XML structure from existing file
 
 	TODO
 	- colorPicker hexString TextEdit should have support for an onChangingFunction (?)
@@ -4967,7 +4969,7 @@ JSUI.toJSONstring = function(obj, whitespaceBool)
 	return str;
 };
 
-// read XML file (bind to object properties?)
+// read XML file (bind to object properties)
 JSUI.readXMLfile = function(obj, fptr, type)
 {
 	var fptr = fptr != undefined ? fptr : JSUI.XMLFILE;
@@ -4990,6 +4992,21 @@ JSUI.readXMLfile = function(obj, fptr, type)
 	var nObj = JSUI.fromJSONstring(str,obj);
 
 	return nObj;
+};
+
+JSUI.XMLfromFile = function( file, encoding )
+{
+	// encoding is only used if provided
+	var str = JSUI.readFromFile(file, encoding);
+
+	if(str)
+	{
+		return new XML(str);
+	}
+	else
+	{
+		return null;
+	}
 };
 
 // "serialize" Object to XML structure
@@ -5030,31 +5047,20 @@ JSUI.toXML = function(obj, name, attrBool)
 				// if object has length, treat as array
 				if(v.length != undefined) 
 				{
-					// var arr = v;
-
 					var arrNode = new XML('<' + p + '/>');
 
 					for (var a = 0; a < v.length; a++)
 					{
 						var nodeName = v[a];
+						var arrIndexName = p+(a+1);
 
 						if(attrBool)
 						{
-							arrNode.@[nodeName] = p;
+							arrNode.@[arrIndexName] = nodeName;
 						}
 						else
 						{
-							// arrNode.appendChild(new XML('<' + nodeName + '/>'));
-							arrNode.appendChild(new XML('<'+p+'>' + nodeName + '</'+p+'>' ));
-							// arrNode.appendChild(new XML('<>' + nodeName + '</>' ));
-							// if(p == "length") continue;	
-						//	if(node == "length") continue;	
-							// var subNode = JSUI.toXML(node, a);
-							// if(subNode != null)
-							// {
-							// //	child.@[v] = ""; 
-							// 	arrNode.appendChild(new XML('<' + a + '/>'));
-							// }
+							arrNode.appendChild(new XML('<'+arrIndexName+'>' + nodeName + '</'+arrIndexName+'>' ));
 						}
 					}
 					child.appendChild(arrNode);

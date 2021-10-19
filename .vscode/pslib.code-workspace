@@ -4,5 +4,73 @@
 			"path": ".."
 		}
 	],
-	"settings": {}
+	"settings": {},
+	"launch": {
+		"version": "0.2.0",
+		"configurations": [
+			{
+				"type": "extendscript-debug",
+				"request": "launch",
+				"name": "Ask for script name",
+				"program": "${workspaceFolder}/${command:AskForScriptName}",
+				"stopOnEntry": false
+			},
+			{
+				"type": "extendscript-debug",
+				"request": "launch",
+				"name": "ColorPicker.jsx",
+				"program": "${workspaceFolder}/ColorPicker.jsx",
+				"stopOnEntry": false
+			},
+			{
+				"type": "extendscript-debug",
+				"request": "launch",
+				"name": "DocumentMetadataEditor.jsx",
+				"program": "${workspaceFolder}/DocumentMetadataEditor.jsx",
+				"stopOnEntry": false
+			},
+			{
+				"type": "extendscript-debug",
+				"request": "launch",
+				"name": "LayerMetadataEditor.jsx",
+				"program": "${workspaceFolder}/LayerMetadataEditor.jsx",
+				"stopOnEntry": false
+			},
+			{
+				"type": "extendscript-debug",
+				"request": "launch",
+				"name": "JSUITestWindow_AutoSave.jsx",
+				"program": "${workspaceFolder}/JSUITestWindow_AutoSave.jsx",
+				"stopOnEntry": false
+			},
+			{
+				"type": "extendscript-debug",
+				"request": "launch",
+				"name": "JSUITest_JSON.jsx",
+				"program": "${workspaceFolder}/JSUITest_JSON.jsx",
+				"stopOnEntry": false
+			},
+			{
+				"type": "extendscript-debug",
+				"request": "launch",
+				"name": "JSUITest_XML.jsx",
+				"program": "${workspaceFolder}/JSUITest_XML.jsx",
+				"stopOnEntry": false
+			},
+			{
+				"type": "extendscript-debug",
+				"request": "launch",
+				"name": "JSUITest_SVG.jsx",
+				"program": "${workspaceFolder}/JSUITest_SVG.jsx",
+				"stopOnEntry": false
+			},
+			{
+				"type": "extendscript-debug",
+				"request": "launch",
+				"name": "ScriptWhisperer.jsx",
+				"program": "${workspaceFolder}/ScriptWhisperer.jsx",
+				"stopOnEntry": false
+			}
+		]
+	}
 }
