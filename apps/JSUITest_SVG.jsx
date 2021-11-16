@@ -7,7 +7,7 @@
     https://extendscript.docsforadobe.dev/integrating-xml/xml-object-reference.html?highlight=XML
 */
 
-#include "jsui.js";
+#include "../jsui.js";
 
 #target photoshop;
 

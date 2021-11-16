@@ -8,13 +8,14 @@
 	"launch": {
 		"version": "0.2.0",
 		"configurations": [
-			{
-				"type": "extendscript-debug",
-				"request": "launch",
-				"name": "Ask for script name",
-				"program": "${workspaceFolder}/${command:AskForScriptName}",
-				"stopOnEntry": false
-			},
+
+		{
+			"type": "extendscript-debug",
+			"request": "launch",
+			"name": "Ask for script name",
+			"program": "${workspaceFolder}/${command:AskForScriptName}",
+			"stopOnEntry": false
+		},
 			{
 				"type": "extendscript-debug",
 				"request": "launch",
@@ -69,6 +70,34 @@
 				"request": "launch",
 				"name": "ScriptWhisperer.jsx",
 				"program": "${workspaceFolder}/ScriptWhisperer.jsx",
+				"stopOnEntry": false
+			},
+			{
+				"type": "extendscript-debug",
+				"request": "launch",
+				"name": "SVG_Cluster.jsx",
+				"program": "${workspaceFolder}/apps/SVG_Cluster.jsx",
+				"stopOnEntry": false
+			},
+			{
+				"type": "extendscript-debug",
+				"request": "launch",
+				"name": "XMP_DocToTargetObjectTagSync.jsx",
+				"program": "${workspaceFolder}/apps/XMP_DocToTargetObjectTagSync.jsx",
+				"stopOnEntry": false
+			},
+			{
+				"type": "extendscript-debug",
+				"request": "launch",
+				"name": "XMP_DataTypes.jsx",
+				"program": "${workspaceFolder}/apps/XMP_DataTypes.jsx",
+				"stopOnEntry": false
+			},
+			{
+				"type": "extendscript-debug",
+				"request": "launch",
+				"name": "GetSelectedLayers.jsx",
+				"program": "${workspaceFolder}/apps/GetSelectedLayers.jsx",
 				"stopOnEntry": false
 			}
 		]

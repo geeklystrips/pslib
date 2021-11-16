@@ -9,6 +9,12 @@
 	TODO
 	- working on an advanced version of the layer metadata editor, might end up with separate apps
 	- will eventually need a way to copy/move chunks of xmp data from one layer to another layer, and from layer to containing document
+
+	- use .canPutXMP() method to determine if string size is compatible
+	- robust support for storing more complex data types (arrays as Bag/Seq/Alt, objects as Struct)
+
+	- Pslib.setXmpProperties() should be able to determine that the target is an xmpMeta object instead of a document or layer,  
+		and just modify it without getting/setting 
 	
 	2017-09 updates 
 	
@@ -43,12 +49,16 @@
 	
 	(0.6)
 	- added Illustrator document-level XMP editing support.
-	- added Pslib.getXmpDictionary() to allow working 
+	- added Pslib.getXmpDictionary() to allow working with predefined key/value sets
 	- performances: checking for .isBackgroundLayer status creates issues and delays, and somehow promotes the background layer to a normal layer anyway
 	  it's best to let the try/catch blocks handle it for the cases where it will be actually useful
 
 	(0.61)
-	- bugfix for XMP to XML dump (wrongly using XMPmeta)
+	- bugfix for XMP to XML dump (was wrongly using XMPmeta since Illustrator support was added)
+
+	(0.62)
+	- WIP support for working with more complex data types
+
 */
 
 // using and adding functions to Pslib object -- whether or not the library has been loaded
@@ -66,7 +76,7 @@ catch(e)
 
 	// $.level == 0 if the script is run by Photoshop, == 1 if run by ExtendScript ToolKit
 	// if ESTK, then write to console for easier debugging
-	if($.level) $.writeln("Pslib library object not found. Creating placeholder.");
+	// if($.level) $.writeln("Pslib library object not found. Creating placeholder.");
 	
 	// errors are objects that can give you some information about what went wrong 
 	//$.writeln("typeof e.message: " + typeof e.message + "\n\ne:\n" + e + "\n\ne.message:\n" + e.message);
@@ -79,7 +89,7 @@ catch(e)
 }
 
 // library version, used in tool window titles. Maybe.
-Pslib.version = 0.6;
+Pslib.version = 0.62;
 Pslib.isPs64bits = BridgeTalk.appVersion.match(/\d\d$/) == '64';
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
