@@ -390,13 +390,13 @@ JSUI.launchURL = function(url)
 			var ttl = "URL Prompt";
 			JSUI.prompt( { message: msg, text: url, title: ttl } );
 
-			var htmlStr = 
-			'<head>\n'+
-			'<meta http-equiv="refresh" content="5; URL="'+url+'" />'+
-			'</head>'+
-			'<body>'+
-			'<p>If you are not redirected in five seconds, <a href="'+url+'">click here</a>.</p>'
-			'</body>';
+			// var htmlStr = 
+			// '<head>\n'+
+			// '<meta http-equiv="refresh" content="5; URL="'+url+'" />'+
+			// '</head>'+
+			// '<body>'+
+			// '<p>If you are not redirected in five seconds, <a href="'+url+'">click here</a>.</p>'+
+			// '</body>';
 		}
 	}
 	catch(e)
