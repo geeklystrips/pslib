@@ -9,8 +9,6 @@
 
 #include "jsui.js";
 
-
-
 JSUI.TOOLNAME = "JSUI JSON Test";
 JSUI.populateJSON();
 
@@ -34,9 +32,10 @@ function Main()
      obj.exampleStrArr = [ "one", "two", "three"];
      obj.exampleNumArr = [ 1, 2, 3];
      obj.exampleBoolArr = [ true, true, false];
+     obj.exampleObj = { iDoLoveCats: true, howMany: 8 };
 
     // convert object to JSON string
-    var jsonStr = JSUI.toJSONstring ( obj );
+    var jsonStr = JSON.stringify ( obj );
 
   //  JSUI.alert(jsonStr);
   if($.level) $.writeln(jsonStr);
@@ -53,12 +52,13 @@ function Main()
   }
 
   */
-    
-    // store results to file
-    JSUI.writeJSONfile( new File(JSUI.JSONFILE.parent + "/individualTest.json"), obj );
-   
+
+  // store custom object 
+    JSUI.writeJSONfile( JSUI.JSONFILE, obj );
+
+  
     // store internal preferences to JSON
-    JSUI.saveJSONfile();  // equivalent of JSUI.writeJSONfile( JSUI.JSONFILE, JSUI.PREFS );
+    //JSUI.saveJSONfile();  // equivalent of JSUI.writeJSONfile( JSUI.JSONFILE, JSUI.PREFS );
 
    // read back data from JSON file
   var newObj = JSUI.readJSONfile( {}, JSUI.JSONFILE );

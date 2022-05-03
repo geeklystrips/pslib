@@ -99,6 +99,20 @@
 				"name": "GetSelectedLayers.jsx",
 				"program": "${workspaceFolder}/apps/GetSelectedLayers.jsx",
 				"stopOnEntry": false
+			},
+			{
+				"type": "extendscript-debug",
+				"request": "launch",
+				"name": "apps/TextureSizeMath.jsx",
+				"program": "${workspaceFolder}/apps/TextureSizeMath.jsx",
+				"stopOnEntry": false
+			},
+			{
+				"type": "extendscript-debug",
+				"request": "launch",
+				"name": "apps/TestJSONConfig.jsx",
+				"program": "${workspaceFolder}/apps/TestJSONConfig.jsx",
+				"stopOnEntry": false
 			}
 		]
 	}
