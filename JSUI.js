@@ -238,6 +238,15 @@ JSUI.populateINI = function()
 // allows specifying a specific JSON uri
 JSUI.populateJSON = function( uri )
 {
+	// if not File, cast as such
+	if(uri)
+	{
+		if(!(uri instanceof File))
+		{
+			uri = new File(JSUI.JSONFILE);
+		}
+	}
+	
 	JSUI.JSONFILE = uri != undefined ? new File(uri) : new File(JSUI.USERPREFSFOLDER + "/" + JSUI.TOOLSPREFSFOLDERNAME + "/" + JSUI.TOOLNAME + ".json");
 	JSUI.status.message = "JSON populated";
 	JSUI.autoSave = true;
