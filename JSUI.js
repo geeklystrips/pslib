@@ -1,6 +1,24 @@
 /* 
-	JSUI Extendscript Dialog Library for Photoshop
+	JSUI Extendscript Dialog Library for working with ScriptUI (Adobe Photoshop/Illustrator/Bridge)
 	Framework by geeklystrips@github
+
+	-----
+
+	Copyright (c) 2015, geeklystrips@gmail.com
+	All rights reserved.
+
+	Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+	1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+
+	2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+
+	THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+	http://www.opensource.org/licenses/bsd-license.php
+
+	-----
 		
 	0.5.5: renamed from UI to JSUI to avoid namespace conflicts
 	0.6.2: fix for disappearing iconbutton images: ScriptUI.newImage(imgPath, imgPath, imgPath, imgPath)
@@ -138,23 +156,34 @@
 		- Tweaks to pow2/multx math logic
 		- adding mult4/mult8/mult16/mult32 validation functions
 		- deprecating JSUI.toJSONstring()/JSUI.fromJSONstring() in favor of integrating json2.js by douglascrockford@github (2018) for more robust JSON parse/stringify support
-
+		- adding experimental support for LZW (pieroxy/lz-string)
+		- fixed addButton() obj,imageFile => obj.imgFile issue (JSUI.js should be entirely usable without PNG dependencies)
+		- fixed addToggleIconGroup() to accept undefined/invalid .images strings (fallback to radiobuttons)
+		- added saveConfigFile/deleteConfigFile/openConfigFileLocation and addDeleteConfigButton/addOpenConfigLocationButton methods (tested with JSON)
+		- adding JSUI.anchorRef property + JSUI.getAnchorReference()
 
 	TODO
+	- Fix bug with adjacent radiobutton clusters (addRadioButton instances + addToggleIconGroup default onClick function issue?)
+	- JSUI.alert/message should also support Bridge and InDesign
 	- better portability for standalone jsui.js (should still be able to run without PNG files present, use Ps blue/Ai orange addRectangle() as a fallback method maybe 
+	- manage orphan properties: strict mode? if not present in default preferences object, ignore
+		- JSUI needs a method for standalone properties that do not need to be saved to INI
+		- bypass based on provided array of strings during toINIstring process?
 
 	- add basic support for encoding/decoding LZW (for XMP purposes)
+		https://github.com/pieroxy/lz-string/
+		https://github.com/pieroxy/lz-string/blob/master/libs/lz-string.js (v1.4.4)
 
 	- colorPicker hexString TextEdit should have support for an onChangingFunction (?)
 	- add clamping support for int/float, + safeguard for "," being used as a delimiter
 	- support for hybrid ToggleIconButton component fallback to radiobuttons (if one image is missing instead of all images for radiobuttons)
 	- method for getting which property from toggleiconbutton array is activated
-	- JSUI needs a method for standalone properties that do not need to be saved to INI
-		- bypass based on provided array of strings during toINIstring process?
+
 	- make imgFile target accept arrays to bypass default naming scheme (if typeof imgFile == "object" && imgFile.length != undefined) or (if imgFile instanceof...)
 	- Scrollable alert support for cases with overflowing content
 	- Better support for JSUI.addImageGrid() types (only supports arrays of strings for now)
-	- save settings to / read from XML / JSON
+	  fix references to  JSUI.PREFS.imageGridColumns & JSUI.PREFS.imageGridRows
+	  Using two instances of imageGrids which don't have matching widths and heights will cause issues
 
 	Uses functions adapted from Xbytor's Stdlib.js
 	
@@ -178,9 +207,11 @@ JSUI.version = "0.9789";
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
 JSUI.isPhotoshop = app.name == "Adobe Photoshop";
 JSUI.isIllustrator = app.name == "Adobe Illustrator";
+JSUI.isBridge = app.name == "Adobe Bridge";
+JSUI.isIndesign = app.name == "Adobe InDesign";
+
 JSUI.isCS6 = JSUI.isPhotoshop ? app.version.match(/^13\./) != null : false; // photoshop-specific
 JSUI.is2020andAbove = JSUI.isPhotoshop ? (parseInt(app.version.match(/^\d.\./)) >= 21) : (parseInt(app.version.match(/^\d.\./)) >= 24); 
-
 
 /*	 system properties	*/
 JSUI.isWindows = $.os.match(/windows/i) == "Windows";
@@ -248,7 +279,7 @@ JSUI.populateJSON = function( uri )
 	}
 	
 	JSUI.JSONFILE = uri != undefined ? new File(uri) : new File(JSUI.USERPREFSFOLDER + "/" + JSUI.TOOLSPREFSFOLDERNAME + "/" + JSUI.TOOLNAME + ".json");
-	JSUI.status.message = "JSON populated";
+	// JSUI.status.message = "JSON populated";
 	JSUI.autoSave = true;
 	JSUI.JSONfileActive = true;
 	return JSUI.JSONFILE.exists;
@@ -287,6 +318,8 @@ JSUI.brightnessDarkGray = [0.1961, 0.1961, 0.1961];
 
 // placeholder: this value is made dynamic later on
 JSUI.backgroundColor = [0.3255, 0.3255, 0.3255];
+
+JSUI.anchorRef = JSUI.isPhotoshop ? AnchorPosition.MIDDLECENTER : 5;
 
 /* failsafe for cases where the UI framework is used without a debugTxt dialog component	
  if this variable is not replaced, calls by regular functions to modify its state should not cause problems	*/
@@ -395,7 +428,7 @@ JSUI.launchURL = function(url)
 		// workaround: show prompt...?
 		if(!JSUI.isWindows)
 		{
-			var msg = "Hello macOS user!\n\nArbitrarily launching URLs is no longer considered safe by Apple.\nThat is okay, just be who you are. Manually copy it to your favorite browser.";
+			var msg = "Hello macOS user!\n\nArbitrarily launching URLs is not considered safe by Apple.\nManually copy it to your favorite browser.";
 			var ttl = "URL Prompt";
 			JSUI.prompt( { message: msg, text: url, title: ttl } );
 
@@ -772,8 +805,16 @@ JSUI.createDialog = function( obj )
 			debugText = dlg.addStaticText( { width:500, text:"[Debug text goes here...]\n[...and here.]", disabled:true, multiline:true, height:100 } );
 
 			var debugButtonsGroup = dlg.addRow( {alignChildren: 'fill'} );
-			debugButtonsGroup.addDeleteINIButton();
-			debugButtonsGroup.addOpenINILocationButton();
+			if(JSUI.INIfileActive)
+			{
+				debugButtonsGroup.addDeleteINIButton();
+				debugButtonsGroup.addOpenINILocationButton();
+			}
+			if(JSUI.JSONfileActive)
+			{
+				debugButtonsGroup.addDeleteConfigButton();
+				debugButtonsGroup.addOpenConfigLocationButton();
+			}
 		}
 
 		return dlg;
@@ -872,7 +913,6 @@ JSUI.confirm = function( obj )
 	obj.width = obj.width != undefined ? obj.width : 400; 
 	obj.height = obj.height != undefined ? obj.height : 200; 
 
-	// obj.imgFile = obj.imgFile != undefined ? obj.imgFile : "/img/Photoshop" + (JSUI.isCS6 ? "CS6" : "CC" ) + "_96px.png";
 	obj.imgFile = obj.imgFile != undefined ? obj.imgFile : "/img/" + ( JSUI.isPhotoshop ? "Photoshop" : "Illustrator") + (JSUI.isPhotoshop && JSUI.isCS6 ? "CS6" : "CC" ) + "_96px.png";
 
 	obj.orientation = "column";
@@ -1043,14 +1083,14 @@ JSUI.getScriptUIStates = function( obj )
 				else
 				{
 					// placeholder object property
-					obj.imageFile = {};
+					obj.imgFile = {};
 					obj.imgFile.exists = false;
 				}
 			}
 			else
 			{
 				// placeholder object property
-				obj.imageFile = {};
+				obj.imgFile = {};
 				obj.imgFile.exists = false;
 			}
 		}
@@ -1126,7 +1166,7 @@ JSUI.getScriptUIStates = function( obj )
 
 			if($.level)
 			{
-				$.writeln( (obj.imgFile.exists ? "Found: " : "*** NOT FOUND: ") + obj.imgFile.name);
+				// $.writeln( (obj.imgFile.exists ? "Found: " : "*** NOT FOUND: ") + obj.imgFile.name);
 				// $.writeln( (imgFileUpExists ? "Found: " : "***" + imgFileUp.name + " NOT FOUND--instead using ") + (imgFileUpExists ? imgFileUp.name : obj.imgFile.name) );
 				// $.writeln( (imgFileOverExists ? "Found: " : "***" + imgFileOver.name + " NOT FOUND--instead using ") + (imgFileOverExists ? imgFileOver.name : obj.imgFile.name) );
 				// $.writeln( (imgFileDownExists ? "Found: " : "***" + imgFileDown.name + " NOT FOUND--instead using ") + (imgFileDownExists ? imgFileDown.name : obj.imgFile.name) );				
@@ -1353,6 +1393,28 @@ Object.prototype.addDivider = function(obj)
 	var c = this.add("panel");
 	c.alignChildren = 'fill';
 	c.orientation = obj.orientation ? obj.orientation : 'row';
+
+	if(JSUI.isCS6 && JSUI.CS6styling) c.darkMode();
+
+	return c;
+};
+
+Object.prototype.addDividerRow = function()
+{
+	var c = this.add("panel");
+	c.alignChildren = 'fill';
+	c.orientation = 'row';
+
+	if(JSUI.isCS6 && JSUI.CS6styling) c.darkMode();
+
+	return c;
+};
+
+Object.prototype.addDividerColumn = function()
+{
+	var c = this.add("panel");
+	c.alignChildren = 'fill';
+	c.orientation = 'column';
 
 	if(JSUI.isCS6 && JSUI.CS6styling) c.darkMode();
 
@@ -1751,11 +1813,22 @@ Object.prototype.addToggleIconGroup = function( obj )
 
     if(obj.propertyNames == undefined) return;
 
+	// if no images provided, include empty strings as a workaround
+    if(obj.images == undefined)
+	{
+		obj.images = [];
+		for(var i = 0; i < obj.propertyNames.length; i++)
+		{
+			obj.images.push("");
+		}
+	};
+
     var componentsArray = [];
     var iniPropertiesPresent = false;
-    var selectionPresent = false;
+    var selectionPresent = obj.selection != undefined;
+	// var selectedComponent = null;
 
-    // look for existing properties in INI file
+    // look for existing properties in config
     var arraySelectionIndex = 0;
     for(var i = 0; i < obj.propertyNames.length; i++)
     {
@@ -1787,7 +1860,7 @@ Object.prototype.addToggleIconGroup = function( obj )
         iconObj.createProperty = obj.createProperties;
         iconObj.label = obj.labels[i];
         iconObj.helpTip = obj.helpTips[i];
-        iconObj.imgFile = obj.images[i];
+		if(obj.images != undefined) iconObj.imgFile = obj.images[i];
         iconObj.selection = arraySelectionIndex != 0 ? arraySelectionIndex : obj.selection;  // iniPropertiesPresent ?
         iconObj.onClickFunction = obj.onClickFunction;
 
@@ -1799,10 +1872,12 @@ Object.prototype.addToggleIconGroup = function( obj )
             if(iconObj.selection == i)
             {
                 // if using toggleiconbutton (images) c.value is either 0 or 1
-                if(iconObj.imgFile != undefined) c.value = 1;
+                if(iconObj.imgFile != undefined && iconObj.imgFile != "") c.value = 1;
+				// otherwise just assume component is a radiobutton
                 else c.value = true;
 
                 selectionPresent = true;
+				// selectedComponent = c;
             }
         }
         c.update();
@@ -1810,11 +1885,16 @@ Object.prototype.addToggleIconGroup = function( obj )
         this.Components[obj.propertyNames[i]] = c;
     }
 
-    // if using radiobuttons and no selection was specified in the process, turn on first object in the list
-    if(obj.array && !selectionPresent)
+    // if no selection was provided in the creation of the ToggleIconGroup, turn on first component in the list
+    // if(obj.array && !selectionPresent)
+    if(obj.propertyNames && !selectionPresent)
     {
-        if(iconObj.imgFile != undefined) componentsArray[0].value = 1;
-        else componentsArray[0].value = true;
+		// var iconObj = componentsArray[0];
+        // if(iconObj.imgFile != undefined && iconObj.imgFile != "") componentsArray[0].value = 1;
+        // else componentsArray[0].value = true;
+		var comp = this.Components[obj.propertyNames[0]];
+        if(comp.imgFile != undefined && comp.imgFile != "") comp.value = 1;
+        else comp.value = true;
     }
 
     // for cases where JSUI.PREFS default object declaration contains presets, use those instead
@@ -1876,14 +1956,19 @@ JSUI.turnOffToggleIconButtonsArray = function(targetDialog, controlArr)
 };
 
 // custom set of components for replacing legacy radiobutton grid
-// var propertyName = container.addImageGrid( "propertyName", { strArray: [ "0", "1", "2", "3", "4", "5", "6", "7", "8" ]], imgFile: "image.png", rows: 3, columns: 3 } );
+// var propertyName = container.addImageGrid( "propertyName", { strArray: [ "0", "1", "2", "3", "4", "5", "6", "7", "8" ], imgFile: "image.png", rows: 3, columns: 3 } );
 Object.prototype.addImageGrid = function(propName, obj)
 {
 	/*
 		expected properties
 		
 		// array of strings for storing as selection
-		obj.strArray = [ anchorPosition.TOPLEFT,  anchorPosition.TOPLCENTER, anchorPosition.TOPRIGHT ];
+		// for example Photoshop knows what the AnchorPosition object is, but Illustrator doesn't
+		obj.strArray = [ 
+			AnchorPosition.TOPLEFT,  AnchorPosition.TOPCENTER, AnchorPosition.TOPRIGHT,
+			AnchorPosition.MIDDLELEFT,  AnchorPosition.MIDDLECENTER, AnchorPosition.MIDDLERIGHT, 
+			AnchorPosition.BOTTOMLEFT,  AnchorPosition.BOTTOMCENTER, AnchorPosition.BOTTOMRIGHT 
+		];
 		
 		// object with active+inactive ScriptUI images)
 		obj.states = JSUI.getScriptUIStates() 
@@ -1897,7 +1982,8 @@ Object.prototype.addImageGrid = function(propName, obj)
 	if(obj.strArray == undefined)
 	{
 		obj.strArray = [];
-		for(var i = 0; i < ( JSUI.PREFS.imageGridColumns * JSUI.PREFS.imageGridRows); i++ )
+		// for(var i = 0; i < ( JSUI.PREFS.imageGridColumns * JSUI.PREFS.imageGridRows); i++ )
+		for(var i = 0; i < ( obj.columns * obj.rows); i++ )
 		{
 			obj.strArray.push( i + "" );
 		}
@@ -1997,6 +2083,74 @@ Object.prototype.addImageGrid = function(propName, obj)
 	//  here's how to match the property value with an index from the internal array if necessary (INI file)
 	// 	JSUI.PREFS.propName = JSUI.matchObjectArrayIndex(JSUI.PREFS.propName, this.Components["imageGrid"].strArray, this.Components["imageGrid"].strArray[0]);
 
+};
+
+// get reference point for cropping/resizing
+// if Photoshop, returns a valid AnchorPosition enum item
+// for other apps, returns 1-9 integer (matches the numerical keypad)
+//
+//	7	8	9
+//	4	5	6
+//	1	2	3
+//
+JSUI.getAnchorReference = function ( str )
+{
+	// if(str == undefined) return JSUI.isPhotoshop ? AnchorPosition.MIDDLECENTER : 5;
+	
+	switch(str)
+	{
+		case 'AnchorPosition.TOPLEFT' : 
+		{
+			JSUI.anchorRef = JSUI.isPhotoshop ? AnchorPosition.TOPLEFT : 7;
+			break;
+		}
+		case 'AnchorPosition.TOPCENTER' :
+		{
+			JSUI.anchorRef = JSUI.isPhotoshop ? AnchorPosition.TOPCENTER : 8;
+			break;
+		}
+		case 'AnchorPosition.TOPRIGHT' : 
+		{
+			JSUI.anchorRef = JSUI.isPhotoshop ? AnchorPosition.TOPRIGHT : 9;
+			break;
+		}
+		case 'AnchorPosition.MIDDLELEFT' : 
+		{
+			JSUI.anchorRef = JSUI.isPhotoshop ? AnchorPosition.MIDDLELEFT : 4;
+			break;
+		}
+		case 'AnchorPosition.MIDDLECENTER' : 
+		{
+			JSUI.anchorRef = JSUI.isPhotoshop ? AnchorPosition.MIDDLECENTER : 5;
+			break;
+		}
+		case 'AnchorPosition.MIDDLERIGHT' : 
+		{
+			JSUI.anchorRef = JSUI.isPhotoshop ? AnchorPosition.MIDDLERIGHT : 6;
+			break;
+		}
+		case 'AnchorPosition.BOTTOMLEFT' : 
+		{
+			JSUI.anchorRef = JSUI.isPhotoshop ? AnchorPosition.BOTTOMLEFT : 1;
+			break;
+		}
+		case 'AnchorPosition.BOTTOMCENTER' : 
+		{
+			JSUI.anchorRef = JSUI.isPhotoshop ? AnchorPosition.BOTTOMCENTER : 2;
+			break;
+		}
+		case 'AnchorPosition.BOTTOMRIGHT' : 
+		{
+			JSUI.anchorRef = JSUI.isPhotoshop ? AnchorPosition.BOTTOMRIGHT : 3;
+			break;
+		}
+		default : // center
+		{
+			JSUI.anchorRef = JSUI.isPhotoshop ? AnchorPosition.MIDDLECENTER : 5;
+			break;
+		}
+	}
+	return JSUI.anchorRef;
 };
 
 // this will match a string OR object with an index from an object array (ideally without using an eval() hack)
@@ -3438,18 +3592,49 @@ Object.prototype.addButton = function(imgNameStr, obj)
 		scriptUIstates = JSUI.getScriptUIStates( obj );
 	}
 	
-	if(obj.imgFile != undefined && scriptUIstates.active != undefined)
+	// if(obj.imgFile != undefined && scriptUIstates.active != undefined)
+	// {
+	// 	if($.level) $.writeln("Adding iconbutton" + "\n");
+	// 	// var c = this.add('iconbutton', undefined, ScriptUI.newImage(obj.imgFile, imgFileUp.exists ? imgFileUp : obj.imgFile, imgFileDown.exists ? imgFileDown : obj.imgFile, imgFileOver.exists ? imgFileOver : obj.imgFile));
+	// 	var c = this.add('iconbutton', undefined, scriptUIstates.active, { style: "toolbutton" });
+	// }
+	// else
+	// {
+	// 	if($.level) $.writeln("Adding standard text button.");
+	// 	scriptUIstates = null;
+	// 	var c = this.add('button', undefined, obj.label ? obj.label : "Default Button Text", {name: obj.name});
+	// }
+
+	if(scriptUIstates != null)
 	{
-		if($.level) $.writeln("Adding iconbutton" + "\n");
-		// var c = this.add('iconbutton', undefined, ScriptUI.newImage(obj.imgFile, imgFileUp.exists ? imgFileUp : obj.imgFile, imgFileDown.exists ? imgFileDown : obj.imgFile, imgFileOver.exists ? imgFileOver : obj.imgFile));
-		var c = this.add('iconbutton', undefined, scriptUIstates.active, { style: "toolbutton" });
+		if(obj.imgFile.exists)
+		{
+			if(scriptUIstates.active != undefined)
+			{
+				// if($.level) $.writeln("Adding iconbutton" + "\n");
+				var c = this.add('iconbutton', undefined, scriptUIstates.active, { style: "toolbutton" });
+			}
+			else
+			{
+				// if($.level) $.writeln("Adding standard text button.");
+				scriptUIstates = null;
+				var c = this.add('button', undefined, obj.label ? obj.label : "Default Button Text", {name: obj.name});
+			}
+		}
+		else
+		{
+			// if($.level) $.writeln("Adding standard text button.");
+			scriptUIstates = null;
+			var c = this.add('button', undefined, obj.label ? obj.label : "Default Button Text", {name: obj.name});
+		}
 	}
 	else
 	{
-		if($.level) $.writeln("Adding standard text button.");
+		// if($.level) $.writeln("Adding standard text button.");
 		scriptUIstates = null;
 		var c = this.add('button', undefined, obj.label ? obj.label : "Default Button Text", {name: obj.name});
 	}
+
 
 	if(obj.width) c.preferredSize.width = obj.width;
 	if(obj.height) c.preferredSize.height = obj.height;
@@ -3698,7 +3883,10 @@ Object.prototype.addImage = function(obj)
 	else
 	{		
 		// fallback in case image does not exist
-		var c = this.add('statictext', undefined, "[Invalid URI: " + obj.imgFile + "]");
+		//var c = this.add('statictext', undefined, "[Invalid URI: " + obj.imgFile + "]");
+		var c = this.addRectangle( "rect", { hexValue: undefined, width: obj.width, height: obj.height });
+		this.add('statictext', undefined, "[Invalid URI: " + ( obj.imgFile instanceof Object ? ( obj.imgFile instanceof File ? obj.imgFile.fsName : obj.imgFile.toString()) : obj.imgFile.toString()) + "]");
+		// this.add('statictext', undefined, "[Invalid URI: " + obj.imgFile + "]");
 	}
 
 	if(obj.width) c.preferredSize.width = obj.width;
@@ -4129,11 +4317,10 @@ Object.prototype.addSlider = function(propName, obj)
 
 // listbox component
 /* EXAMPLE
-	var listbox = container.addListBox( { name:"listbox", label:"Listbox Component:", prefs:prefsObj, list:["Zero", "One", "Two", "Three"], multiselect:true, width:300, height:100 } );	
+	var listbox = container.addListBox( "listbox", { label:"Listbox Component:", list:["Zero", "One", "Two", "Three"], multiselect:true, width:300, height:100 } );	
 */
 Object.prototype.addListBox = function(propName, obj)
 {	
-	
 	var obj = obj != undefined ? obj : {};
 		
 	// has label?
@@ -4152,63 +4339,70 @@ Object.prototype.addListBox = function(propName, obj)
 //	if(obj.enabled) c.enabled = obj.enabled;
 	if(obj.disabled) c.enabled = !obj.disabled;
 	
-	//, otherwise use as is (assume an array-type object)
-	
 	var selection = null;
-//~ 	if($.level) $.writeln("obj.selection: " + obj.selection + "  typeof " + typeof obj.selection);
-	
+
+	// obj.selection has priority if provided, otherwise JSUI.PREFS.propName, or fallback to null
+	obj.selection = obj.selection != undefined ? obj.selection : (JSUI.PREFS[propName] != undefined ? JSUI.PREFS[propName] : null );
+
 	switch(typeof obj.selection)
 	{
-			case undefined :
+		// undefined or null, leave as is
+		case undefined :
+		{
+			break;
+		}
+		case null : 
+		{
+			break;
+		}
+		
+		// if obj.selection is a number, feed it as a single index array
+		case "number" :
+		{
+			selection = [obj.selection];
+			break;
+		}
+		
+		// if obj.selection is an object, we're most likely working with an array 
+		case "object" :
+		{
+			if(obj.selection != null)
 			{
-//~ 				alert("obj.selection is undefined!")
-					// leave as null
-			}
-			
-			// if obj.selection is a number, feed it as a single index array
-			case "number" :
-			{
-//~ 				if($.level) $.writeln("obj.selection is a number: " + obj.selection);
-				selection = [obj.selection];
-			}
-			
-			// if obj.selection is an object, we're most likely working with an array 
-			case "object" :
-			{
-				// mmmh this is wrong, stored value might be intentionally null
-				if(obj.selection != null)
+				if(obj.selection.length != undefined)
 				{
-					if(obj.selection.length != undefined)
-					{
-//~ 						alert("obj.selection has length! " + obj.selection);
-						selection = obj.selection;
-					}
-					else
-					{
-						// ?
-						selection = null;
-					}
+					selection = obj.selection;
+					break;
 				}
 				else
 				{
-					// object is null
-					selection = null;
+					// selection = null;
+					break;
 				}
-				
 			}
-			case "string" :
+			else
 			{
+				// object is null
+				selection = null;
+				break;
+			}
+		}
+		case "string" :
+		{
 //~ 				var strToNum = Number(obj.selection);
-				//selection = [parseInt (obj.selection)];
+			//selection = [parseInt (obj.selection)];
 //~ 				alert(obj.selection + "  " + typeof obj.selection)
-
-			}
-			default :
+			if(!isNaN(parseInt(obj.selection)))
 			{
-				// value remains null
-//~ 				selection = null;
+				selection = parseInt(obj.selection);
 			}
-	
+			break;
+		}
+		default :
+		{
+			// value remains null
+//~ 				selection = null;
+			break;
+		}
 	}
 
 	// if selection is null
@@ -4231,7 +4425,7 @@ Object.prototype.addListBox = function(propName, obj)
 //~ 			c.selection = JSUI.PREFS[propName] ;
 //~ 			alert(JSUI.PREFS[propName] + "  " + JSUI.PREFS[propName] == undefined);
 
-			c.selection = JSUI.PREFS[propName] != undefined ? JSUI.PREFS[propName] : null;		
+		c.selection = JSUI.PREFS[propName] != undefined ? JSUI.PREFS[propName] : null;		
 	};
 
 	c._buildArray = function()
@@ -4249,7 +4443,6 @@ Object.prototype.addListBox = function(propName, obj)
 					if(i == c.selection[sel])
 					{ 
 						array.push(i);
-						//if($.level) 
 						debugArray.push(c.selection[sel]);
 						c.doubleClicked = c.selection[sel];
 
@@ -4390,7 +4583,7 @@ Object.prototype.addProgressBar = function(obj)
 Object.prototype.addDeleteINIButton = function( obj )
 {
 	var obj = obj != undefined ? obj : {};
-	var c = this.addButton( { name:"deleteinifile", label: obj.label != undefined ? obj.label : "[DEL]", helpTip: "Remove current settings file from system"} );
+	var c = this.addButton( { name:"deleteinifile", label: obj.label != undefined ? obj.label : "[DEL]", helpTip: "Remove current settings file from system" + (JSUI.INIFILE != undefined ? ("\n"+JSUI.INIFILE.fsName) : "" ) } );
 			
 	c.onClick = function()
 	{
@@ -4403,7 +4596,7 @@ Object.prototype.addDeleteINIButton = function( obj )
 Object.prototype.addOpenINILocationButton = function( obj )
 {
 	var obj = obj != undefined ? obj : {};
-	var c = this.addButton( { name:"openinifilelocation", label: obj.label != undefined ? obj.label : "[OPEN]", helpTip: "Reveal settings file location in " + (JSUI.isWindows ? "Windows Explorer" : "Finder") + "\n" + JSUI.INIFILE.fsName } );
+	var c = this.addButton( { name:"openinifilelocation", label: obj.label != undefined ? obj.label : "[OPEN]", helpTip: "Reveal settings file location in " + (JSUI.isWindows ? "Windows Explorer" : "macOS Finder") + "\n" + JSUI.INIFILE.fsName } );
 			
 	c.onClick = function()
 	{
@@ -4413,6 +4606,52 @@ Object.prototype.addOpenINILocationButton = function( obj )
 	return c;
 };
 
+Object.prototype.addDeleteConfigButton = function( obj )
+{
+	var obj = obj != undefined ? obj : {};
+	var c = this.addButton( { name:"deletecfgfile", label: obj.label != undefined ? obj.label : "[DEL]", helpTip: "Remove current settings file from system" + (JSUI.JSONFILE != undefined ? ("\n"+JSUI.JSONFILE.fsName) : "") } );
+			
+	c.onClick = function()
+	{
+		JSUI.deleteConfigFile();
+	};
+
+	return c;
+};
+
+Object.prototype.addOpenConfigLocationButton = function( obj )
+{
+	var obj = obj != undefined ? obj : {};
+	var c = this.addButton( { name:"opencfgfilelocation", label: obj.label != undefined ? obj.label : "[OPEN]", helpTip: "Reveal settings file location in " + (JSUI.isWindows ? "Windows Explorer" : "macOS Finder")  + (JSUI.JSONFILE != undefined ? ("\n"+JSUI.JSONFILE.fsName) : "") } );
+			
+	c.onClick = function()
+	{
+		JSUI.openConfigFileLocation();
+	};
+	
+	return c;
+};
+
+// this is used to manually reset the JSUI.PREFS object using a default or custom constructor, with an option to save new settings immediately and allow the user to define a callback function 
+// usage: container.addResetConfigButton( new _prefs(), true, function(){ dlg.close(); Main(); })
+Object.prototype.addResetConfigButton = function( prefsObj, saveOnResetBool, callbackFunc )
+{
+	var prefsObj = prefsObj != undefined ? prefsObj : {};
+	var c = this.addButton( { name:"resetcfg", label: "Reset", helpTip: "Reset settings to default values" } );
+			
+	c.onClick = function()
+	{
+		JSUI.resetPreferences(prefsObj, saveOnResetBool);
+		if(callbackFunc != undefined)
+		{
+			callbackFunc();
+		}
+	};
+	
+	return c;
+};
+
+// to deprecate eventually
 Object.prototype.addSaveSettingsButton = function( obj )
 {
 	var obj = obj != undefined ? obj : {};
@@ -4425,7 +4664,6 @@ Object.prototype.addSaveSettingsButton = function( obj )
 	
 	return c;
 };
-
 
 // create UI components based on object properties
 // supported types: string, number, boolean, array and object
@@ -5092,7 +5330,7 @@ JSUI.saveIniFile = function()
 	{
 		JSUI.saveXMLfile();
 	}
-	else
+	else //if (JSUI.INIfileActive)
 	{
 		JSUI.writeIniFile(JSUI.INIFILE, JSUI.PREFS, "# " + JSUI.TOOLNAME + " Settings [jsuiLib v" + JSUI.version + "]\n");
 		if($.level) $.writeln("Settings stored successfully.");
@@ -5120,14 +5358,163 @@ JSUI.openIniFileLocation = function()
 {
 	JSUI.debug("Opening INI file location: " + JSUI.INIFILE.parent.fsName);
 
-	try
+	// try
+	// {
+	// 	JSUI.INIFILE.parent.execute();	
+	// }
+	// catch(e)
+	// {
+	// 	alert("Error opening settings file:\n\n" + JSUI.INIFILE.parent.fsName + "\n\n" + e);
+	// }
+
+	if(JSUI.INIfileActive)
 	{
-		JSUI.INIFILE.parent.execute();	
+		if(JSUI.INIFILE instanceof File)
+		{
+			if(JSUI.INIFILE.exists)
+			{
+				if(JSUI.isWindows)
+				{
+					JSUI.INIFILE.parent.execute();	
+				}
+				else
+				{
+					var msg = "Hello macOS user!\n\nHere is the location of the config file.\nYou may navigate to it in Finder using Shift+Command+G ";
+					var ttl = JSUI.TOOLNAME;
+					JSUI.prompt( { message: msg, text: JSUI.INIFILE.fsName, title: ttl } );
+				}
+			}
+		}
 	}
-	catch(e)
+};
+
+JSUI.saveConfigFile = function()
+{
+	if (JSUI.JSONfileActive)
 	{
-		alert("Error opening settings file:\n\n" + JSUI.INIFILE.parent.fsName + "\n\n" + e);
+		if(JSUI.JSONFILE instanceof File)
+		{
+			JSUI.saveJSONfile();
+		}
 	}
+	else if (JSUI.XMLfileActive)
+	{
+		if(JSUI.XMLFILE instanceof File)
+		{
+			JSUI.saveXMLfile();
+		}
+	}
+	else if (JSUI.INIfileActive)
+	{
+		if(JSUI.INIFILE instanceof File)
+		{
+			JSUI.writeIniFile(JSUI.INIFILE, JSUI.PREFS, "# " + JSUI.TOOLNAME + " Settings [jsuiLib v" + JSUI.version + "]\n");
+			if($.level) $.writeln("Settings stored successfully.");
+		}
+	}
+};
+
+JSUI.deleteConfigFile = function()
+{
+	if(JSUI.JSONfileActive)
+	{
+		if(JSUI.JSONFILE instanceof File)
+		{
+			if(JSUI.JSONFILE.exists)
+			{
+				JSUI.JSONFILE.remove();	
+			}
+		}
+	}
+	else if (JSUI.XMLfileActive)
+	{
+		if(JSUI.XMLFILE instanceof File)
+		{
+			if(JSUI.XMLFILE.exists)
+			{
+				JSUI.XMLFILE.remove();
+			}
+		}
+	}
+	else if (JSUI.INIfileActive)
+	{
+		if(JSUI.INIFILE instanceof File)
+		{
+			if(JSUI.INIFILE.exists)
+			{
+				JSUI.INIFILE.remove();		
+			}
+		}
+	}
+};
+
+JSUI.openConfigFileLocation = function()
+{
+	if(JSUI.JSONfileActive)
+	{
+		if(JSUI.JSONFILE instanceof File)
+		{
+			if(JSUI.JSONFILE.exists)
+			{
+				if(JSUI.isWindows)
+				{
+					JSUI.JSONFILE.parent.execute();	
+				}
+				else
+				{
+					var msg = "Hello macOS user!\n\nHere is the location of the config file.\nYou may navigate to it in Finder using Shift+Command+G ";
+					var ttl = JSUI.TOOLNAME;
+					JSUI.prompt( { message: msg, text: JSUI.JSONFILE.fsName, title: ttl } );
+				}
+			}
+		}
+	}
+	else if (JSUI.XMLfileActive)
+	{
+		if(JSUI.XMLFILE instanceof File)
+		{
+			if(JSUI.XMLFILE.exists)
+			{
+				if(JSUI.isWindows)
+				{
+					JSUI.XMLFILE.parent.execute();	
+				}
+				else
+				{
+					var msg = "Hello macOS user!\n\nHere is the location of the config file.\nYou may navigate to it in Finder using Shift+Command+G ";
+					var ttl = JSUI.TOOLNAME;
+					JSUI.prompt( { message: msg, text: JSUI.XMLFILE.fsName, title: ttl } );
+				}
+			}
+		}
+	}
+	else if (JSUI.INIfileActive)
+	{
+		if(JSUI.INIFILE instanceof File)
+		{
+			if(JSUI.INIFILE.exists)
+			{
+				if(JSUI.isWindows)
+				{
+					JSUI.INIFILE.parent.execute();	
+				}
+				else
+				{
+					var msg = "Hello macOS user!\n\nHere is the location of the config file.\nYou may navigate to it in Finder using Shift+Command+G ";
+					var ttl = JSUI.TOOLNAME;
+					JSUI.prompt( { message: msg, text: JSUI.INIFILE.fsName, title: ttl } );
+				}
+			}
+		}
+	}
+};
+
+// this should allow resetting preferences with either a custom object, or a local constructor
+JSUI.resetPreferences = function( obj, saveOnReset )
+{
+	if(obj == undefined) var obj = {};
+	JSUI.PREFS = obj;
+	if(saveOnReset) JSUI.saveConfigFile();
 };
 
 // XBytor's string trim
@@ -5976,11 +6363,843 @@ if (typeof JSON !== "object") {
     }
 }());
 
+// https://raw.githubusercontent.com/pieroxy/lz-string/master/libs/lz-string.js
+
+// Copyright (c) 2013 Pieroxy <pieroxy@pieroxy.net>
+// This work is free. You can redistribute it and/or modify it
+// under the terms of the WTFPL, Version 2
+// For more information see LICENSE.txt or http://www.wtfpl.net/
+//
+// For more information, the home page:
+// http://pieroxy.net/blog/pages/lz-string/testing.html
+//
+// LZ-based compression algorithm, version 1.4.4
+/*
+
+	MIT License
+
+	Copyright (c) 2013 pieroxy
+
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+var LZString = (function() {
+
+	// private property
+	var f = String.fromCharCode;
+	var keyStrBase64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+	var keyStrUriSafe = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-$";
+	var baseReverseDic = {};
+	
+	function getBaseValue(alphabet, character) {
+	  if (!baseReverseDic[alphabet]) {
+		baseReverseDic[alphabet] = {};
+		for (var i=0 ; i<alphabet.length ; i++) {
+		  baseReverseDic[alphabet][alphabet.charAt(i)] = i;
+		}
+	  }
+	  return baseReverseDic[alphabet][character];
+	}
+	
+	var LZString = {
+	  compressToBase64 : function (input) {
+		if (input == null) return "";
+		var res = LZString._compress(input, 6, function(a){return keyStrBase64.charAt(a);});
+		switch (res.length % 4) { // To produce valid Base64
+		default: // When could this happen ?
+		case 0 : return res;
+		case 1 : return res+"===";
+		case 2 : return res+"==";
+		case 3 : return res+"=";
+		}
+	  },
+	
+	  decompressFromBase64 : function (input) {
+		if (input == null) return "";
+		if (input == "") return null;
+		return LZString._decompress(input.length, 32, function(index) { return getBaseValue(keyStrBase64, input.charAt(index)); });
+	  },
+	
+	  compressToUTF16 : function (input) {
+		if (input == null) return "";
+		return LZString._compress(input, 15, function(a){return f(a+32);}) + " ";
+	  },
+	
+	  decompressFromUTF16: function (compressed) {
+		if (compressed == null) return "";
+		if (compressed == "") return null;
+		return LZString._decompress(compressed.length, 16384, function(index) { return compressed.charCodeAt(index) - 32; });
+	  },
+	
+	  //compress into uint8array (UCS-2 big endian format)
+	  compressToUint8Array: function (uncompressed) {
+		var compressed = LZString.compress(uncompressed);
+		// var buf=new Uint8Array(compressed.length*2); // 2 bytes per character
+		var buf = [] //
+	
+		for (var i=0, TotalLen=compressed.length; i<TotalLen; i++) {
+		  var current_value = compressed.charCodeAt(i);
+		  buf[i*2] = current_value >>> 8;
+		  buf[i*2+1] = current_value % 256;
+		}
+		return buf;
+	  },
+	
+	  //decompress from uint8array (UCS-2 big endian format)
+	  decompressFromUint8Array:function (compressed) {
+		if (compressed===null || compressed===undefined){
+			return LZString.decompress(compressed);
+		} else {
+			var buf=new Array(compressed.length/2); // 2 bytes per character
+			for (var i=0, TotalLen=buf.length; i<TotalLen; i++) {
+			  buf[i]=compressed[i*2]*256+compressed[i*2+1];
+			}
+	
+			var result = [];
+			// buf.forEach(function (c) {
+			for(var ij = 0; ij < buf.length; ij++) 
+			{
+				var cj = buf[ij];
+			  result.push(f(cj));
+			// });
+			};
+			return LZString.decompress(result.join(''));
+	
+		}
+	
+	  },
+	
+	
+	  //compress into a string that is already URI encoded
+	  compressToEncodedURIComponent: function (input) {
+		if (input == null) return "";
+		return LZString._compress(input, 6, function(a){return keyStrUriSafe.charAt(a);});
+	  },
+	
+	  //decompress from an output of compressToEncodedURIComponent
+	  decompressFromEncodedURIComponent:function (input) {
+		if (input == null) return "";
+		if (input == "") return null;
+		input = input.replace(/ /g, "+");
+		return LZString._decompress(input.length, 32, function(index) { return getBaseValue(keyStrUriSafe, input.charAt(index)); });
+	  },
+	
+	  compress: function (uncompressed) {
+		return LZString._compress(uncompressed, 16, function(a){return f(a);});
+	  },
+	  _compress: function (uncompressed, bitsPerChar, getCharFromInt) {
+		if (uncompressed == null) return "";
+		var i, value,
+			context_dictionary= {},
+			context_dictionaryToCreate= {},
+			context_c="",
+			context_wc="",
+			context_w="",
+			context_enlargeIn= 2, // Compensate for the first entry which should not count
+			context_dictSize= 3,
+			context_numBits= 2,
+			context_data=[],
+			context_data_val=0,
+			context_data_position=0,
+			ii;
+	
+		for (ii = 0; ii < uncompressed.length; ii += 1) {
+		  context_c = uncompressed.charAt(ii);
+		  if (!Object.prototype.hasOwnProperty.call(context_dictionary,context_c)) {
+			context_dictionary[context_c] = context_dictSize++;
+			context_dictionaryToCreate[context_c] = true;
+		  }
+	
+		  context_wc = context_w + context_c;
+		  if (Object.prototype.hasOwnProperty.call(context_dictionary,context_wc)) {
+			context_w = context_wc;
+		  } else {
+			if (Object.prototype.hasOwnProperty.call(context_dictionaryToCreate,context_w)) {
+			  if (context_w.charCodeAt(0)<256) {
+				for (i=0 ; i<context_numBits ; i++) {
+				  context_data_val = (context_data_val << 1);
+				  if (context_data_position == bitsPerChar-1) {
+					context_data_position = 0;
+					context_data.push(getCharFromInt(context_data_val));
+					context_data_val = 0;
+				  } else {
+					context_data_position++;
+				  }
+				}
+				value = context_w.charCodeAt(0);
+				for (i=0 ; i<8 ; i++) {
+				  context_data_val = (context_data_val << 1) | (value&1);
+				  if (context_data_position == bitsPerChar-1) {
+					context_data_position = 0;
+					context_data.push(getCharFromInt(context_data_val));
+					context_data_val = 0;
+				  } else {
+					context_data_position++;
+				  }
+				  value = value >> 1;
+				}
+			  } else {
+				value = 1;
+				for (i=0 ; i<context_numBits ; i++) {
+				  context_data_val = (context_data_val << 1) | value;
+				  if (context_data_position ==bitsPerChar-1) {
+					context_data_position = 0;
+					context_data.push(getCharFromInt(context_data_val));
+					context_data_val = 0;
+				  } else {
+					context_data_position++;
+				  }
+				  value = 0;
+				}
+				value = context_w.charCodeAt(0);
+				for (i=0 ; i<16 ; i++) {
+				  context_data_val = (context_data_val << 1) | (value&1);
+				  if (context_data_position == bitsPerChar-1) {
+					context_data_position = 0;
+					context_data.push(getCharFromInt(context_data_val));
+					context_data_val = 0;
+				  } else {
+					context_data_position++;
+				  }
+				  value = value >> 1;
+				}
+			  }
+			  context_enlargeIn--;
+			  if (context_enlargeIn == 0) {
+				context_enlargeIn = Math.pow(2, context_numBits);
+				context_numBits++;
+			  }
+			  delete context_dictionaryToCreate[context_w];
+			} else {
+			  value = context_dictionary[context_w];
+			  for (i=0 ; i<context_numBits ; i++) {
+				context_data_val = (context_data_val << 1) | (value&1);
+				if (context_data_position == bitsPerChar-1) {
+				  context_data_position = 0;
+				  context_data.push(getCharFromInt(context_data_val));
+				  context_data_val = 0;
+				} else {
+				  context_data_position++;
+				}
+				value = value >> 1;
+			  }
+	
+	
+			}
+			context_enlargeIn--;
+			if (context_enlargeIn == 0) {
+			  context_enlargeIn = Math.pow(2, context_numBits);
+			  context_numBits++;
+			}
+			// Add wc to the dictionary.
+			context_dictionary[context_wc] = context_dictSize++;
+			context_w = String(context_c);
+		  }
+		}
+	
+		// Output the code for w.
+		if (context_w !== "") {
+		  if (Object.prototype.hasOwnProperty.call(context_dictionaryToCreate,context_w)) {
+			if (context_w.charCodeAt(0)<256) {
+			  for (i=0 ; i<context_numBits ; i++) {
+				context_data_val = (context_data_val << 1);
+				if (context_data_position == bitsPerChar-1) {
+				  context_data_position = 0;
+				  context_data.push(getCharFromInt(context_data_val));
+				  context_data_val = 0;
+				} else {
+				  context_data_position++;
+				}
+			  }
+			  value = context_w.charCodeAt(0);
+			  for (i=0 ; i<8 ; i++) {
+				context_data_val = (context_data_val << 1) | (value&1);
+				if (context_data_position == bitsPerChar-1) {
+				  context_data_position = 0;
+				  context_data.push(getCharFromInt(context_data_val));
+				  context_data_val = 0;
+				} else {
+				  context_data_position++;
+				}
+				value = value >> 1;
+			  }
+			} else {
+			  value = 1;
+			  for (i=0 ; i<context_numBits ; i++) {
+				context_data_val = (context_data_val << 1) | value;
+				if (context_data_position == bitsPerChar-1) {
+				  context_data_position = 0;
+				  context_data.push(getCharFromInt(context_data_val));
+				  context_data_val = 0;
+				} else {
+				  context_data_position++;
+				}
+				value = 0;
+			  }
+			  value = context_w.charCodeAt(0);
+			  for (i=0 ; i<16 ; i++) {
+				context_data_val = (context_data_val << 1) | (value&1);
+				if (context_data_position == bitsPerChar-1) {
+				  context_data_position = 0;
+				  context_data.push(getCharFromInt(context_data_val));
+				  context_data_val = 0;
+				} else {
+				  context_data_position++;
+				}
+				value = value >> 1;
+			  }
+			}
+			context_enlargeIn--;
+			if (context_enlargeIn == 0) {
+			  context_enlargeIn = Math.pow(2, context_numBits);
+			  context_numBits++;
+			}
+			delete context_dictionaryToCreate[context_w];
+		  } else {
+			value = context_dictionary[context_w];
+			for (i=0 ; i<context_numBits ; i++) {
+			  context_data_val = (context_data_val << 1) | (value&1);
+			  if (context_data_position == bitsPerChar-1) {
+				context_data_position = 0;
+				context_data.push(getCharFromInt(context_data_val));
+				context_data_val = 0;
+			  } else {
+				context_data_position++;
+			  }
+			  value = value >> 1;
+			}
+	
+	
+		  }
+		  context_enlargeIn--;
+		  if (context_enlargeIn == 0) {
+			context_enlargeIn = Math.pow(2, context_numBits);
+			context_numBits++;
+		  }
+		}
+	
+		// Mark the end of the stream
+		value = 2;
+		for (i=0 ; i<context_numBits ; i++) {
+		  context_data_val = (context_data_val << 1) | (value&1);
+		  if (context_data_position == bitsPerChar-1) {
+			context_data_position = 0;
+			context_data.push(getCharFromInt(context_data_val));
+			context_data_val = 0;
+		  } else {
+			context_data_position++;
+		  }
+		  value = value >> 1;
+		}
+	
+		// Flush the last char
+		while (true) {
+		  context_data_val = (context_data_val << 1);
+		  if (context_data_position == bitsPerChar-1) {
+			context_data.push(getCharFromInt(context_data_val));
+			break;
+		  }
+		  else context_data_position++;
+		}
+		return context_data.join('');
+	  },
+	
+	  decompress: function (compressed) {
+		if (compressed == null) return "";
+		if (compressed == "") return null;
+		return LZString._decompress(compressed.length, 32768, function(index) { return compressed.charCodeAt(index); });
+	  },
+	
+	  _decompress: function (length, resetValue, getNextValue) {
+		var dictionary = [],
+			next,
+			enlargeIn = 4,
+			dictSize = 4,
+			numBits = 3,
+			entry = "",
+			result = [],
+			i,
+			w,
+			bits, resb, maxpower, power,
+			c,
+			data = {val:getNextValue(0), position:resetValue, index:1};
+	
+		for (i = 0; i < 3; i += 1) {
+		  dictionary[i] = i;
+		}
+	
+		bits = 0;
+		maxpower = Math.pow(2,2);
+		power=1;
+		while (power!=maxpower) {
+		  resb = data.val & data.position;
+		  data.position >>= 1;
+		  if (data.position == 0) {
+			data.position = resetValue;
+			data.val = getNextValue(data.index++);
+		  }
+		  bits |= (resb>0 ? 1 : 0) * power;
+		  power <<= 1;
+		}
+	
+		switch (next = bits) {
+		  case 0:
+			  bits = 0;
+			  maxpower = Math.pow(2,8);
+			  power=1;
+			  while (power!=maxpower) {
+				resb = data.val & data.position;
+				data.position >>= 1;
+				if (data.position == 0) {
+				  data.position = resetValue;
+				  data.val = getNextValue(data.index++);
+				}
+				bits |= (resb>0 ? 1 : 0) * power;
+				power <<= 1;
+			  }
+			c = f(bits);
+			break;
+		  case 1:
+			  bits = 0;
+			  maxpower = Math.pow(2,16);
+			  power=1;
+			  while (power!=maxpower) {
+				resb = data.val & data.position;
+				data.position >>= 1;
+				if (data.position == 0) {
+				  data.position = resetValue;
+				  data.val = getNextValue(data.index++);
+				}
+				bits |= (resb>0 ? 1 : 0) * power;
+				power <<= 1;
+			  }
+			c = f(bits);
+			break;
+		  case 2:
+			return "";
+		}
+		dictionary[3] = c;
+		w = c;
+		result.push(c);
+		while (true) {
+		  if (data.index > length) {
+			return "";
+		  }
+	
+		  bits = 0;
+		  maxpower = Math.pow(2,numBits);
+		  power=1;
+		  while (power!=maxpower) {
+			resb = data.val & data.position;
+			data.position >>= 1;
+			if (data.position == 0) {
+			  data.position = resetValue;
+			  data.val = getNextValue(data.index++);
+			}
+			bits |= (resb>0 ? 1 : 0) * power;
+			power <<= 1;
+		  }
+	
+		  switch (c = bits) {
+			case 0:
+			  bits = 0;
+			  maxpower = Math.pow(2,8);
+			  power=1;
+			  while (power!=maxpower) {
+				resb = data.val & data.position;
+				data.position >>= 1;
+				if (data.position == 0) {
+				  data.position = resetValue;
+				  data.val = getNextValue(data.index++);
+				}
+				bits |= (resb>0 ? 1 : 0) * power;
+				power <<= 1;
+			  }
+	
+			  dictionary[dictSize++] = f(bits);
+			  c = dictSize-1;
+			  enlargeIn--;
+			  break;
+			case 1:
+			  bits = 0;
+			  maxpower = Math.pow(2,16);
+			  power=1;
+			  while (power!=maxpower) {
+				resb = data.val & data.position;
+				data.position >>= 1;
+				if (data.position == 0) {
+				  data.position = resetValue;
+				  data.val = getNextValue(data.index++);
+				}
+				bits |= (resb>0 ? 1 : 0) * power;
+				power <<= 1;
+			  }
+			  dictionary[dictSize++] = f(bits);
+			  c = dictSize-1;
+			  enlargeIn--;
+			  break;
+			case 2:
+			  return result.join('');
+		  }
+	
+		  if (enlargeIn == 0) {
+			enlargeIn = Math.pow(2, numBits);
+			numBits++;
+		  }
+	
+		  if (dictionary[c]) {
+			entry = dictionary[c];
+		  } else {
+			if (c === dictSize) {
+			  entry = w + w.charAt(0);
+			} else {
+			  return null;
+			}
+		  }
+		  result.push(entry);
+	
+		  // Add w+entry[0] to the dictionary.
+		  dictionary[dictSize++] = w + entry.charAt(0);
+		  enlargeIn--;
+	
+		  w = entry;
+	
+		  if (enlargeIn == 0) {
+			enlargeIn = Math.pow(2, numBits);
+			numBits++;
+		  }
+	
+		}
+	  }
+	};
+	  return LZString;
+	})();
+	
+	if (typeof define === 'function' && define.amd) {
+	  define(function () { return LZString; });
+	} else if( typeof module !== 'undefined' && module != null ) {
+	  module.exports = LZString
+	} else if( typeof angular !== 'undefined' && angular != null ) {
+	  angular.module('LZString', [])
+	  .factory('LZString', function () {
+		return LZString;
+	  });
+	}
+
+	/*
+//
+//	https://raw.githubusercontent.com/pieroxy/lz-string/master/libs/base64-string.js
+//
+
+// Copyright (c) 2013 Pieroxy <pieroxy@pieroxy.net>
+// This work is free. You can redistribute it and/or modify it
+// under the terms of the WTFPL, Version 2
+// For more information see LICENSE.txt or http://www.wtfpl.net/
+//
+// This lib is part of the lz-string project.
+// For more information, the home page:
+// http://pieroxy.net/blog/pages/lz-string/index.html
+//
+// Base64 compression / decompression for already compressed content (gif, png, jpg, mp3, ...) 
+// version 1.4.1
+var Base64String = {
+  
+	compressToUTF16 : function (input) {
+	  var output = [],
+		  i,c,
+		  current,
+		  status = 0;
+	  
+	  input = this.compress(input);
+	  
+	  for (i=0 ; i<input.length ; i++) {
+		c = input.charCodeAt(i);
+		switch (status++) {
+		  case 0:
+			output.push(String.fromCharCode((c >> 1)+32));
+			current = (c & 1) << 14;
+			break;
+		  case 1:
+			output.push(String.fromCharCode((current + (c >> 2))+32));
+			current = (c & 3) << 13;
+			break;
+		  case 2:
+			output.push(String.fromCharCode((current + (c >> 3))+32));
+			current = (c & 7) << 12;
+			break;
+		  case 3:
+			output.push(String.fromCharCode((current + (c >> 4))+32));
+			current = (c & 15) << 11;
+			break;
+		  case 4:
+			output.push(String.fromCharCode((current + (c >> 5))+32));
+			current = (c & 31) << 10;
+			break;
+		  case 5:
+			output.push(String.fromCharCode((current + (c >> 6))+32));
+			current = (c & 63) << 9;
+			break;
+		  case 6:
+			output.push(String.fromCharCode((current + (c >> 7))+32));
+			current = (c & 127) << 8;
+			break;
+		  case 7:
+			output.push(String.fromCharCode((current + (c >> 8))+32));
+			current = (c & 255) << 7;
+			break;
+		  case 8:
+			output.push(String.fromCharCode((current + (c >> 9))+32));
+			current = (c & 511) << 6;
+			break;
+		  case 9:
+			output.push(String.fromCharCode((current + (c >> 10))+32));
+			current = (c & 1023) << 5;
+			break;
+		  case 10:
+			output.push(String.fromCharCode((current + (c >> 11))+32));
+			current = (c & 2047) << 4;
+			break;
+		  case 11:
+			output.push(String.fromCharCode((current + (c >> 12))+32));
+			current = (c & 4095) << 3;
+			break;
+		  case 12:
+			output.push(String.fromCharCode((current + (c >> 13))+32));
+			current = (c & 8191) << 2;
+			break;
+		  case 13:
+			output.push(String.fromCharCode((current + (c >> 14))+32));
+			current = (c & 16383) << 1;
+			break;
+		  case 14:
+			output.push(String.fromCharCode((current + (c >> 15))+32, (c & 32767)+32));
+			status = 0;
+			break;
+		}
+	  }
+	  output.push(String.fromCharCode(current + 32));
+	  return output.join('');
+	},
+	
+  
+	decompressFromUTF16 : function (input) {
+	  var output = [],
+		  current,c,
+		  status=0,
+		  i = 0;
+	  
+	  while (i < input.length) {
+		c = input.charCodeAt(i) - 32;
+		
+		switch (status++) {
+		  case 0:
+			current = c << 1;
+			break;
+		  case 1:
+			output.push(String.fromCharCode(current | (c >> 14)));
+			current = (c&16383) << 2;
+			break;
+		  case 2:
+			output.push(String.fromCharCode(current | (c >> 13)));
+			current = (c&8191) << 3;
+			break;
+		  case 3:
+			output.push(String.fromCharCode(current | (c >> 12)));
+			current = (c&4095) << 4;
+			break;
+		  case 4:
+			output.push(String.fromCharCode(current | (c >> 11)));
+			current = (c&2047) << 5;
+			break;
+		  case 5:
+			output.push(String.fromCharCode(current | (c >> 10)));
+			current = (c&1023) << 6;
+			break;
+		  case 6:
+			output.push(String.fromCharCode(current | (c >> 9)));
+			current = (c&511) << 7;
+			break;
+		  case 7:
+			output.push(String.fromCharCode(current | (c >> 8)));
+			current = (c&255) << 8;
+			break;
+		  case 8:
+			output.push(String.fromCharCode(current | (c >> 7)));
+			current = (c&127) << 9;
+			break;
+		  case 9:
+			output.push(String.fromCharCode(current | (c >> 6)));
+			current = (c&63) << 10;
+			break;
+		  case 10:
+			output.push(String.fromCharCode(current | (c >> 5)));
+			current = (c&31) << 11;
+			break;
+		  case 11:
+			output.push(String.fromCharCode(current | (c >> 4)));
+			current = (c&15) << 12;
+			break;
+		  case 12:
+			output.push(String.fromCharCode(current | (c >> 3)));
+			current = (c&7) << 13;
+			break;
+		  case 13:
+			output.push(String.fromCharCode(current | (c >> 2)));
+			current = (c&3) << 14;
+			break;
+		  case 14:
+			output.push(String.fromCharCode(current | (c >> 1)));
+			current = (c&1) << 15;
+			break;
+		  case 15:
+			output.push(String.fromCharCode(current | c));
+			status=0;
+			break;
+		}
+		
+		
+		i++;
+	  }
+	  
+	  return this.decompress(output.join(''));
+	  //return output;
+	  
+	},
+  
+  
+	// private property
+	_keyStr : "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=",
+	
+	decompress : function (input) {
+	  var output = [];
+	  var chr1, chr2, chr3, enc1, enc2, enc3, enc4;
+	  var i = 1;
+	  var odd = input.charCodeAt(0) >> 8;
+	  
+	  while (i < input.length*2 && (i < input.length*2-1 || odd==0)) {
+		
+		if (i%2==0) {
+		  chr1 = input.charCodeAt(i/2) >> 8;
+		  chr2 = input.charCodeAt(i/2) & 255;
+		  if (i/2+1 < input.length) 
+			chr3 = input.charCodeAt(i/2+1) >> 8;
+		  else 
+			chr3 = NaN;
+		} else {
+		  chr1 = input.charCodeAt((i-1)/2) & 255;
+		  if ((i+1)/2 < input.length) {
+			chr2 = input.charCodeAt((i+1)/2) >> 8;
+			chr3 = input.charCodeAt((i+1)/2) & 255;
+		  } else 
+			chr2=chr3=NaN;
+		}
+		i+=3;
+		
+		enc1 = chr1 >> 2;
+		enc2 = ((chr1 & 3) << 4) | (chr2 >> 4);
+		enc3 = ((chr2 & 15) << 2) | (chr3 >> 6);
+		enc4 = chr3 & 63;
+		
+		if (isNaN(chr2) || (i==input.length*2+1 && odd)) {
+		  enc3 = enc4 = 64;
+		} else if (isNaN(chr3) || (i==input.length*2 && odd)) {
+		  enc4 = 64;
+		}
+		
+		output.push(this._keyStr.charAt(enc1));
+		output.push(this._keyStr.charAt(enc2));
+		output.push(this._keyStr.charAt(enc3));
+		output.push(this._keyStr.charAt(enc4));
+	  }
+	  
+	  return output.join('');
+	},
+	
+	compress : function (input) {
+	  var output = [],
+		  ol = 1, 
+		  output_,
+		  chr1, chr2, chr3,
+		  enc1, enc2, enc3, enc4,
+		  i = 0, flush=false;
+	  
+	  input = input.replace(/[^A-Za-z0-9\+\/\=]/g, "");
+	  
+	  while (i < input.length) {
+		
+		enc1 = this._keyStr.indexOf(input.charAt(i++));
+		enc2 = this._keyStr.indexOf(input.charAt(i++));
+		enc3 = this._keyStr.indexOf(input.charAt(i++));
+		enc4 = this._keyStr.indexOf(input.charAt(i++));
+		
+		chr1 = (enc1 << 2) | (enc2 >> 4);
+		chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
+		chr3 = ((enc3 & 3) << 6) | enc4;
+		
+		if (ol%2==0) {
+		  output_ = chr1 << 8;
+		  flush = true;
+		  
+		  if (enc3 != 64) {
+			output.push(String.fromCharCode(output_ | chr2));
+			flush = false;
+		  }
+		  if (enc4 != 64) {
+			output_ = chr3 << 8;
+			flush = true;
+		  }
+		} else {
+		  output.push(String.fromCharCode(output_ | chr1));
+		  flush = false;
+		  
+		  if (enc3 != 64) {
+			output_ = chr2 << 8;
+			flush = true;
+		  }
+		  if (enc4 != 64) {
+			output.push(String.fromCharCode(output_ | chr3));
+			flush = false;
+		  }
+		}
+		ol+=3;
+	  }
+	  
+	  if (flush) {
+		output.push(String.fromCharCode(output_));
+		output = output.join('');
+		output = String.fromCharCode(output.charCodeAt(0)|256) + output.substring(1);
+	  } else {
+		output = output.join('');
+	  }
+	  
+	  return output;
+	  
+	}
+  }
+*/
+
+
 // DEBUG AREA
 
 if($.level)
 {
 	// let's confirm that the file was properly included
-	$.writeln("\nJSUI.js v" + JSUI.version + " successfully loaded by " + app.name + " " + app.version);
+	$.writeln("\nJSUI.js v" + JSUI.version + " with json2 + lz-string successfully loaded by " + app.name + " " + app.version);
 }
 //EOF
