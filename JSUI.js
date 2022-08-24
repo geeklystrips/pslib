@@ -173,7 +173,7 @@
 	- JSUI.alert/message should also support Bridge and InDesign
 	- manage orphan properties: strict mode? if not present in default preferences object, ignore
 		- JSUI needs a method for standalone properties that do not need to be saved to INI
-		- bypass based on provided array of strings during toINIstring process?
+		- bypass based on provided array of strings during toINIstring process? 
 
 	- add basic support for encoding/decoding LZW (for XMP purposes)
 		https://github.com/pieroxy/lz-string/
