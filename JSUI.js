@@ -407,9 +407,10 @@ JSUI.launchURL = function(url)
 			u.open('w');
 			u.writeln('[InternetShortcut]\nURL=' + url + '\n');
 			u.close();
-
 			u.execute();
+			$.sleep(1000);
 			u.remove(); 
+			return true;
 		}
 
 		// .execute() on macOS seems to bring up the File location instead of opening the URL
@@ -427,18 +428,23 @@ JSUI.launchURL = function(url)
 			'<p>If you are not redirected in five seconds, <a href="'+url+'">click here</a>.</p>\n'+
 			'</body>';
 
-			var u = new File(Folder.userData + '/JSUITmpURL.url');
+			var u = new File(Folder.userData + '/JSUITmpURL.html');
 			u.open('w');
 			u.writeln(htmlStr);
 			u.close();
 			u.execute();
-
-			u.remove(); 
+			$.sleep(1000);
+			u.remove();
+			error = error
+			return true;
+			
 		}
 	}
 	catch(e)
 	{  
-		alert(e);
+		var errorMsg = "Error launching shortcut.\n"+e;
+		prompt(errorMsg, url);
+		return false;
 	} 
 };
 
