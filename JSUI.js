@@ -170,6 +170,7 @@
 		- adding notion of editor context / project name to help store settings into separate userData folders, with a new "%appdata%/geeklystrips/Default" base
 		- addListBox() now supports disabling of saving selection obj.disableSaving
 		- String prototypes to help getting file extensions and suffixes
+		- adding Ps+Ai workspace management/creation utility functions
 
 	TODO
 	- fix out-of-range issue with LZW string (feature removed for now)
@@ -5885,6 +5886,236 @@ JSUI.getDocumentFullPath = function()
 		}
 	}
 };
+
+//
+// get recent files / workspace files management
+
+
+
+// get workspaces JSON files from location
+JSUI.getWorkspaces = function( uri )
+{
+    var workspacesFolder = new Folder(uri);
+    var files = [];
+
+    if(workspacesFolder.exists)
+    {
+        files = workspacesFolder.getFiles(/\.(json)$/i);
+    }
+    return files;
+}
+
+// wrapper for getting workspaces from default location
+JSUI.getProjectWorkspaces = function( uri )
+{
+                        // {Folder.userData}/geeklystrips/Default/workspaces 
+    var workspacesFolder = new Folder( uri ? uri : (JSUI.WORKSPACESFOLDER) );
+    var workspaceFiles = JSUI.getWorkspaces(workspacesFolder);
+    return workspaceFiles;
+}
+
+//
+JSUI.getWorkspaceObject = function( workspaceFile )
+{
+    var obj;
+    var workspaceFile = new File( workspaceFile );
+
+    if( workspaceFile.exists )
+    {  
+        var str = JSUI.readFromFile(workspaceFile, "utf8");
+        obj = JSON.parse(str);
+    }
+    if($.level) $.writeln(obj);
+
+    return obj;
+}
+
+JSUI.getWorkspaceObjList = function( uri )
+{
+    var files = [];
+
+    // hack to accept an array of prefiltered files as uri
+    if( !(uri instanceof Folder))
+    {
+        // test for array
+        if(typeof uri == "object")
+        {
+            if(uri.length)
+            {
+                files = uri;
+            }
+        }
+    }
+
+    var uri = new Folder( uri ? uri : (JSUI.WORKSPACESFOLDER) );
+    var objList = [];
+    files = files.length ? files : JSUI.getProjectWorkspaces(uri);
+
+    for(var i = 0; i < files.length; i++)
+    {
+        var obj = JSUI.getWorkspaceObject(files[i]);
+
+        if(obj)
+        {
+            objList.push(obj);
+        }
+    }
+
+    return objList;
+}
+
+JSUI.createWorkspace = function( name, filesList )
+{
+    var obj = {};
+    obj.name = name;
+    obj.appName = app.name;
+    obj.documents = [];
+
+    for(var i = 0; i < filesList.length; i++)
+    {
+        obj.documents.push(filesList[i]);
+    }
+
+    return obj;
+}
+
+JSUI.saveWorkspace = function( uri, workspaceObj )
+{
+    var saved = false;
+    if(uri && workspaceObj)
+    {
+        saved = JSUI.writeToFile( uri, JSON.stringify(workspaceObj, null, "\t"), "utf8" );
+    }
+    return saved ? new File(uri) : false;
+}
+
+JSUI.createAndSaveWorkspace = function( name, uri, filesArr )
+{
+    var uri = new File( uri ? uri : (JSUI.WORKSPACESFOLDER + "/" + name + ".json") );
+
+    var obj = JSUI.createWorkspace( name, filesArr );
+    var saved = JSUI.saveWorkspace( uri, obj );
+    return saved;
+}
+
+JSUI.getWorkspaceDocuments = function(workspaceUri)
+{
+    var docsArr = [];
+    var obj = JSUI.getWorkspaceObject(workspaceUri);
+    if(obj)
+    {
+        docsArr = obj.documents;
+    }
+    return docsArr;
+}
+
+JSUI.createWorkspaceFromActiveDocuments = function( name, uri)
+{
+    var tempFileName = "DefaultName";
+
+    if(app.documents.length)
+    {
+        if(!name)
+        {
+            if(!uri)
+            {
+                return;
+            }
+            tempFileName = new File(uri).name.replace(".json", "");
+        }
+
+        var name = name ? name : tempFileName;
+        
+        var newUri = new File( uri ? uri : (JSUI.WORKSPACESFOLDER + "/" + name + ".json") );
+
+        var appDocs = [];
+        for(var i = 0; i < app.documents.length; i++)
+        {
+            appDocs.push(app.documents[i].fullName.toString());
+        }    
+
+        uri = JSUI.createAndSaveWorkspace( name, newUri, appDocs );
+    }
+    else
+    {
+        uri = false;
+    }
+    return uri;
+}
+
+JSUI.openWorkspaceDocuments = function(workspaceUri)
+{
+    var obj = JSUI.getWorkspaceObject(workspaceUri);
+
+    if(obj)
+    {
+        var documents = obj.documents;
+
+        // check for obj.appName ?
+        if(documents.length)
+        {
+            for(var i = 0; i < documents.length; i++)
+            {
+                var doc = new File(documents[i]);
+                
+                if(doc.exists)
+                {
+                    app.open(doc);
+                }
+                else
+                {
+                    alert("File could not be found:\n\n" + doc.fsName );
+                }
+    
+            }
+        }
+    }
+}
+
+
+    ///////////////
+
+
+// get recent documents from Illustrator's preferences
+JSUI.getMixedFiles = function( n )
+{
+    var n = n ? n : (JSUI.isIllustrator ? 30 : 100); 
+    var files = [];
+
+    for(var i = 0; i < n; i++)
+    {
+        var file = JSUI.isIllustrator ? app.preferences.getStringPreference("plugin/MixedFileList/file"+i+"/path") : app.recentFiles[i];
+        if(file == "") break;
+        else
+        {
+            files.push(file);
+        }
+    }
+    return files;
+}
+    
+JSUI.openRecentFile = function ( showListBool, num )
+{
+    var showListBool = showListBool ? showListBool : false;
+    var num = num ? num : (JSUI.isIllustrator ? 30 : 100);
+
+    if(showListBool)
+    {
+        var recentFiles = JSUI.getMixedFiles(num);
+    }
+    else
+    {
+        // just open last file in history
+        var mostRecentFile = new File(JSUI.isIllustrator ? app.preferences.getStringPreference("plugin/MixedFileList/file0/path") : app.recentFiles[0]);
+        if(mostRecentFile.exists)
+        {
+            app.open(mostRecentFile);
+        }
+    }
+}
+
+//
+
 
 /* set layer palette's object color */
 JSUI.setLayerObjectColor = function( color )
