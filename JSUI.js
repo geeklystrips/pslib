@@ -165,6 +165,11 @@
 		- added HTML redirect for macOS version of JSUI.launchURL()
 		- added Array prototype methods to help with expressing Artboard sequences: .indexOf(), .getUnique(), .sortAscending(), .sortDescending(), .getRamges()
 
+	0.979
+		- adding built-in Number prototype methods for calculating powers of 2 and multiples of x (JSUI methods to be deprecated after refactoring)
+		- adding notion of editor context / project name to help store settings into separate userData folders, with a new "%appdata%/geeklystrips/Default" base
+		- addListBox() now supports disabling of saving selection obj.disableSaving
+		- String prototypes to help getting file extensions and suffixes
 
 	TODO
 	- fix out-of-range issue with LZW string (feature removed for now)
@@ -203,10 +208,13 @@
 */
 
 /* persistent namespace	*/
-JSUI = function(){}; 
+if(typeof JSUI !== "object")
+{
+	JSUI = {}; 
+}
 
 /* version	*/
-JSUI.version = "0.9789";
+JSUI.version = "0.979";
 
 // do some of the stuff differently depending on $.level and software version
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -214,6 +222,7 @@ JSUI.isPhotoshop = app.name == "Adobe Photoshop";
 JSUI.isIllustrator = app.name == "Adobe Illustrator";
 JSUI.isBridge = app.name == "Adobe Bridge";
 JSUI.isIndesign = app.name == "Adobe InDesign";
+JSUI.isAfterEffects = app.name == "Adobe AfterEffects";
 
 JSUI.isCS6 = JSUI.isPhotoshop ? app.version.match(/^13\./) != null : false; // photoshop-specific
 JSUI.is2020andAbove = JSUI.isPhotoshop ? (parseInt(app.version.match(/^\d.\./)) >= 21) : (parseInt(app.version.match(/^\d.\./)) >= 24); 
@@ -243,8 +252,23 @@ var userData = prompt("Folder.userData value:", userData.fsName);
 
 	*/
 //~ JSUI.USERPREFSFOLDER = (JSUI.isWindows ? "~" : "~/Library/Application Support");
+
 JSUI.USERPREFSFOLDER = Folder.userData;
-JSUI.TOOLSPREFSFOLDERNAME = "pslib"; // what about illustrator lol
+// JSUI.TOOLSPREFSFOLDERNAME = "pslib"; 
+
+JSUI.CONTEXTNAME = ""; // "Unity/", "Unreal/"
+JSUI.PROJECTNAME = "Default";
+
+// now writing prefs to a ContextName/ProjectName hierarchy. 
+// ProjectName: "Default"
+// If you need the context, just assign a name to JSUI.CONTEXTNAME and include trailing "/"
+JSUI.TOOLSPREFSFOLDERNAME = "geeklystrips/" + JSUI.CONTEXTNAME + JSUI.PROJECTNAME; 
+
+// include direct support for workspaces, app-based
+// JSUI.WORKSPACES = JSUI.TOOLSPREFSFOLDERNAME + ( app.name ? ("/" + app.name.replace("Adobe ", "")) : "" ) + "/workspaces";
+JSUI.WORKSPACES = JSUI.TOOLSPREFSFOLDERNAME + "/workspaces" + "/" + app.name;
+JSUI.WORKSPACESFOLDER = JSUI.USERPREFSFOLDER + "/" + JSUI.WORKSPACES;
+
 
 JSUI.INIFILE = JSUI.USERPREFSFOLDER + "/" + JSUI.TOOLSPREFSFOLDERNAME + "/" + JSUI.TOOLNAME + ".ini";
 JSUI.INIfileActive = false;
@@ -259,7 +283,8 @@ JSUI.autoSave = false;
 JSUI.PrintINIstringInfo = false;
 JSUI.CS6styling = true;
 
-// this must be invoked for JSUI.INIFILE to be valid
+// these must be invoked after defining for JSUI.INIFILE and JSUI.JSONFILE to be valid
+// JSUI.CONTEXTNAME and JSUI.PROJECTNAME are optional
 JSUI.populateINI = function()
 {
 	JSUI.INIFILE = new File(JSUI.USERPREFSFOLDER + "/" + JSUI.TOOLSPREFSFOLDERNAME + "/" + JSUI.TOOLNAME + ".ini");
@@ -271,7 +296,7 @@ JSUI.populateINI = function()
 
 // this must be invoked for JSUI.JSONFILE to be valid
 // automatically turns autosaving on
-// allows specifying a specific JSON uri
+// allows specifying a specific JSON uri to bypass default location
 JSUI.populateJSON = function( uri )
 {
 	// if not File, cast as such
@@ -284,7 +309,15 @@ JSUI.populateJSON = function( uri )
 	}
 	
 	JSUI.JSONFILE = uri != undefined ? new File(uri) : new File(JSUI.USERPREFSFOLDER + "/" + JSUI.TOOLSPREFSFOLDERNAME + "/" + JSUI.TOOLNAME + ".json");
+	
+	// other JSON-related stuff 
+	// JSUI.WORKSPACES = JSUI.TOOLSPREFSFOLDERNAME + "/workspaces";
+	// JSUI.WORKSPACES = new Folder( JSUI.JSONFILE.parent + "/workspaces");
+	// JSUI.WORKSPACES = new Folder( JSUI.JSONFILE.parent + "/workspaces");
+	JSUI.WORKSPACESFOLDER = new Folder(JSUI.WORKSPACESFOLDER);
+
 	// JSUI.status.message = "JSON populated";
+	JSUI.status.message = "";
 	JSUI.autoSave = true;
 	JSUI.JSONfileActive = true;
 	return JSUI.JSONFILE.exists;
@@ -4357,6 +4390,7 @@ Object.prototype.addListBox = function(propName, obj)
 	if(obj.helpTip) c.helpTip = obj.helpTip;
 //	if(obj.enabled) c.enabled = obj.enabled;
 	if(obj.disabled) c.enabled = !obj.disabled;
+	// if(obj.disableSaving) 
 	
 	var selection = null;
 
@@ -4479,7 +4513,10 @@ Object.prototype.addListBox = function(propName, obj)
 		
 		JSUI.debug(propName + " selection: [" + JSUI.PREFS[propName] + "]\n" + ($.level ? selectionArr[1] : [])); 
 
-		if(JSUI.autoSave) JSUI.saveIniFile();
+		if(!obj.disableSaving)
+		{
+			if(JSUI.autoSave) JSUI.saveIniFile();
+		}
 	};
 
 	// in case of doubleclick
@@ -4850,6 +4887,8 @@ JSUI.writeToFile = function(fptr, str, encoding)
 	}
 	file.write(str); 
 	file.close();
+
+	return file.exists;
 };
 
 JSUI.readFromFile = function(fptr, encoding)
@@ -5537,6 +5576,56 @@ String.prototype.trim = function()
 	return this.replace(/^[\s]+|[\s]+$/g,'')
 };
 
+// remove special characters that will cause problem in a file system context
+String.prototype.toFileSystemSafeName = function(replaceStr)
+{
+	return this.replace(/[\s:\/\\*\?\"\<\>\|]/g, replaceStr ? replaceStr : "_");
+};
+
+// get extension pattern
+String.prototype.getFileExtension = function()
+{
+	var match = this.trim().match(/\.[^\\.]+$/);
+	return match != null ? match[0].toLowerCase() : null; // null if no match
+};
+
+String.prototype.hasFileExtension = function()
+{
+	return this.getFileExtension() != null;
+};
+
+// str.hasSpecificExtension(".png") // "image.png" true   "image.jpg" false
+String.prototype.hasSpecificExtension = function( str )
+{
+	return this.getFileExtension() == str;
+};
+
+// matches hexadecimal expression "0x001234"
+String.prototype.getHexadecimalNumber = function()
+{
+	var str = this.trim();
+	str = str.match(/0[xX][0-9a-fA-F]+/);
+
+	return str;
+};
+
+// works with "@2x" and "@Dark"
+String.prototype.hasAtSymbolSuffix = function( str )
+{
+	var match = this.match(/\@[^]*$/);
+	return match == str;
+};
+
+String.prototype.hasAdobe2xSuffix = function()
+{
+	return this.hasAtSymbolSuffix("@2x");
+};
+
+String.prototype.hasAdobeDarkSuffix = function()
+{
+	return this.hasAtSymbolSuffix("@Dark");
+};
+
 // Lack of support for Set()/Array.filter() calls for hacks
 Array.prototype.indexOf = function(element)
 {
@@ -5591,21 +5680,25 @@ Array.prototype.getRanges = function()
 	return ranges;
 };
 
-// power of 2 check
-// - in this case most of the tools will assume values greater than 2
-// - with Pshop/AIllust rulers and artboards, negative numbers should be considered valid (-128 == true)
-JSUI.isPower2 = function(n)
+// Instant MATH, just add .prototype, teehee
+
+
+Number.prototype.isPowerOf2 = function()
 {
+	var n = this.valueOf();
+	var abs = Math.abs(n);
+
     if(Math.floor(n) !== n) return false;
-	if(Math.abs(n) !== n) n = Math.abs(n);
+	if(abs !== n) n = abs;
     return n && (n & (n - 1)) === 0;
 };
 
-// get next power of 2
-JSUI.getNextPow2 = function(n)
+Number.prototype.getNextPow2 = function()
 {
 	var p = 2;
-	n = Math.floor(n);
+	var n = Math.floor(this.valueOf());
+	if(n.isPowerOf2()) n++;
+
 	while(n > p)
 	{
 		p = p * 2;
@@ -5613,11 +5706,13 @@ JSUI.getNextPow2 = function(n)
 	return p;
 };
 
-// get previous power of 2
-JSUI.getPreviousPow2 = function(n)
+Number.prototype.getPreviousPow2 = function()
 {
 	var p = 2;
-	var n = Math.floor(n);
+	var n = this.valueOf();
+	if(n.isPowerOf2()) n--;
+	n = Math.floor(n);
+
 	while(n >= p)
 	{
 		p = p * 2;
@@ -5625,47 +5720,103 @@ JSUI.getPreviousPow2 = function(n)
 	return p / 2;
 };
 
-// multiple of x check
-JSUI.isMult = function(n, mult)
+Number.prototype.isMultOf = function(m)
 {
-	return (Math.ceil(n/mult) * mult == n);
+	if(m == undefined || isNaN(m))
+	{
+		return;
+	}
+	var n = this.valueOf();
+	return (Math.ceil(n/m) * m == n);
 };
 
-// get next multiple of x
-JSUI.getNextMult = function(n, mult)
+Number.prototype.getNextMultOf = function(m)
 {
-	return (n % mult == 0) ? n : ( n + (mult - (n % mult)) );
+	var n = this.valueOf();
+	if(n.isMultOf(m)) n++;
+	return (n % m == 0) ? n : ( n + (m - (n % m)) );
 };
 
-// get previous multiple of x
-JSUI.getPreviousMult = function(n, mult)
+Number.prototype.getPreviousMultOf = function(m)
 {
-	//  return (n % mult == 0) ? n : ((n < mult == 0) ? JSUI.getNextMult(n, mult) : n - (n % mult));
+	var n = this.valueOf();
+	if(n.isMultOf(m)) n--;
+	// return (n % m == 0) ? n : ( n + (m - (n % m)) );
 
-	if(n % mult == 0) return n;
-	else if(n < mult) return JSUI.getNextMult(n, mult);
-	else return n - (n % mult);
+	if(n % m == 0) return n;
+	// else if(n < m) return n.getNextMultOf(m);
+	else if(n < m) return m;
+	else return n - (n % m);
 };
 
-JSUI.isMult4 = function(n)
-{	
-	return JSUI.isMult(n, 4);
+Number.prototype.isMult4 = function()
+{
+	var n = this.valueOf();
+	return n.isMultOf(4);
 };
 
-JSUI.isMult8 = function(n)
-{	
-	return JSUI.isMult(n, 8);
+Number.prototype.getPreviousMult4 = function()
+{
+	var n = this.valueOf();
+	n = n.getPreviousMultOf(4)
+	return n;
 };
 
-JSUI.isMult16 = function(n)
-{	
-	return JSUI.isMult(n, 16);
+Number.prototype.getNextMult4 = function()
+{
+	var n = this.valueOf();
+	return n.getNextMultOf(4);
 };
 
-JSUI.isMult32 = function(n)
-{	
-	return JSUI.isMult(n, 32);
+Number.prototype.isMult8 = function()
+{
+	var n = this.valueOf();
+	return n.isMultOf(8);
 };
+
+Number.prototype.getPreviousMult8 = function()
+{
+	var n = this.valueOf();
+	return n.getPreviousMultOf(8);
+};
+
+Number.prototype.getNextMult8 = function()
+{
+	var n = this.valueOf();
+	return n.getNextMultOf(8);
+};
+
+// multiples of 16
+
+Number.prototype.isMult16 = function()
+{
+	var n = this.valueOf();
+	return n.isMultOf(16);
+};
+
+Number.prototype.getPreviousMult16 = function()
+{
+	var n = this.valueOf();
+	return n.getPreviousMultOf(16);
+};
+
+Number.prototype.getNextMult16 = function()
+{
+	var n = this.valueOf();
+	return n.getNextMultOf(16);
+};
+
+// to be deprecated
+JSUI.isPower2 = function(n){ return n.isPowerOf2(); };
+JSUI.getNextPow2 = function(n){ return n.getNextPow2(); };
+JSUI.getPreviousPow2 = function(n){ return n.getPreviousPow2(); };
+JSUI.isMult = function(n, mult){ return n.isMultOf(mult); };
+JSUI.getNextMult = function(n, mult){ return n.getNextMultOf(mult); };
+JSUI.getPreviousMult = function(n, mult){ return n.getPreviousMultOf(mult); };
+JSUI.isMult4 = function(n){ return n.isMultOf(4); };
+JSUI.isMult8 = function(n){ return n.isMultOf(8); };
+JSUI.isMult16 = function(n){ return n.isMultOf(16); };
+JSUI.isMult32 = function(n){ return n.isMultOf(32); };
 
 // clamp value
 JSUI.clampValue = function(n, min, max)
