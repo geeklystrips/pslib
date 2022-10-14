@@ -1,12 +1,32 @@
 /*
 	Pslib.jsx
-	Photoshop JSX Library of frequently-used functions
+	Adobe Photoshop/Illustrator/Bridge ExtendScript Library for working with XMP and CEP dev
 	Source: https://github.com/geeklystrips/pslib
-	
-	
+
 	- Per-layer metadata management: access, create, remove... 
+	- Document-based XMP
 	
+	-----
+
+	Copyright (c) 2015, geeklystrips@gmail.com
+	All rights reserved.
+
+	Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+	1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+
+	2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+
+	THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+	http://www.opensource.org/licenses/bsd-license.php
+
+	-----
+
 	TODO
+	- add support for standalone .XMP files (?)
+
 	- working on an advanced version of the layer metadata editor, might end up with separate apps
 	- will eventually need a way to copy/move chunks of xmp data from one layer to another layer, and from layer to containing document
 
@@ -59,8 +79,13 @@
 	(0.62)
 	- WIP support for working with more complex data types
 
+	(0.63)
+	- removed try-catch block for creating Pslib object
+	- added Pslib.getFileXmp() to work with XMP references for files which are not actively open in Photoshop / Illustrator
+
 */
 
+/*
 // using and adding functions to Pslib object -- whether or not the library has been loaded
 // this technique makes it easier to create and stabilize additional subfunctions separately before integrating them
 try
@@ -74,7 +99,7 @@ catch(e)
 	// if we have an error here, it's most likely because we didn't include the library in the preceding statements
 	// the current script might be part of an include by a script loaded beforehand
 
-	// $.level == 0 if the script is run by Photoshop, == 1 if run by ExtendScript ToolKit
+	// $.level == 0 if the script is run by Photoshop, == 1 if run by ExtendScript ToolKit or Visual Studio Code
 	// if ESTK, then write to console for easier debugging
 	// if($.level) $.writeln("Pslib library object not found. Creating placeholder.");
 	
@@ -87,33 +112,124 @@ catch(e)
 	// 
 	Pslib = function(){};
 }
+*/
+// do this the json way instead for perfs?
+// if undefined, no exception thrown / no interruption
+if (typeof Pslib !== "object") {
+    Pslib = {};
+	// alert("Pslib object created");
+}
 
 // library version, used in tool window titles. Maybe.
-Pslib.version = 0.62;
+Pslib.version = 0.63;
 Pslib.isPs64bits = BridgeTalk.appVersion.match(/\d\d$/) == '64';
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
+Pslib.isBridge = app.name == "Adobe Bridge";
 
 if(Pslib.isPhotoshop)
 {
 	// these functions are often required when working with code obtained using the ScriptingListener plugin
 	cTID = function(s) {return app.charIDToTypeID(s);}
 	sTID = function(s) {return app.stringIDToTypeID(s);}
+
+	// 
+	function selectByID(id, add) {
+		if (add == undefined) add = false;
+		var desc1 = new ActionDescriptor();
+		var ref1 = new ActionReference();
+		ref1.putIdentifier(cTID('Lyr '), id);
+		desc1.putReference(cTID('null'), ref1);
+		if (add) desc1.putEnumerated(sTID("selectionModifier"), sTID("selectionModifierType"), sTID("addToSelection"));
+		executeAction(cTID('slct'), desc1, DialogModes.NO);
+	};
+	
+	// from xbytor
+	function getActiveLayerID() {
+		var ref = new ActionReference();
+		ref.putEnumerated(cTID('Lyr '), cTID('Ordn'), cTID('Trgt'));
+		var ldesc = executeActionGet(ref);
+		return ldesc,getInteger(cTID('LyrI'));
+	};
+
+	//
+	function getArtboardBounds( id )
+	{
+		var artboard = selectByID( id );
+        artboard = app.activeDocument.activeLayer;
+
+		var r    = new ActionReference();    
+		r.putProperty(sTID("property"), sTID("artboard"));
+		if (artboard) r.putIdentifier(sTID("layer"), artboard.id);
+		else       r.putEnumerated(sTID("layer"), sTID("ordinal"), sTID("targetEnum"));
+		var d = executeActionGet(r).getObjectValue(sTID("artboard")).getObjectValue(sTID("artboardRect"));
+		var bounds = new Array();
+		bounds[0] = d.getUnitDoubleValue(sTID("top"));
+		bounds[1] = d.getUnitDoubleValue(sTID("left"));
+		bounds[2] = d.getUnitDoubleValue(sTID("right"));
+		bounds[3] = d.getUnitDoubleValue(sTID("bottom"));
+		return bounds;
+	}
+
+	function getArtboards()
+	{
+		var artboards = [];
+
+		try{
+			var ar = new ActionReference();
+			ar.putEnumerated(cTID("Dcmn"), cTID("Ordn"), cTID("Trgt"));
+			var appDesc = executeActionGet(ar);
+			var numOfLayers = appDesc.getInteger(sTID("numberOfLayers"));
+
+			for(var i = 1; i <= numOfLayers; i++) {
+				var ar = new ActionReference();
+				ar.putIndex(cTID("Lyr "), i);// 1-base
+				var dsc = executeActionGet(ar);
+				var id = dsc.getInteger(sTID('layerID'));
+				var name = dsc.getString(sTID('name'));
+				var isAb = dsc.getBoolean(sTID("artboardEnabled"));
+
+				if (isAb) {
+					artboards.push([id, name]);
+				}
+			}
+
+		}catch(e){
+			if($.level) $.writeln("EXCEPTION: ", e);
+		}
+
+		return artboards;
+	}
+
+
+}
+else
+{
+	// just use placeholders for the rest
+	cTID = function(){};
+	sTID = function(){};
+	selectByID = function(){};
+	getActiveLayerID = function(){};
+	getArtboardBounds = function(){};
+	getArtboards = function(){};
 }
 
 // metadata is only supported by Photoshop CS4+
-Pslib.isPsCS4andAbove = parseInt(app.version.match(/^\d.\./)) >= 11;
+Pslib.isPsCS4andAbove = Pslib.isPhotoshop && parseInt(app.version.match(/^\d.\./)) >= 11;
 
 // here's some more stuff that can be useful
-Pslib.isPsCCandAbove = parseInt(app.version.match(/^\d.\./)) >= 14; 
-Pslib.isPsCS6 = (app.version.match(/^13\./) != null);
-Pslib.isPsCS5 = (app.version.match(/^12\./) != null);
-Pslib.isPsCS4 = (app.version.match(/^11\./) != null);
-Pslib.isPsCS3 = (app.version.match(/^10\./) != null);
+Pslib.isPsCCandAbove = Pslib.isPhotoshop && parseInt(app.version.match(/^\d.\./)) >= 14; 
+Pslib.isPsCS6 = (Pslib.isPhotoshop && app.version.match(/^13\./) != null);
+Pslib.isPsCS5 = (Pslib.isPhotoshop && app.version.match(/^12\./) != null);
+Pslib.isPsCS4 = (Pslib.isPhotoshop && app.version.match(/^11\./) != null);
+Pslib.isPsCS3 = (Pslib.isPhotoshop  && app.version.match(/^10\./) != null);
 
 // Ps & Ai 2020+
 Pslib.is2020andAbove = Pslib.isPhotoshop ? (parseInt(app.version.match(/^\d.\./)) >= 21) : (parseInt(app.version.match(/^\d.\./)) >= 24); 
+
+// 2022 for CEP 11
+Pslib.is2022andAbove = Pslib.isPhotoshop ? (parseInt(app.version.match(/^\d.\./)) >= 23) : (parseInt(app.version.match(/^\d.\./)) >= 26); 
 
 // #############  PER-LAYER METADATA FUNCTIONS
 
@@ -232,7 +348,7 @@ Pslib.unloadXMPLibrary = function()
    }
 };
 
-// get layer's existing XMP if present
+// get target's existing XMP if present // assumes you're working with a file that's already open in Photoshop or Illustrator
 Pslib.getXmp = function (target, createNew)
 {
 	var target = (target == undefined ? app.activeDocument.activeLayer : target);
@@ -371,7 +487,7 @@ Pslib.setXmpProperties = function (target, propertiesArray)
 		   if($.level) $.writeln("XMP Metadata successfully fetched from target \"" + target.name + "\"");
 		} catch( e ) 
 		{
-			if($.level) $.writeln("XMP metadata could not be found for target \"" + target.name + "\".\nCreating new XMP metadata container.");
+		//	if($.level) $.writeln("XMP metadata could not be found for target \"" + target.name + "\".\nCreating new floating XMP container.");
 			xmp = new XMPMeta(  );
 		}
 	   
@@ -445,10 +561,10 @@ Pslib.getXmpProperties = function (target, propertiesArray)
 		try
 		{
 		   xmp = new XMPMeta( Pslib.isIllustrator ? target.XMPString : target.xmpMetadata.rawData );
-		   if($.level) $.writeln("XMP Metadata successfully fetched from object \"" + target.name + "\"");
+		   if($.level) $.writeln("XMP Metadata successfully fetched from target \"" + target.name + "\"");
 		} catch( e ) 
 		{
-			if($.level) $.writeln("XMP metadata could not be found for object \"" + target.name + "\".\nCreating new XMP metadata container.");
+			if($.level) $.writeln("XMP metadata could not be found for target \"" + target.name + "\".\nCreating new XMP metadata container.");
 			xmp = new XMPMeta(  );
 		}
 	   
@@ -475,7 +591,7 @@ Pslib.getXmpProperties = function (target, propertiesArray)
 				}
 				else
 				{
-					if($.level) $.writeln("\tProperty not found [" + prop + ": " + val +"]  " + typeof val);
+					// if($.level) $.writeln("\tProperty not found [" + prop + ": " + val +"]  " + typeof val);
 					updatedArray.push([propertiesArray[i][0], null]);
 				}
 			} 
@@ -510,10 +626,10 @@ Pslib.getPropertiesArray = function (target)
 		try
 		{
 		   xmp = new XMPMeta( Pslib.isIllustrator ? target.XMPString : target.xmpMetadata.rawData );
-		   if($.level) $.writeln("XMP Metadata successfully fetched from object \"" + target.name + "\"");
+		   if($.level) $.writeln("XMP Metadata successfully fetched from target \"" + target.name + "\"");
 		} catch( e ) 
 		{
-			if($.level) $.writeln("XMP metadata could not be found for object \"" + target.name + "\".\nCreating new XMP metadata container.");
+			if($.level) $.writeln("XMP metadata could not be found for target \"" + target.name + "\".\nCreating new XMP metadata container.");
 			return null;
 		}
 	
@@ -548,12 +664,14 @@ Pslib.getPropertiesArray = function (target)
 //      var dictionary = { propertyname1: null, propertyname2: null, propertyname3: null }
 //      var oneDimensionArray = [ "propertyname1", "propertyname2", "propertyname3" ];
 //      var twoDimensionArray = [ ["propertyname1", null], ["propertyname2", null], ["propertyname3", null] ];
+// OOPS allow not returning anything at all for null
 // 
-Pslib.getXmpDictionary = function( target, obj, allowEmptyStringBool, typeCaseBool)
+Pslib.getXmpDictionary = function( target, obj, allowEmptyStringBool, typeCaseBool, allowNullBool)
 {
     var target = target == undefined ? app.activeDocument : target;
     var allowEmptyStringBool = allowEmptyStringBool == undefined ? false : allowEmptyStringBool;
-    var typeCaseBool = typeCaseBool == undefined ? false : typeCaseBool;
+    // var typeCaseBool = typeCaseBool == undefined ? false : typeCaseBool;
+    var allowNullBool = allowNullBool == undefined ? true : allowNullBool; // for cases where we don't want anything with a null value
     var tempArr = [];
     var dict = {};
 
@@ -649,7 +767,15 @@ Pslib.getXmpDictionary = function( target, obj, allowEmptyStringBool, typeCaseBo
 			}
 				
 			// if($.level) $.writeln( propName + ": " + propValue + "   " + typeof propValue );
-			dict[propName] = propValue == undefined ? (allowEmptyStringBool ? "" : null) : propValue;
+			if((propValue == undefined) && !allowEmptyStringBool && !allowNullBool)
+			{
+				// skip
+			}
+			else
+			{
+				dict[propName] = propValue == undefined ? (allowEmptyStringBool ? "" : ( allowNullBool ? null : undefined)) : propValue;
+			}
+
 		}
 	}
  
@@ -942,4 +1068,16 @@ Pslib.getDocumentPath = function(doc)
 	}
 };
 
+
+
+// DEBUG AREA
+
+if($.level)
+{
+	// let's confirm that the file was properly included
+	$.writeln("\nPslib.jsx v" + Pslib.version + " successfully loaded by " + app.name + " " + app.version);
+}
+
 "\n";
+//EOF
+

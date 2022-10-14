@@ -459,7 +459,8 @@ JSUI.launchURL = function(url)
 			'<meta http-equiv="refresh" content="5; URL="'+url+'" />\n'+
 			'</head>\n'+
 			'<body>\n'+
-			'<p>If you are not redirected in five seconds, <a href="'+url+'">click here</a>.</p>\n'+
+			'<p>'+url+'</p>\n'+
+			'<p>If you are not redirected within five seconds, <a href="'+url+'">click here</a>.</p>\n'+
 			'</body>';
 
 			var u = new File(Folder.userData + '/JSUITmpURL.html');
@@ -469,7 +470,7 @@ JSUI.launchURL = function(url)
 			u.execute();
 			$.sleep(1000);
 			u.remove();
-			error = error
+			// error = error
 			return true;
 			
 		}
@@ -5295,6 +5296,7 @@ JSUI.writeJSONfile = function(f, obj)
  		JSUI.reflectProperties(obj, "\n[WRITING TO JSON STRING:]");
  	}
 	JSUI.writeToFile(f, str);
+	return f;
 };
 
 // wrapper for quickly saving JSON prefs
@@ -5335,6 +5337,11 @@ JSUI.readJSONfile = function(obj, f, type)
 	var nObj = JSON.parse(str);
 
 	return nObj;
+};
+
+JSUI.isObjectEmpty = function(obj)
+{
+	return JSON.stringify(obj) === '{\n\n}';
 };
 
 // write/modify a single property value to/from  INI file
@@ -5574,13 +5581,20 @@ JSUI.resetPreferences = function( obj, saveOnReset )
 // XBytor's string trim
 String.prototype.trim = function()
 {
-	return this.replace(/^[\s]+|[\s]+$/g,'')
+	return this.replace(/^[\s]+|[\s]+$/g,'');
 };
 
 // remove special characters that will cause problem in a file system context
 String.prototype.toFileSystemSafeName = function(replaceStr)
 {
-	return this.replace(/[\s:\/\\*\?\"\<\>\|]/g, replaceStr ? replaceStr : "_");
+	return this.replace(/[\s:\/\\*\?\!\"\<\>\|]/g, replaceStr ? replaceStr : "_");
+};
+
+// get name without extension
+String.prototype.getFileNameWithoutExtension = function()
+{
+	var match = this.match(/([^\.]+)/);
+	return match != null ? match[1] : null;
 };
 
 // get extension pattern
@@ -5590,9 +5604,71 @@ String.prototype.getFileExtension = function()
 	return match != null ? match[0].toLowerCase() : null; // null if no match
 };
 
+// boolean indicating if string contains a ".ext" pattern
 String.prototype.hasFileExtension = function()
 {
 	return this.getFileExtension() != null;
+};
+
+// toggles pattern found at end of string
+String.prototype.addRemoveExtensionSuffix = function( str )
+{
+    var originalStr = this.trim();
+
+    if(!str)
+    {
+        return originalStr;
+    }
+
+    var match = originalStr.match(/\.[^\\.]+$/);
+
+    // var originalExt = originalStr.getFileExtension(); // need precise casing comparison
+    var originalExt = match != null ? match[0] : "";
+    var hasMatch = originalExt != null && originalExt != "";
+
+	if(hasMatch)
+	{
+        // if suffix already present, remove or replace
+        if(originalExt.toLowerCase() == str.toLowerCase())
+        {
+            // if($.level) $.writeln( "exact "+str+" match, removing" );
+            return originalStr.replace(/\.[^\\.]+$/, "");
+        }
+        else
+        {
+            // if($.level) $.writeln( "extension present: " + originalExt );
+            return originalStr.replace(/\.[^\\.]+$/, str);
+        }
+	}
+    else
+    {
+        // if($.level) $.writeln( "adding " + str );
+       return originalStr + str;
+    }
+};
+
+// must FileObj.toString(), returns File object
+String.prototype.swapFileObjectFileExtension = function( newExtStr )
+{
+	var originalStr = this;
+	var newStr = originalStr;
+	var originalExt = originalStr.getFileExtension();
+
+	newStr = this.trim();
+	var match = newStr.match(/\.[^\\.]+$/);
+
+	if(match == null)
+	{
+		return originalStr;
+	}
+
+	var fileExt = newStr.getFileExtension();
+	if(originalStr == fileExt)
+	{
+		return;
+	}
+	var newFileObj = new File(newStr.replace(/\.[^\\.]+$/, newExtStr.toLowerCase()));
+	return newFileObj;
 };
 
 // str.hasSpecificExtension(".png") // "image.png" true   "image.jpg" false
