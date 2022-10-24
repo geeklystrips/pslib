@@ -150,7 +150,7 @@ if(Pslib.isPhotoshop)
 		var ref = new ActionReference();
 		ref.putEnumerated(cTID('Lyr '), cTID('Ordn'), cTID('Trgt'));
 		var ldesc = executeActionGet(ref);
-		return ldesc,getInteger(cTID('LyrI'));
+		return ldesc.getInteger(cTID('LyrI'));
 	};
 
 	//
@@ -191,7 +191,8 @@ if(Pslib.isPhotoshop)
 				var isAb = dsc.getBoolean(sTID("artboardEnabled"));
 
 				if (isAb) {
-					artboards.push([id, name]);
+					artboards.push([ id, name ]);
+					// artboards.push( { id: id, name: name });
 				}
 			}
 
@@ -201,6 +202,104 @@ if(Pslib.isPhotoshop)
 
 		return artboards;
 	}
+
+	// get asset path based from ~/generator.js if found
+	function getAssetsPath()
+	{
+		var generatorConfigFile = new File("~/generator.js");
+		var cfgObj = {};
+		var gao = {};
+		var baseDirectory = undefined;
+
+		if(generatorConfigFile.exists)
+		{
+			try
+			{
+				var str = JSUI.readFromFile(generatorConfigFile, "UTF-8");
+
+				cfgObj = JSON.parse(str.replace("module.exports = ", ""));
+				gao = cfgObj["generator-assets"];
+				baseDirectory = gao["base-directory"];
+
+			}
+			catch(e)
+			{
+				if($.level) $.writeln("Error parsing generator.js");
+			}
+		}
+		return baseDirectory;
+	}
+
+
+    // get individual artboard metrics and info (including XMP)
+    function getArtboardSpecs(layer, parentFullName)
+    {
+        var doc = app.activeDocument;
+
+        var obj = {};
+
+        obj.name = layer.name;
+        obj.index = layer.id;
+
+        try
+        {        
+            var bounds = getArtboardBounds(layer.id);
+
+            //.as('px') doesn't work...?
+            obj.x = bounds[0];
+            obj.y = bounds[1];
+            obj.width = bounds[2] - bounds[1];
+            obj.height = bounds[3] - bounds[0];
+            // obj.artboardRect = [ bounds[0], bounds[1], bounds[2], bounds[3]];
+        }
+        catch(e)
+        {
+            if($.level) $.writeln("Error getting specs for arboard " + layer.name + " \n\n" + e); 
+
+            // force minimal specs / document W x H
+            obj.x = 0;
+            obj.y = 0;
+            obj.width = doc.width.as("px");
+            obj.height = doc.height.as("px");
+            // obj.artboardRect = [ 0, 0, obj.width, obj.height];
+        }
+            
+        obj.parent = doc.name;
+        // obj.parentFullName = doc.fullName.toString();
+        obj.parentFullName = parentFullName.toString();
+
+        // if you need placeholder specs, get them here
+        // 9SS status
+
+        // get object-level XMP
+
+        // do NOT use an object as template when also using JSUI (what a mess)
+       var dictionary = Pslib.getXmpDictionary( layer, { assetID: null, source: null, hierarchy: null, specs: null, custom: null }, false, false, false);
+      
+       // no empty strings allowed and no null values
+        // var dictionary = Pslib.getXmpDictionary( layer, ["assetID", "source", "hierarchy", "specs", "custom" ], false, false, false);
+
+        // need a version of this feature that will NOT loop through all Object.components
+        //var dictionary = Pslib.getXmpDictionary( layer, [ ["assetID", null], ["source", null], ["hierarchy", null], ["specs", null], ["custom", null] ], false);//, true, typeCaseBool)
+        
+        // only pass dictionary if tags are present
+
+        // function isEmptyObject(obj){
+        //     return JSON.stringify(obj) === '{\n\n}';
+        // }
+
+        // if(obj.hasOwnProperty("tags"))
+        // if(!isEmptyObject(dictionary))
+        if(!JSUI.isObjectEmpty(dictionary))
+        {
+            obj.tags = dictionary;
+        }
+
+
+        if($.level) $.writeln("LayerID " + obj.index + ": " + obj.name + " (w:" + obj.width +" h:" + obj.height + ") (x:" + obj.x +" y:" + obj.y + ")" ); //"  rect: " + obj.artboardRect);
+        return obj;
+    }
+
 
 
 }
@@ -213,6 +312,8 @@ else
 	getActiveLayerID = function(){};
 	getArtboardBounds = function(){};
 	getArtboards = function(){};
+	getAssetsPath = function(){};
+	getArtboardSpecs = function(){};
 }
 
 // metadata is only supported by Photoshop CS4+

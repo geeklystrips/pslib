@@ -677,6 +677,85 @@ JSUI.getBackgroundColor = function()
 
 JSUI.backgroundColor = JSUI.getBackgroundColor();
 
+// still assumes pslib include
+JSUI.getArtboardSpecsInfo = function( obj )
+{
+    // return empty array if no document present
+    if(!app.documents.length)
+    {
+        return [];
+    }
+
+    if(!obj)
+    {
+        var obj = { };
+    }
+
+    var doc = app.activeDocument;
+    var originalActiveLayer = doc.activeLayer; // may not be an artboard!
+    // var originalActiveLayerID = getActiveLayerID();
+
+    if(!obj.artboards) obj.artboards = getArtboards();
+
+    var docSpecs = [];
+    var artboardSpecs = [];
+
+    var docSpecs = Pslib.getXmpDictionary( app.activeDocument, { source: null, hierarchy: null, specs: null, custom: null }, false, false, false);
+    var docHasTags = !JSUI.isObjectEmpty(docSpecs);
+
+    // provide solution for exporting only active artboard specs
+    for(var i = 0; i < obj.artboards.length; i++)
+    {
+        var artboard = selectByID(obj.artboards[i][0]); // from Pslib
+
+        artboard = app.activeDocument.activeLayer;
+
+        // skip if extension needed but not found
+        if(obj.extension)
+        {
+            if( !artboard.name.hasSpecificExtension( obj.extension ) )
+            {
+                continue;
+            }
+        }
+
+        // if(artboard.name.hasSpecificExtension( obj.extension ? obj.extension : ".png"))
+        // {
+            // alert(app.activeDocument.activeLayer.name);
+            // var specs = obj.artboards ? obj.artboards : getArtboardSpecs(artboard, obj.parentFullName);
+            var specs = getArtboardSpecs(artboard, obj.parentFullName);
+            // alert(specs)
+            // inject document tags if needed
+            if(docHasTags)
+            {
+                // if no tags present, force document's
+                if(!specs.hasOwnProperty("tags"))
+                {             
+                    specs.tags = docSpecs;
+                }
+                // if tags object present, loop through template structure and inject as needed
+                else
+                {
+                    // source: null, hierarchy: null, specs: null, custom: null
+                    // here we assume that if a value is present, it should take precedence
+                    if(!specs.tags.hasOwnProperty("source"))
+                    {
+                       specs.tags.source = docSpecs.source;
+                    }
+                }
+            }
+            artboardSpecs.push(specs);
+        // }
+
+    }
+
+    // restore initial activeLayer
+    if(doc.activeLayer != originalActiveLayer) doc.activeLayer != originalActiveLayer;
+
+    return artboardSpecs;
+}
+
+
 JSUI.createDialog = function( obj )
 {
 	var obj = obj != undefined ? obj : {};
