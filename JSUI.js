@@ -6231,7 +6231,7 @@ JSUI.openWorkspaceDocuments = function(workspaceUri)
     ///////////////
 
 
-// get recent documents from Illustrator's preferences
+// get list of recent documents 
 JSUI.getMixedFiles = function( n )
 {
     var n = n ? n : (JSUI.isIllustrator ? 30 : 100); 
@@ -6239,6 +6239,7 @@ JSUI.getMixedFiles = function( n )
 
     for(var i = 0; i < n; i++)
     {
+		// from Illustrator's preferences
         var file = JSUI.isIllustrator ? app.preferences.getStringPreference("plugin/MixedFileList/file"+i+"/path") : app.recentFiles[i];
         if(file == "") break;
         else
@@ -6432,6 +6433,35 @@ JSUI.HexToA = function(h)
 {
 	return parseInt((JSUI.cutHex(h)).substring(6,8), 16);
 };
+
+// decode Base64 string (binary data represented as ASCII string)
+JSUI.decode64 = function(input)
+{
+	if(!input) return;
+
+    var keys = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+    var result = "";
+    var c1, c2, c3 = "";
+    var e1, e2, e3, e4 = "";
+    var i = 0;
+    input = input.replace(/[^A-Za-z0-9\+\/\=]/g, "");
+    do {
+        e1 = keys.indexOf(input.charAt(i++));
+        e2 = keys.indexOf(input.charAt(i++));
+        e3 = keys.indexOf(input.charAt(i++));
+        e4 = keys.indexOf(input.charAt(i++));
+        c1 = (e1 << 2) | (e2 >> 4);
+        c2 = ((e2 & 15) << 4) | (e3 >> 2);
+        c3 = ((e3 & 3) << 6) | e4;
+        result = result + String.fromCharCode(c1);
+        if (e3 != 64) {result = result + String.fromCharCode(c2);}
+        if (e4 != 64) {result = result + String.fromCharCode(c3);}
+        c1 = c2 = c3 = "";
+        e1 = e2 = e3 = enc4 = "";
+    } while (i < input.length);
+    return result;
+};
+
 
 //
 //
