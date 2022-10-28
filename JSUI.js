@@ -5792,6 +5792,7 @@ Array.prototype.indexOf = function(element)
 	return -1;
 };
 
+// removes duplicates in array
 Array.prototype.getUnique = function()
 {
 	var unique = [];
@@ -5830,10 +5831,100 @@ Array.prototype.getRanges = function()
 			rend = this[i + 1]; // increment the index if the numbers sequential
 			i++;
 		}
-		// ranges.push(rstart == rend ? rstart+'' : rstart + '-' + rend);
 		ranges += ((rstart == rend ? rstart+'' : rstart + '-' + rend) + ( i+1 == this.length ? "" : "," ));
 	}
 	return ranges;
+};
+
+// [1, 2, 3, 4, 8, 10, 11, 12, 15, 16, 17, 18, 29]
+// gets converted to "1-4,8,10-12,15-18,29"
+Array.prototype.toSimplifiedString = function()
+{
+	var str = "";
+	var ranges = [];
+
+	var count = 0;
+	var range = [];
+
+	for(var i = 0; i < this.length; i++)
+	{	
+		var num = this[i];
+
+		// mixed array content safeguard: if not number, try to cast, skip if fails
+		if(isNaN(num)) num = parseInt(num);
+		if(isNaN(num) || num == 0) continue;
+		
+		range.push(num);
+		count++;
+
+		// if next number in array is not an increment, push array and reset count
+		if(this[i+1] != undefined)
+		{
+			if( (num+1) != this[i+1] )
+			{
+				ranges.push(range);
+				if(this[i+1] == this[this.length-1]) ranges.push( [this[i+1]] );
+
+				range = [];
+				count = 0;
+			}
+		}
+	}
+
+	// reformat string
+	for(var j = 0; j < ranges.length; j++)
+	{
+		var currentRange = ranges[j];
+		var start = currentRange[0];
+		var end = currentRange[currentRange.length-1];
+
+		str += (start == end ? start : (start + "-" + end));
+
+		if(j != (ranges.length-1))
+		{
+			str += ",";
+		}
+	}
+
+	return str.length ? str : this.toString();
+};
+
+// "1-4,8,10-12,15-18,29"
+// gets converted to [1, 2, 3, 4, 8, 10, 11, 12, 15, 16, 17, 18, 29]
+String.prototype.toRangesArr = function()
+{
+	var arr = [];
+	var str = this.trim();
+	str = str.replace(/\s/g, "");
+	var tmpArr = str.split(",");
+	
+	for(var i = 0; i < tmpArr.length; i++)
+	{	
+		var r = tmpArr[i];
+		if(r == "") continue;
+		if(r.match("-") != null)
+		{
+			var range = r.split("-");
+			var start = parseInt(range[0]);
+			var end = parseInt(range[1]);
+
+			if(!isNaN(start) && !isNaN(end))
+			{
+				var rLength = end - start + 1;
+				for(var r = 0; r < rLength; r++)
+				{
+					arr.push(start+r);
+				}
+			}
+		}
+		else
+		{
+			var intgr = parseInt(r);
+			var hasInt = !isNaN(intgr);
+			if(hasInt) arr.push(intgr);
+		}
+	}
+	return arr.length ? arr.getUnique().sortAscending() : [];
 };
 
 // Instant MATH, just add .prototype, teehee
