@@ -5816,7 +5816,7 @@ Array.prototype.sortDescending = function()
 };
 
 // [1, 2, 3, 4, 8, 10, 11, 12, 15, 16, 17, 18, 29]
-// gets converted to "1-4,8,10-12,15-18,29"
+// becomes "1-4,8,10-12,15-18,29"
 Array.prototype.getRanges = function()
 {
 	var ranges = ""; // [];
@@ -5837,13 +5837,12 @@ Array.prototype.getRanges = function()
 };
 
 // [1, 2, 3, 4, 8, 10, 11, 12, 15, 16, 17, 18, 29]
-// gets converted to "1-4,8,10-12,15-18,29"
+// becomes "1-4,8,10-12,15-18,29"
 Array.prototype.toSimplifiedString = function()
 {
 	var str = "";
 	var ranges = [];
 
-	var count = 0;
 	var range = [];
 
 	for(var i = 0; i < this.length; i++)
@@ -5855,7 +5854,6 @@ Array.prototype.toSimplifiedString = function()
 		if(isNaN(num) || num == 0) continue;
 		
 		range.push(num);
-		count++;
 
 		// if next number in array is not an increment, push array and reset count
 		if(this[i+1] != undefined)
@@ -5864,9 +5862,7 @@ Array.prototype.toSimplifiedString = function()
 			{
 				ranges.push(range);
 				if(this[i+1] == this[this.length-1]) ranges.push( [this[i+1]] );
-
 				range = [];
-				count = 0;
 			}
 		}
 	}
@@ -5890,7 +5886,7 @@ Array.prototype.toSimplifiedString = function()
 };
 
 // "1-4,8,10-12,15-18,29"
-// gets converted to [1, 2, 3, 4, 8, 10, 11, 12, 15, 16, 17, 18, 29]
+// becomes [1, 2, 3, 4, 8, 10, 11, 12, 15, 16, 17, 18, 29]
 String.prototype.toRangesArr = function()
 {
 	var arr = [];
@@ -5926,6 +5922,14 @@ String.prototype.toRangesArr = function()
 	}
 	return arr.length ? arr.getUnique().sortAscending() : [];
 };
+
+// "0, 1, 2-3,4,5,10-12, 8, 29,30,31, 11, 12,65, 66, 178"
+// becomes "1-5,8,10-12,29-31,65-66,178"
+// does not support negative numbers 
+String.prototype.toRangesStr = function()
+{
+	return this.toRangesArr().toSimplifiedString();
+}
 
 // Instant MATH, just add .prototype, teehee
 
