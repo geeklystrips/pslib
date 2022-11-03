@@ -20,35 +20,98 @@
 #include "Pslib.jsx"
 #include "jsui.js"
 
-#target photoshop
+// #target photoshop
 
 var useDoc = useDoc != undefined ? useDoc : false;
 var XMPObj = null;
 
-JSUI.TOOLNAME = "XMP Metadata Editor";
-JSUI.populateINI();
 
-try
+
+//
+// Main app execution
+//
+
+// let's tweak this for Illustrator
+// if(Pslib.isPsCS4andAbove && app.documents.length)
+if(app.documents.length)
 {
-	// load library
-	 if(!ExternalObject.AdobeXMPScript)
+	var doc = app.activeDocument;
+	var layerObject = (useDoc ? doc : doc.activeLayer);  
+	var layerInfo = {};
+
+	if(JSUI.isPhotoshop)
 	{
-		ExternalObject.AdobeXMPScript = new ExternalObject('lib:AdobeXMPScript');
+		if(layerObject != undefined)// && useDoc == false)
+		{
+			layerInfo.name = layerObject.name;
+			layerInfo.typename = layerObject.typename;
+			
+			if(!useDoc)
+			{
+				layerInfo.kind = (layerObject.typename == "LayerSet" ? "LayerSet" :  layerObject.kind);
+			
+				var b = layerObject.bounds;
+				layerInfo.width = b[2].as('px') - b[0].as('px');
+				layerInfo.height = b[3].as('px') - b[1].as('px');
+				layerInfo.x = b[0].as('px');
+				layerInfo.y = b[1].as('px');
+			}
+			else
+			{
+				layerInfo.width = doc.width.as('px');
+				layerInfo.height = doc.height.as('px');
+			}
+		}	
 	}
 
-	// register custom namespace
-	XMPMeta.registerNamespace(Pslib.XMPNAMESPACE, Pslib.XMPNAMESPACEPREFIX);
+	var docSaved;
+	var hasXMP = XMPObj != null;
+	
+	// this is to determine if the current document has been saved to disk (XML & CSV output functions require an existing path)
+	try
+	{
+		var docpath = doc.path;
+		docSaved = true;
+	}
+	catch(e)
+	{
+		docSaved = false;
+	}
+	
+	Main();
+	
+	// workaround for a variable persistence issue (feature?) with Photoshop CC+ and HTML5 panels context
+	useDoc = false;
 }
-catch(e)
+else
 {
-	// if ExternalObject.AdobeXMPScript not present, hardcode the namespace to exif
-	Pslib.XMPNAMESPACE = "http://ns.adobe.com/exif/1.0/";
+	if(!Pslib.isPsCS4andAbove && !useDoc) alert("Layer metadata features are only available with Photoshop CS4 and above.");
+	else alert("No available document!");
 }
-
 // app functions
 
 function Main()
 {
+	JSUI.TOOLNAME = "Metadata Editor";
+	JSUI.populateINI();
+
+	try
+	{
+		// load library
+		if(!ExternalObject.AdobeXMPScript)
+		{
+			ExternalObject.AdobeXMPScript = new ExternalObject('lib:AdobeXMPScript');
+		}
+
+		// register custom namespace
+		XMPMeta.registerNamespace(Pslib.XMPNAMESPACE, Pslib.XMPNAMESPACEPREFIX);
+	}
+	catch(e)
+	{
+		// if ExternalObject.AdobeXMPScript not present, hardcode the namespace to exif
+		Pslib.XMPNAMESPACE = "http://ns.adobe.com/exif/1.0/";
+	}
+
 	// prepare XMP container
 
 	var propertiesArr = [];
@@ -103,19 +166,8 @@ function Main()
 	var layerHeightField =  layerObjectCoordsGroup.add('statictext', undefined, "Height:");
 	layerHeightField.enabled = false;
 	layerObjectCoordsGroup.add('statictext', undefined, layerInfo.height);
-	
-	// try
-	// {
-	// 	var imgPath = new File( File($.fileName).parent + (useDoc ? "/img/DocMetadata.png" : "/img/LayerMetadata.png"));
-	// 	var img = layerObjectGroup.add('iconbutton', undefined, ScriptUI.newImage(imgPath, imgPath, imgPath, imgPath));
-	// 	img.alignment = "right";
-	// }
-	// catch(e)
-	// {
-		
-	// }
 
-	layerObjectGroup.addImage( { imgFile: "img/"+(useDoc ? "DocMetadata" : "LayerMetadata")+".png" });
+	// layerObjectGroup.addImage( { imgFile: "img/"+(useDoc ? "DocMetadata" : "LayerMetadata")+".png" });
 
 
 	if(!useDoc)
@@ -215,7 +267,7 @@ function Main()
 	// set value for specified property -- creates property if not found
 	setValue.onClick = function()
 	{
-		if(property.text != "" && propertyValue.text != "" && propertyValue.text != "[INVALID]" && propertyValue.text.match(",") == null)
+		if(property.text != "" && propertyValue.text != "" && propertyValue.text != "[INVALID]") // && propertyValue.text.match(",") == null)
 		{
 			XMPObj = Pslib.getXmp (layerObject);
 			if(XMPObj != null)
@@ -344,11 +396,21 @@ function Main()
 	// listbox callbacks
 	propertyList.onChange = function()
 	{
-		var props = Pslib.getPropertiesArray(layerObject);
 		if(propertyList.selection != null)
 		{
-			property.text = propertyList.selection.toString().split(",")[0];
-			propertyValue.text = decodeURI(propertyList.selection.toString().split(",")[1]);
+			var splt = propertyList.selection.toString().split(",");
+			var value = decodeURI(splt[1]);
+
+			property.text = splt[0];
+			if(splt.length > 2)
+			{
+				for(var i = 2; i < splt.length; i++)
+				{
+					value += (i < splt.length ? "," : "")+decodeURI(splt[i]);
+				}
+
+			}
+			propertyValue.text = value;
 		}
 	};
 	
@@ -638,61 +700,5 @@ function Main()
 	win.show();
 };
 
-//
-// Main app execution
-//
-
-if(Pslib.isPsCS4andAbove && app.documents.length)
-{
-	var doc = app.activeDocument;
-	var layerObject = (useDoc ? doc : doc.activeLayer);  
-	var layerInfo = {};
-
-	if(layerObject != undefined)// && useDoc == false)
-	{
-		layerInfo.name = layerObject.name;
-		layerInfo.typename = layerObject.typename;
-		
-		if(!useDoc)
-		{
-			layerInfo.kind = (layerObject.typename == "LayerSet" ? "LayerSet" :  layerObject.kind);
-		
-			var b = layerObject.bounds;
-			layerInfo.width = b[2].as('px') - b[0].as('px');
-			layerInfo.height = b[3].as('px') - b[1].as('px');
-			layerInfo.x = b[0].as('px');
-			layerInfo.y = b[1].as('px');
-		}
-		else
-		{
-			layerInfo.width = doc.width.as('px');
-			layerInfo.height = doc.height.as('px');
-		}
-	}
-
-	var docSaved;
-	var hasXMP = XMPObj != null;
-	
-	// this is to determine if the current document has been saved to disk (XML & CSV output functions require an existing path)
-	try
-	{
-		var docpath = doc.path;
-		docSaved = true;
-	}
-	catch(e)
-	{
-		docSaved = false;
-	}
-	
-	Main();
-	
-	// workaround for a variable persistence issue (feature?) with Photoshop CC+ and HTML5 panels context
-	useDoc = false;
-}
-else
-{
-	if(!Pslib.isPsCS4andAbove && !useDoc) alert("Layer metadata features are only available with Photoshop CS4 and above.");
-	else alert("No available document!");
-}
 
 "\n";

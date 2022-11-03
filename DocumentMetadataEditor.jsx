@@ -3,9 +3,9 @@
 	Source: https://github.com/geeklystrips/pslib
 */
 
-#target photoshop
+//#target photoshop
 
 // this variable decides whether you're reading/storing information from/to Layer metadata or Document Metadata
 var useDoc = true;
 
-#include "LayerMetadataEditor.jsx"
+#include "LayerMetadataEditor.jsx";
