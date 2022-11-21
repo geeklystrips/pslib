@@ -237,7 +237,7 @@ if(Pslib.isPhotoshop)
 
 
     // get individual artboard metrics and info (including XMP)
-    function getArtboardSpecs(layer, parentFullName)
+    function getArtboardSpecs(layer, parentFullName, namespace)
     {
         var doc = app.activeDocument;
 
@@ -279,7 +279,7 @@ if(Pslib.isPhotoshop)
         // get object-level XMP
 
         // do NOT use an object as template when also using JSUI (what a mess)
-       var dictionary = Pslib.getXmpDictionary( layer, { assetID: null, source: null, hierarchy: null, specs: null, custom: null }, false, false, false);
+       var dictionary = Pslib.getXmpDictionary( layer, { assetID: null, source: null, hierarchy: null, specs: null, custom: null }, false, false, false, namespace ? namespace : Pslib.XMPNAMESPACE);
       
        // no empty strings allowed and no null values
         // var dictionary = Pslib.getXmpDictionary( layer, ["assetID", "source", "hierarchy", "specs", "custom" ], false, false, false);
@@ -771,7 +771,7 @@ Pslib.getPropertiesArray = function (target, namespace, nsprefix)
 //      var twoDimensionArray = [ ["propertyname1", null], ["propertyname2", null], ["propertyname3", null] ];
 // OOPS allow not returning anything at all for null
 // 
-Pslib.getXmpDictionary = function( target, obj, allowEmptyStringBool, typeCaseBool, allowNullBool)
+Pslib.getXmpDictionary = function( target, obj, allowEmptyStringBool, typeCaseBool, allowNullBool, namespace)
 {
     var target = target == undefined ? app.activeDocument : target;
     var allowEmptyStringBool = allowEmptyStringBool == undefined ? false : allowEmptyStringBool;
@@ -824,7 +824,7 @@ Pslib.getXmpDictionary = function( target, obj, allowEmptyStringBool, typeCaseBo
     }
 
     // fetch XMP values
-    var propertiesArr = Pslib.getXmpProperties( target, tempArr );
+    var propertiesArr = Pslib.getXmpProperties( target, tempArr, namespace ? namespace : Pslib.namespace );
 
 	if(propertiesArr != null)
 	{

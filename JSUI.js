@@ -700,7 +700,7 @@ JSUI.getArtboardSpecsInfo = function( obj )
     var docSpecs = [];
     var artboardSpecs = [];
 
-    var docSpecs = Pslib.getXmpDictionary( app.activeDocument, { source: null, hierarchy: null, specs: null, custom: null }, false, false, false);
+    var docSpecs = Pslib.getXmpDictionary( app.activeDocument, { source: null, hierarchy: null, specs: null, custom: null }, false, false, false, obj.namespace ? obj.namespace : Pslib.XMPNAMESPACE);
     var docHasTags = !JSUI.isObjectEmpty(docSpecs);
 
     // provide solution for exporting only active artboard specs
