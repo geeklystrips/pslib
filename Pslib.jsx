@@ -83,6 +83,11 @@
 	- removed try-catch block for creating Pslib object
 	- added Pslib.getFileXmp() to work with XMP references for files which are not actively open in Photoshop / Illustrator
 
+	(0.64)
+	- added Photoshop artboard-specific stuff
+	- tweaking xmp functions so they can use a provided namespace if present
+
+
 */
 
 /*
@@ -121,7 +126,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version, used in tool window titles. Maybe.
-Pslib.version = 0.63;
+Pslib.version = 0.64;
 Pslib.isPs64bits = BridgeTalk.appVersion.match(/\d\d$/) == '64';
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
@@ -479,7 +484,7 @@ Pslib.getXmp = function (target, createNew)
 };
 
 // get property: returns a string
-Pslib.getXmpProperty = function (target, property)
+Pslib.getXmpProperty = function (target, property, namespace)
 {
 	// make sure XMP lib stuff is available
 	if(Pslib.loadXMPLibrary())
@@ -492,7 +497,7 @@ Pslib.getXmpProperty = function (target, property)
 		try
 		{
 			xmp = new XMPMeta( Pslib.isIllustrator ? target.XMPString : target.xmpMetadata.rawData );
-			value = decodeURI(xmp.getProperty(Pslib.XMPNAMESPACE, property));
+			value = decodeURI(xmp.getProperty(namespace ? namespace : Pslib.XMPNAMESPACE, property));
 			return value;
 		
 		} catch( e ) {
@@ -507,7 +512,7 @@ Pslib.getXmpProperty = function (target, property)
 };
 
 // delete specific property
-Pslib.deleteXmpProperty = function (target, property)
+Pslib.deleteXmpProperty = function (target, property, namespace)
 {
 	// load library
 	if(Pslib.loadXMPLibrary())
@@ -517,7 +522,7 @@ Pslib.deleteXmpProperty = function (target, property)
 		
 		try
 		{
-			xmp.deleteProperty(Pslib.XMPNAMESPACE, property);
+			xmp.deleteProperty(namespace ? namespace : Pslib.XMPNAMESPACE, property);
 			if(Pslib.isPhotoshop) target.xmpMetadata.rawData = xmp.serialize();
 			else if(Pslib.isIllustrator) target.XMPString = xmp.serialize();
 			return true;
@@ -535,20 +540,20 @@ Pslib.deleteXmpProperty = function (target, property)
 };
 
 // delete array of properties
-Pslib.deleteXmpProperties = function (layer, propertiesArray)
+Pslib.deleteXmpProperties = function (target, propertiesArray, namespace)
 {	
 	// load library
 	if(Pslib.loadXMPLibrary())
 	{
 		var target = (target == undefined ? ( Pslib.isIllustrator ? app.activeDocument : app.activeDocument.activeLayer) : target);
-		var xmp = Pslib.getXmp(layer);
+		var xmp = Pslib.getXmp(target);
 		
 		try
 		{
 			for(var i = 0; i < propertiesArray.length; i++)
 			{
 				report += (+ "\t" + propertiesArray[i][1] + "\n");
-				xmp.deleteProperty(Pslib.XMPNAMESPACE, propertiesArray[i][0]);
+				xmp.deleteProperty(namespace ? namespace : Pslib.XMPNAMESPACE, propertiesArray[i][0]);
 			}
 
 			if(Pslib.isPhotoshop) target.xmpMetadata.rawData = xmp.serialize();
@@ -558,7 +563,7 @@ Pslib.deleteXmpProperties = function (layer, propertiesArray)
 		}
 		catch( e )
 		{
-			if($.level) $.writeln("Metadata properties could not be removed from layer \"" + layer.name + "\"");
+			if($.level) $.writeln("Metadata properties could not be removed from target \"" + target.name + "\"");
 			return false;
 		}
 	}
@@ -570,7 +575,7 @@ Pslib.deleteXmpProperties = function (layer, propertiesArray)
 
 // set multiple properties
 // expects a two-dimensional array
-Pslib.setXmpProperties = function (target, propertiesArray)
+Pslib.setXmpProperties = function (target, propertiesArray, namespace)
 {
 	// make sure XMP lib stuff is available
 	if(Pslib.loadXMPLibrary())
@@ -602,19 +607,18 @@ Pslib.setXmpProperties = function (target, propertiesArray)
 			// modify metadata
 			try
 			{
-				var propertyExists = xmp.doesPropertyExist(Pslib.XMPNAMESPACE, prop);
-				
+				var propertyExists = xmp.doesPropertyExist(namespace ? namespace : Pslib.XMPNAMESPACE, prop);
 				
 				// add new property if not found
 				if(!propertyExists)
 				{
-					xmp.setProperty(Pslib.XMPNAMESPACE, prop, val);
+					xmp.setProperty(namespace ? namespace : Pslib.XMPNAMESPACE, prop, val);
 					if($.level) $.writeln("\tadding [" + prop + ": " + val +"]  " + typeof val);
 				}
 				// if property found and value different, update
-				else if(propertyExists && decodeURI(xmp.getProperty(Pslib.XMPNAMESPACE, prop).toString()) != val.toString() )
+				else if(propertyExists && decodeURI(xmp.getProperty(namespace ? namespace : Pslib.XMPNAMESPACE, prop).toString()) != val.toString() )
 				{
-					xmp.setProperty(Pslib.XMPNAMESPACE, prop, val);
+					xmp.setProperty(namespace ? namespace : Pslib.XMPNAMESPACE, prop, val);
 					if($.level) $.writeln("\tupdating [" + prop + ": " + val +"]  " + typeof val);
 				}
 				else
@@ -647,7 +651,7 @@ Pslib.setXmpProperties = function (target, propertiesArray)
 
 // get multiple properties
 // expects a two-dimensional array, returns an updated copy of that array
-Pslib.getXmpProperties = function (target, propertiesArray)
+Pslib.getXmpProperties = function (target, propertiesArray, namespace)
 {
 	// make sure XMP lib stuff is available
 	if(Pslib.loadXMPLibrary())
@@ -679,12 +683,12 @@ Pslib.getXmpProperties = function (target, propertiesArray)
 			// modify metadata
 			try
 			{
-				var propertyExists = xmp.doesPropertyExist(Pslib.XMPNAMESPACE, prop);
+				var propertyExists = xmp.doesPropertyExist(namespace ? namespace : Pslib.XMPNAMESPACE, prop);
 				
 				// add new property if not found
 				if(propertyExists)
 				{
-					val = decodeURI(xmp.getProperty(Pslib.XMPNAMESPACE, prop));
+					val = decodeURI(xmp.getProperty(namespace ? namespace : Pslib.XMPNAMESPACE, prop));
 					if($.level) $.writeln("\tgetting property: [" + prop + ": " + val +"]  " + typeof val);
 					
 					if($.level) $.writeln("\t" + propertiesArray[i][0]+ ": " + val + "\n");
@@ -713,7 +717,7 @@ Pslib.getXmpProperties = function (target, propertiesArray)
 
 // returns bidimensional array of properties/values present in provided namespace
 // useful for debugging and building UI windows
-Pslib.getPropertiesArray = function (target)
+Pslib.getPropertiesArray = function (target, namespace, nsprefix)
 {
 	// make sure XMP lib stuff is available
 	if(Pslib.loadXMPLibrary())
@@ -735,13 +739,13 @@ Pslib.getPropertiesArray = function (target)
 		}
 	
 		// XMPConst.ITERATOR_JUST_CHILDREN	XMPConst.ITERATOR_JUST_LEAFNODES	XMPConst.ITERATOR_JUST_LEAFNAMES	XMPConst.ITERATOR_INCLUDE_ALIASES
-		var xmpIter = xmp.iterator(XMPConst.ITERATOR_JUST_CHILDREN, Pslib.XMPNAMESPACE, "");
+		var xmpIter = xmp.iterator(XMPConst.ITERATOR_JUST_CHILDREN, namespace ? namespace : Pslib.XMPNAMESPACE, "");
 		var next = xmpIter.next();
 
-		if($.level) $.writeln("\nGetting list of XMP properties for XMP namespace " + Pslib.XMPNAMESPACEPREFIX + "\n");
+		if($.level) $.writeln("\nGetting list of XMP properties for XMP namespace " + (nsprefix ? nsprefix : Pslib.XMPNAMESPACEPREFIX) + "\n");
 		while (next)
 		{
-			var propName = next.path.replace( Pslib.XMPNAMESPACEPREFIX, "" ); 
+			var propName = next.path.replace( (nsprefix ? nsprefix : Pslib.XMPNAMESPACEPREFIX), "" ); 
 			var propValue = decodeURI(next);
 			propsArray.push([propName, propValue]);
 			// propsReport += (propName + "\t" + propValue + "\n");
@@ -955,8 +959,8 @@ Pslib.clearNamespace = function (target, namespace)
 	*/
 
 	// workaround: not friendly on performances, but gets the job done
-	var removePropArray = Pslib.getPropertiesArray(target);
-	Pslib.deleteXmpProperties(target, removePropArray);
+	var removePropArray = Pslib.getPropertiesArray(target, namespace ? namespace : Pslib.XMPNAMESPACE);
+	Pslib.deleteXmpProperties(target, removePropArray, namespace ? namespace : Pslib.XMPNAMESPACE);
 };
 
 // save metadata to XML file
@@ -1042,10 +1046,10 @@ Pslib.exportLayerMetadata = function (target, path, alertMsg)
 };
 
 // save properties/values to CSV
-Pslib.propertiesToCSV = function(target, namespace, uri)
+Pslib.propertiesToCSV = function(target, namespace, uri, nsprefix)
 {	
 	var target = (target == undefined ? ( Pslib.isIllustrator ? app.activeDocument : app.activeDocument.activeLayer) : target);
-	var propertiesArray = Pslib.getPropertiesArray(target);
+	var propertiesArray = Pslib.getPropertiesArray(target, namespace ? namespace : Pslib.XMPNAMESPACE, nsprefix ? nsprefix : Pslib.XMPNAMESPACEPREFIX);
 
 	var report = "";
 
@@ -1130,7 +1134,7 @@ Pslib.propertiesFromCSV = function(target, namespace, uri)
 	
 	if(propertiesArray.length)
 	{
-		success = Pslib.setXmpProperties(target, propertiesArray);
+		success = Pslib.setXmpProperties(target, propertiesArray, namespace ? namespace : Pslib.XMPNAMESPACE);
 	}
 	return success;
 };
