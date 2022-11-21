@@ -6128,7 +6128,7 @@ JSUI.getDocumentFullPath = function()
 			var docFullPath = app.activeDocument.fullName;
 			// var docFullPathURIMatchesSystem = docFullPath.toString().match( app.path) != null;
 			// on macOS getting fullName for "Untitled-1" Illustrator document that has not yet been saved to disk returns "/Untitled-1" 
-			var docFullPathURIMatchesSystem = JSUI.isWindows ? (docFullPath.toString().match( app.path) != null) : (docFullPath.toString() != ("/" + app.activeDocument.name));
+			var docFullPathURIMatchesSystem = JSUI.isWindows ? (docFullPath.toString().match( app.path) != null) : (docFullPath.toString() == ("/" + app.activeDocument.name));
 
 
 			return docFullPathURIMatchesSystem ? undefined : docFullPath;
