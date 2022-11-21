@@ -924,7 +924,7 @@ Pslib.clearXmp = function (target)
 };
 
 // clear entire namespace
-Pslib.clearNamespace = function (target, namespace)
+Pslib.clearNamespace = function (target, namespace, nsprefix)
 {
 	var target = (target == undefined ? ( Pslib.isIllustrator ? app.activeDocument : app.activeDocument.activeLayer) : target);
 	/*
@@ -959,7 +959,7 @@ Pslib.clearNamespace = function (target, namespace)
 	*/
 
 	// workaround: not friendly on performances, but gets the job done
-	var removePropArray = Pslib.getPropertiesArray(target, namespace ? namespace : Pslib.XMPNAMESPACE);
+	var removePropArray = Pslib.getPropertiesArray(target, namespace ? namespace : Pslib.XMPNAMESPACE, nsprefix ? nsprefix : Pslib.XMPNAMESPACEPREFIX);
 	Pslib.deleteXmpProperties(target, removePropArray, namespace ? namespace : Pslib.XMPNAMESPACE);
 };
 
