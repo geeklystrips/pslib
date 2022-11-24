@@ -1355,6 +1355,76 @@ Pslib.removeAllTags = function( pageItem )
 	}
 }
 
+// Illustrator: remove all tags from item
+// expects an array of items
+Pslib.scanItemsForTags = function( items, filter )
+{
+	if(Pslib.isIllustrator)
+	{
+		var tagsArr = [];
+		var tagsObj = {};
+		filter = filter ? filter : "PageItem";
+
+		// detect single PageItem passed instead of array, cast as array
+		if(items != undefined)
+		{
+			if(!(items instanceof Array))
+			{
+				if(items.typename)
+				{
+					items = [items];
+				}
+			}
+		}
+
+		// if items array not provided, use current selection
+		if(items == undefined)
+		{
+			var doc = app.activeDocument;
+			var selection = doc.selection;
+			if(selection.length)
+			{
+				items = selection;
+			}
+			// or scan everything
+			else
+			{
+				items = doc.pageItems;
+			}
+		}
+
+		if(items.length)
+		{
+			for(var i = 0; i < items.length; i++)
+			{
+				var item = items[i];
+				var typename = item.typename;
+				var matchesFilter = typename == filter;
+		
+				if(matchesFilter)
+				{
+					var tags = item.tags;
+					if($.level && tags.length) $.writeln( i + "  " + item.name + " \t" + typename);
+
+					for(var j = 0; j < tags.length; j++)
+					{
+						var tag = tags[j];
+			
+						var name = tag.name;
+						var value = tag.value;
+			
+						if($.level) $.writeln( "\t"+ name + ": " + value );
+			
+						tagsArr.push([name, value]);
+						tagsObj[name] = value;
+					}
+				}
+			}
+		}
+		return [ tagsArr, tagsObj ];
+	}
+}
+
 
 // DEBUG AREA
 
