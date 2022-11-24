@@ -1173,6 +1173,187 @@ Pslib.getDocumentPath = function(doc)
 	}
 };
 
+//////
+
+// Create Alt Array type property
+// var arr =  [ [ ["qualifier1", "value1"], ["qualifier2", "value2"] ], [ ["qualifier", "value"] ] ]
+
+// <ns:PropertyName>
+// <rdf:Alt>
+//    <rdf:li rdf:parseType="Resource">
+// 	  <rdf:value/>
+// 	  <xmp:qualifier1>value1</xmp:qualifier1>
+// 	  <xmp:qualifier2>value2</xmp:qualifier2>
+// 	  <xmp:qualifier3>value3</xmp:qualifier3>
+//    </rdf:li>
+//    <rdf:li rdf:parseType="Resource">
+// 	  <rdf:value/>
+// 	  <xmp:qualifier>value</xmp:qualifier>
+//    </rdf:li>
+// </rdf:Alt>
+// </ns:Artboards>
+
+Pslib.setAltArrayProperty = function (xmp, propName, arr, namespace)
+{
+	var namespace = namespace ? namespace : Pslib.XMPNAMESPACE;
+	var prefix = XMPMeta.getNamespacePrefix(namespace);
+
+	var propertyExists = xmp.doesPropertyExist(namespace, propName);
+
+	if(propertyExists)
+	{
+		// choose to do something with the existing data (comparison/validation?)
+	}
+
+	xmp.setProperty(namespace, propName, null, XMPConst.ARRAY_IS_ALTERNATIVE); // <prefix:propName>
+	if($.level) $.writeln( "<"+prefix+propName+">" ); 
+
+	for(var i = 0; i < arr.length; i++)
+	{
+		// var defaultValue = arr[i].length > 2 ? arr[i][2] : ""; // 
+		
+		xmp.appendArrayItem(namespace, propName, ""); // <rdf:value> -- opportunity to include extra info or fallback value here
+		if($.level) $.writeln( "\n\t<rdf:value/>" );
+
+		for(var j = 0; j < arr[i].length; j++)
+		{
+			var subArr = arr[i][j];
+			var qualifier = subArr[0];
+			var value = subArr[1];
+
+			xmp.setQualifier(namespace, propName+'['+(i+1)+']', XMPConst.NS_XMP, qualifier, value);
+			if($.level) $.writeln( "\t<xmp:"+qualifier+">"+value+"</xmp:"+qualifier+">" );
+		}
+	}
+	if($.level) $.writeln( "</"+prefix+propName+">" ); 
+}
+
+
+////// illustrator item tags
+
+// illustrator: get array of specific tags 
+// tagsArr: [ ["name", "value"], ["name", "value"]]
+Pslib.getTags = function( pageItem, tagsArr )
+{
+	if(Pslib.isIllustrator)
+	{
+		if(!pageItem){
+			return
+		}
+	
+		var harvestedTagsArr = [];
+		var tags = pageItem.tags;
+	
+		if(tags.length)
+		{    
+			for(var i = 0; i < tags.length; i++)
+			{
+				var tag = tags[i];
+	
+				var name = tag.name;
+				var value = tag.value;
+	
+				// compare with provided array to match names
+				for(var j = 0; j < tagsArr.length; j++)
+				{
+					if(name == tagsArr[j][0])
+					{
+						harvestedTagsArr.push([ name, value]);
+					}
+	
+					if($.level) $.writeln( "\t"+ name + ": " + value );
+				}
+			}
+		}
+	
+		return tagsArr;
+	}
+}
+
+// Illustrator: batch set tags
+// tagsArr: [ ["name", "value"], ["name", "value"]]
+Pslib.setTags = function( pageItem, tagsArr )
+{
+	if(Pslib.isIllustrator)
+	{
+		if(!pageItem || !tagsArr){
+			return;
+		}
+
+		var success = false;
+
+		for(var i = 0; i < tagsArr.length; i++)
+		{
+			var tagArr = tagsArr[i];
+
+			var name = tagArr[0];
+			var value = tagArr[1];
+
+			var tag = pageItem.tags.add();
+			tag.name = name;
+			tag.value = value;
+		}
+
+		success = true;
+
+		return success;
+	}
+}
+
+// Illustrator: batch remove tags
+// tagsArr: ["name", "name", "name"]
+Pslib.removeTags = function( pageItem, tagsArr )
+{
+	if(Pslib.isIllustrator)
+	{
+		if(!pageItem || !tagsArr){
+			return
+		}
+
+		var success = false;
+
+		// remove tags by matching names, starting from the last
+		for(var i = pageItem.tags.length-1; i > (-1); i--)
+		{
+			var tag = pageItem.tags[i];
+
+			for(var j = 0; j < tagsArr.length; j++)
+			{
+				if(tag.name == tagsArr[j])
+				{
+					pageItem.tags[i].remove();
+				}
+			}
+		}
+
+		success = true;
+
+		return success;
+	}
+}
+
+// Illustrator: remove all tags from item
+Pslib.removeAllTags = function( pageItem )
+{
+	if(Pslib.isIllustrator)
+	{
+		if(!pageItem){
+			return;
+		}
+	
+		var success = false;
+	
+		if(pageItem.tags.length)
+		{
+			for(var i = pageItem.tags.length-1; i > (-1); i--)
+			{
+				pageItem.tags[i].remove();
+			}
+			success = true;
+		}
+		return success;
+	}
+}
 
 
 // DEBUG AREA
