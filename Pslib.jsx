@@ -1191,7 +1191,7 @@ Pslib.getDocumentPath = function(doc)
 // 	  <xmp:qualifier>value</xmp:qualifier>
 //    </rdf:li>
 // </rdf:Alt>
-// </ns:Artboards>
+// </ns:PropertyName>
 
 Pslib.setAltArrayProperty = function (xmp, propName, arr, namespace)
 {
