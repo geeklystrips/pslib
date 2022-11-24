@@ -677,6 +677,37 @@ JSUI.getBackgroundColor = function()
 
 JSUI.backgroundColor = JSUI.getBackgroundColor();
 
+JSUI.getActiveArtboard = function()
+{
+	if(JSUI.isIllustrator)
+	{
+		var doc = app.activeDocument;
+		var i = doc.artboards.getActiveArtboardIndex();
+		var artboard = doc.artboards[i];
+	
+		return artboard;
+	}
+};
+
+JSUI.getArtboardCoordinates = function( artboard )
+{
+	if(JSUI.isIllustrator)
+	{
+		if(!artboard) { var artboard = JSUI.getActiveArtboard(); }
+
+		var rect = artboard.artboardRect;
+		var coords = {};
+
+		coords.x = rect[0];
+		coords.y = (-rect[1]);
+		coords.width = rect[2] - rect[0];
+		coords.height = Math.abs(rect[3] - rect[1]);
+
+		return coords;
+	}
+}
+
+// photoshop only for now
 // still assumes pslib include
 JSUI.getArtboardSpecsInfo = function( obj )
 {
@@ -689,6 +720,9 @@ JSUI.getArtboardSpecsInfo = function( obj )
     if(!obj)
     {
         var obj = { };
+		// obj.artboards = [];
+		// if(JSUI.isIllustrator) obj.artboards = app.activeDocument.artboards;
+
     }
 
     var doc = app.activeDocument;
