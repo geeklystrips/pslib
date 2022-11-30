@@ -702,8 +702,140 @@ JSUI.getArtboardCoordinates = function( artboard )
 		coords.y = (-rect[1]);
 		coords.width = rect[2] - rect[0];
 		coords.height = Math.abs(rect[3] - rect[1]);
+		coords.rect = rect;
+
+		// advanced logic for which we don't have to make the artboard active
+		coords.isSquare = coords.width == coords.height;
+		coords.isPortrait = coords.width < coords.height;
+		coords.isLandscape = coords.width > coords.height;
+		coords.hasIntegerCoords = coords.x == Math.round(coords.x) && coords.y == Math.round(coords.y) && coords.width == Math.round(coords.width) && coords.height == Math.round(coords.height);
 
 		return coords;
+	}
+}
+
+// get extended artboard metrics and information
+JSUI.getArtboardSpecs = function( artboard )
+{
+	if(JSUI.isIllustrator)
+	{
+		var isActive = false;
+		if(!artboard) { var artboard = JSUI.getActiveArtboard(); isActive = true; }
+		var coords = JSUI.getArtboardCoordinates(artboard);
+		var specs = {};
+
+		var doc = app.activeDocument;
+		specs.name = artboard.name;
+
+		if(isActive)
+		{
+			specs.index = doc.artboards.getActiveArtboardIndex();
+			specs.page = specs.index+1;
+		}
+
+		specs.x = coords.x;
+		specs.y = coords.y;
+		specs.width = coords.width;
+		specs.height = coords.height;
+		specs.rect = coords.rect;
+
+		// advanced logic for which we don't have to make the artboard active
+		specs.isSquare = coords.isSquare;
+		specs.isPortrait = coords.isPortrait;
+		specs.isLandscape = coords.isLandscape;
+		specs.hasIntegerCoords = coords.hasIntegerCoords; 
+
+		specs.isPow2 = specs.width.isPowerOf2() && specs.height.isPowerOf2();
+		specs.isMult4 = specs.width.isMult4() && specs.width.isMult4();
+		specs.isMult8 = specs.width.isMult8() && specs.width.isMult8();
+		specs.isMult16 = specs.width.isMult16() && specs.width.isMult16();
+
+		// if active, select items and harvest more information
+		if(isActive) 
+		{
+			// specs.hasBitmap
+			// specs.itemCount
+			// specs.hasTaggedItem
+		}
+
+		return specs;
+	}
+}
+
+// fix for float coordinates
+JSUI.validateArtboardRects = function( artboards, offsetPageItems )
+{
+	if(JSUI.isIllustrator)
+	{
+		if(!artboards)
+		{
+			artboards = app.activeDocument.artboards;
+		}
+
+		var updated = false;
+
+		for(var i = 0; i < artboards.length; i++)
+		{
+			var artboard = artboards[i];
+			var rect = artboard.artboardRect;
+
+			var x = rect[0];
+			var y = rect[1];
+			var w = rect[2] - x;
+			var h = y - rect[3];
+	
+			if(x % 2 != 0 || y % 2 != 0 || w % 2 != 0 || h % 2 != 0) 
+			{
+				artboard.artboardRect = [ Math.round(x), Math.round(y), Math.round(rect[2]), Math.round(rect[3]) ];
+	
+				// should probably offset artboard pageItems by difference?
+				if(offsetPageItems)
+				{
+
+
+				}
+
+				updated = true;
+			}
+		}
+
+		return updated;
+	}
+}
+
+// simple find and replace in artboard names 
+// var obj = { find: "TextToFind", replace: "TextToReplaceWith", prefix: "Prefix_", suffix: "_Suffix" }
+JSUI.renameArtboards = function( artboards, obj )
+{
+	if(JSUI.isIllustrator)
+	{
+		if(!obj){ return; }
+
+		if(!artboards)
+		{
+			artboards = app.activeDocument.artboards;
+		}
+
+		for(var i = 0; i < artboards.length; i++)
+		{
+			var artboard = artboards[i];
+
+			if(obj.find)
+			{
+				artboard.name = artboard.name.replace(obj.find, obj.replace);
+			}
+
+			if(obj.prefix)
+			{
+				artboard.name  = obj.prefix + artboard.name;
+			}
+
+			if(obj.suffix)
+			{
+				artboard.name  = artboard.name + obj.suffix;
+			}
+
+		}
 	}
 }
 
