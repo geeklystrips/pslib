@@ -177,6 +177,7 @@ if(Pslib.isPhotoshop)
 		return bounds;
 	}
 
+	// get all artboards
 	function getArtboards()
 	{
 		var artboards = [];
@@ -305,6 +306,187 @@ if(Pslib.isPhotoshop)
         return obj;
     }
 
+
+	// function getActiveLayerID()
+	// {
+	// 	var ref = new ActionReference();
+	// 	ref.putEnumerated(cTID('Lyr '), cTID('Ordn'), cTID('Trgt'));
+	// 	var ldesc = executeActionGet(ref);
+	// 	return ldesc.getInteger(cTID('LyrI'));
+	// }
+
+	function makeActiveByIndex( idx, visible )
+	{   
+	var desc = new ActionDescriptor();   
+		var ref = new ActionReference();   
+		ref.putIndex(cTID( "Lyr " ), idx)   
+		desc.putReference( cTID( "null" ), ref );   
+		desc.putBoolean( cTID( "MkVs" ), visible );   
+	executeAction( cTID( "slct" ), desc, DialogModes.NO );   
+	}
+
+	function selectByID(id, add) {
+		if (add == undefined) add = false;
+		var desc1 = new ActionDescriptor();
+		var ref1 = new ActionReference();
+		ref1.putIdentifier(cTID('Lyr '), id);
+		desc1.putReference(cTID('null'), ref1);
+		if (add) desc1.putEnumerated(sTID("selectionModifier"), sTID("selectionModifierType"), sTID("addToSelection"));
+		executeAction(cTID('slct'), desc1, DialogModes.NO);
+	}
+
+		
+	// return intersection between all artboards and selected artboards
+	function getSelectedArtboards()
+	{
+		var indexArr = getSelectedLayersIdx();
+		
+		var r = new ActionReference();
+		r.putProperty(sTID("property"), sTID('hasBackgroundLayer'));
+		r.putEnumerated(sTID("document"), sTID("ordinal"), sTID("targetEnum"));
+		var from = executeActionGet(r).getBoolean(sTID('hasBackgroundLayer')) ? 0 : 1;
+		
+		var r = new ActionReference();
+		r.putProperty(sTID("property"), sTID('numberOfLayers'))
+		r.putEnumerated(sTID("document"), sTID("ordinal"), sTID("targetEnum"))
+		var to = executeActionGet(r).getInteger(sTID('numberOfLayers'));
+
+		var artboards = [];
+		for (var i = from; i <= to; i++)
+		{
+			// compare current ids with selected IDs, if match found, process
+			var selectedMatch = false;
+			for (var j = 0; j < indexArr.length; j++)
+			{
+				// if($.level)$.writeln(j + "  "+ i);
+				if(i == indexArr[j])
+				{
+					selectedMatch = true;
+					// if($.level)$.writeln("SELECTED ARTBOARD! " + i);
+					break;
+				}
+			}
+			if(!selectedMatch)
+			{
+				continue;
+			}
+
+			(r = new ActionReference()).putProperty(sTID("property"), p = sTID('artboardEnabled'));
+			r.putIndex(sTID("layer"), i);
+			
+			// workaround for documents without artboards defined
+			try
+			{
+				var artboardEnabled = executeActionGet(r).getBoolean(p);
+			}
+			catch(e)
+			{
+				var artboardEnabled = false;
+			}
+
+			if (artboardEnabled) {
+				(r = new ActionReference()).putProperty(sTID("property"), p = sTID('artboard'));
+				r.putIndex(sTID("layer"), i);
+
+				// get artboard name
+				var ref = new ActionReference();
+				ref.putIndex( cTID( "Lyr " ), i);
+				var layerDesc = executeActionGet(ref);
+				var artboardName = layerDesc.getString(sTID ("name"));
+
+				var artboard = executeActionGet(r).getObjectValue(p),
+					artboardRect = artboard.getObjectValue(sTID("artboardRect")),
+					bounds = {
+						top: artboardRect.getDouble(sTID('top')),
+						left: artboardRect.getDouble(sTID('left')),
+						right: artboardRect.getDouble(sTID('right')),
+						bottom: artboardRect.getDouble(sTID('bottom')),
+		
+					};
+				
+					artboards.push({ name: artboardName, index: i, x: bounds.top, y: bounds.left, width: bounds.right - bounds.left, height: bounds.bottom - bounds.top });
+				}
+		}
+
+		return artboards;
+	}
+
+
+	function getAllArtboards()
+	{
+		var r = new ActionReference();
+		r.putProperty(sTID("property"), sTID('hasBackgroundLayer'));
+		r.putEnumerated(sTID("document"), sTID("ordinal"), sTID("targetEnum"));
+		var from = executeActionGet(r).getBoolean(sTID('hasBackgroundLayer')) ? 0 : 1;
+		
+		var r = new ActionReference();
+		r.putProperty(sTID("property"), sTID('numberOfLayers'))
+		r.putEnumerated(sTID("document"), sTID("ordinal"), sTID("targetEnum"))
+		var to = executeActionGet(r).getInteger(sTID('numberOfLayers'));
+		
+		var artboards = [];
+		for (var i = from; i <= to; i++) {
+			(r = new ActionReference()).putProperty(sTID("property"), p = sTID('artboardEnabled'));
+			r.putIndex(sTID("layer"), i);
+			var artboardEnabled = executeActionGet(r).getBoolean(p);
+			if (artboardEnabled) {
+				(r = new ActionReference()).putProperty(sTID("property"), p = sTID('artboard'));
+				r.putIndex(sTID("layer"), i);
+	
+				// get artboard name
+				var ref = new ActionReference();
+				ref.putIndex( cTID( "Lyr " ), i);
+				var layerDesc = executeActionGet(ref);
+				var artboardName = layerDesc.getString(sTID ("name"));
+	
+				var artboard = executeActionGet(r).getObjectValue(p),
+					artboardRect = artboard.getObjectValue(sTID("artboardRect")),
+					bounds = {
+						top: artboardRect.getDouble(sTID('top')),
+						left: artboardRect.getDouble(sTID('left')),
+						right: artboardRect.getDouble(sTID('right')),
+						bottom: artboardRect.getDouble(sTID('bottom')),
+		
+					};
+				artboards.push({ name: artboardName, index: i, x: bounds.top, y: bounds.left, width: bounds.right - bounds.left, height: bounds.bottom - bounds.top });
+			 }
+		}
+	
+		return artboards;
+	}
+
+	function getSelectedLayersIdx()
+	{   
+		var selectedLayers = new Array();
+		var ref = new ActionReference();   
+		ref.putEnumerated( cTID("Dcmn"), cTID("Ordn"), cTID("Trgt") );   
+		var desc = executeActionGet(ref);   
+		if( desc.hasKey( sTID( 'targetLayers' ) ) ){   
+		   desc = desc.getList( sTID( 'targetLayers' ));   
+			var c = desc.count; 
+			var selectedLayers = new Array();   
+			for(var i=0;i<c;i++){   
+			  try{   
+				 activeDocument.backgroundLayer;   
+				 selectedLayers.push(  desc.getReference( i ).getIndex() );   
+			  }catch(e){   
+				 selectedLayers.push(  desc.getReference( i ).getIndex()+1 );   
+			  }   
+			}   
+		 }else{   
+		   var ref = new ActionReference();   
+		   ref.putProperty( cTID("Prpr") , cTID( "ItmI" ));   
+		   ref.putEnumerated( cTID("Lyr "), cTID("Ordn"), cTID("Trgt") );   
+		   try{   
+			  activeDocument.backgroundLayer;   
+			  selectedLayers.push( executeActionGet(ref).getInteger(cTID( "ItmI" ))-1);   
+		   }catch(e){   
+			  selectedLayers.push( executeActionGet(ref).getInteger(cTID( "ItmI" )));   
+		   }   
+		}   
+		return selectedLayers;   
+	}
+	
 
 
 }
