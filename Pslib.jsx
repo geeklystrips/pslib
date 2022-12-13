@@ -1193,6 +1193,7 @@ Pslib.getDocumentPath = function(doc)
 // </rdf:Alt>
 // </ns:PropertyName>
 
+// must serialize after operations
 Pslib.setAltArrayProperty = function (xmp, propName, arr, namespace)
 {
 	var namespace = namespace ? namespace : Pslib.XMPNAMESPACE;
@@ -1208,11 +1209,17 @@ Pslib.setAltArrayProperty = function (xmp, propName, arr, namespace)
 	xmp.setProperty(namespace, propName, null, XMPConst.ARRAY_IS_ALTERNATIVE); // <prefix:propName>
 	if($.level) $.writeln( "<"+prefix+propName+">" ); 
 
+	// hack: get index from first nested item
+	// var subIndex = arr[0][0][2];
+	// alert(subIndex)
+
 	for(var i = 0; i < arr.length; i++)
 	{
 		// var defaultValue = arr[i].length > 2 ? arr[i][2] : ""; // 
 		
 		xmp.appendArrayItem(namespace, propName, ""); // <rdf:value> -- opportunity to include extra info or fallback value here
+
+		// xmp.appendArrayItem(namespace, propName, propName+(subIndex+1)); // <rdf:value> -- opportunity to include extra info or fallback value here
 		if($.level) $.writeln( "\n\t<rdf:value/>" );
 
 		for(var j = 0; j < arr[i].length; j++)
@@ -1220,16 +1227,52 @@ Pslib.setAltArrayProperty = function (xmp, propName, arr, namespace)
 			var subArr = arr[i][j];
 			var qualifier = subArr[0];
 			var value = subArr[1];
+			// var index = subArr[2];
 
 			xmp.setQualifier(namespace, propName+'['+(i+1)+']', XMPConst.NS_XMP, qualifier, value);
+			// xmp.setQualifier(namespace, propName+'['+(index+1)+']', XMPConst.NS_XMP, qualifier, value);
 			if($.level) $.writeln( "\t<xmp:"+qualifier+">"+value+"</xmp:"+qualifier+">" );
 		}
 	}
 	if($.level) $.writeln( "</"+prefix+propName+">" ); 
+
+	// if(Pslib.isPhotoshop) target.xmpMetadata.rawData = xmp.serialize();
+	// else if(Pslib.isIllustrator) target.XMPString = xmp.serialize();
 }
 
 
 ////// illustrator item tags
+
+
+// illustrator: get entire array of tags assigned to pageItem
+Pslib.getAllTags = function( pageItem )
+{
+	if(Pslib.isIllustrator)
+	{
+		if(!pageItem){
+			return
+		}
+	
+		var tagsArr = [];
+		
+		var tags = pageItem.tags;
+
+		if(tags.length)
+		{    
+			for(var i = 0; i < tags.length; i++)
+			{
+				var tag = tags[i];
+	
+				var name = tag.name;
+				var value = tag.value;
+				tagsArr.push([ name, value ]);
+				if($.level) $.writeln( "\t"+ name + ": " + value );
+			}
+		}
+	
+		return tagsArr;
+	}
+}
 
 // illustrator: get array of specific tags 
 // tagsArr: [ ["name", "value"], ["name", "value"]]
@@ -1241,6 +1284,8 @@ Pslib.getTags = function( pageItem, tagsArr )
 			return
 		}
 	
+		if($.level) $.writeln( "\nGetting all tags on " +  pageItem.typename + " " + pageItem.name);
+
 		var harvestedTagsArr = [];
 		var tags = pageItem.tags;
 	
@@ -1260,13 +1305,12 @@ Pslib.getTags = function( pageItem, tagsArr )
 					{
 						harvestedTagsArr.push([ name, value]);
 					}
-	
-					if($.level) $.writeln( "\t"+ name + ": " + value );
 				}
+				if($.level) $.writeln( "\t"+ name + ": " + value );
 			}
 		}
 	
-		return tagsArr;
+		return harvestedTagsArr;
 	}
 }
 
@@ -1289,9 +1333,12 @@ Pslib.setTags = function( pageItem, tagsArr )
 			var name = tagArr[0];
 			var value = tagArr[1];
 
-			var tag = pageItem.tags.add();
-			tag.name = name;
-			tag.value = value;
+			if(value != undefined || value != null)
+			{
+				var tag = pageItem.tags.add();
+				tag.name = name;
+				tag.value = value;
+			}
 		}
 
 		success = true;

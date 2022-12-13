@@ -698,6 +698,7 @@ JSUI.getArtboardCoordinates = function( artboard )
 		var rect = artboard.artboardRect;
 		var coords = {};
 
+		coords.name = artboard.name.trim();
 		coords.x = rect[0];
 		coords.y = (-rect[1]);
 		coords.width = rect[2] - rect[0];
@@ -722,28 +723,22 @@ JSUI.getArtboardSpecs = function( artboard )
 		var isActive = false;
 		if(!artboard) { var artboard = JSUI.getActiveArtboard(); isActive = true; }
 		var coords = JSUI.getArtboardCoordinates(artboard);
-		var specs = {};
+		var specs = coords;
 
 		var doc = app.activeDocument;
-		specs.name = artboard.name;
+		// specs.name = artboard.name;
 
-		if(isActive)
-		{
-			specs.index = doc.artboards.getActiveArtboardIndex();
-			specs.page = specs.index+1;
-		}
-
-		specs.x = coords.x;
-		specs.y = coords.y;
-		specs.width = coords.width;
-		specs.height = coords.height;
-		specs.rect = coords.rect;
+		// specs.x = coords.x;
+		// specs.y = coords.y;
+		// specs.width = coords.width;
+		// specs.height = coords.height;
+		// specs.rect = coords.rect;
 
 		// advanced logic for which we don't have to make the artboard active
-		specs.isSquare = coords.isSquare;
-		specs.isPortrait = coords.isPortrait;
-		specs.isLandscape = coords.isLandscape;
-		specs.hasIntegerCoords = coords.hasIntegerCoords; 
+		// specs.isSquare = coords.isSquare;
+		// specs.isPortrait = coords.isPortrait;
+		// specs.isLandscape = coords.isLandscape;
+		// specs.hasIntegerCoords = coords.hasIntegerCoords; 
 
 		specs.isPow2 = specs.width.isPowerOf2() && specs.height.isPowerOf2();
 		specs.isMult4 = specs.width.isMult4() && specs.width.isMult4();
@@ -751,8 +746,11 @@ JSUI.getArtboardSpecs = function( artboard )
 		specs.isMult16 = specs.width.isMult16() && specs.width.isMult16();
 
 		// if active, select items and harvest more information
-		if(isActive) 
+		if(isActive)
 		{
+			specs.index = doc.artboards.getActiveArtboardIndex();
+			specs.page = specs.index+1;
+
 			// specs.hasBitmap
 			// specs.itemCount
 			// specs.hasTaggedItem
@@ -783,7 +781,10 @@ JSUI.validateArtboardRects = function( artboards, offsetPageItems )
 			var y = rect[1];
 			var w = rect[2] - x;
 			var h = y - rect[3];
-	
+			
+			// we need a method selectively allowing differences in hundredths / thousandths of pixels: 
+			// in this specific context 128.00007123 and 128.0 should be considered equal,
+			// as stored values do not precisely correspond to what illustrator shows in its UI.
 			if(x % 2 != 0 || y % 2 != 0 || w % 2 != 0 || h % 2 != 0) 
 			{
 				artboard.artboardRect = [ Math.round(x), Math.round(y), Math.round(rect[2]), Math.round(rect[3]) ];
@@ -803,7 +804,7 @@ JSUI.validateArtboardRects = function( artboards, offsetPageItems )
 	}
 }
 
-// simple find and replace in artboard names 
+// simple function to find/replace/add text patterns in artboard names 
 // var obj = { find: "TextToFind", replace: "TextToReplaceWith", prefix: "Prefix_", suffix: "_Suffix" }
 JSUI.renameArtboards = function( artboards, obj )
 {
@@ -834,10 +835,64 @@ JSUI.renameArtboards = function( artboards, obj )
 			{
 				artboard.name  = artboard.name + obj.suffix;
 			}
-
 		}
 	}
 }
+
+// select first art item found with on current artboard
+JSUI.getArtboardItem = function( artboard, nameStr )
+{
+	if(JSUI.isIllustrator)
+	{
+		if(!artboard) { var artboard = JSUI.getActiveArtboard(); }
+
+		var targetItem;
+		var found = false;
+		var doc = app.activeDocument;
+		doc.selectObjectsOnActiveArtboard();
+		var selection = doc.selection;
+	
+		if(selection.length)
+		{
+			for (var i = 0; i < selection.length; i++)
+			{
+				var item = selection[i];
+	
+				// if artboard has only one item, and item is a group
+				if( i == 0 && selection.length == 1 && item.typename == "GroupItem")
+				{
+					// enter isolation mode
+					item.isIsolated = true;
+					var groupItems = item.pageItems;
+					for (var j = 0; j < groupItems.length; j++)
+					{
+						var subItem = groupItems[j];
+						if(subItem.name == nameStr)
+						{
+							targetItem = subItem;
+							found = true;
+							doc.selection = subItem;
+							break;
+						}
+					}
+	
+					// exit isolation mode
+					item.isIsolated = false;
+				}
+	
+				else if(item.name == nameStr)
+				{
+					targetItem = item;
+					found = true;
+					doc.selection = item;
+					break;
+				}
+			}
+		}
+		return targetItem;
+	}
+}
+
 
 // photoshop only for now
 // still assumes pslib include
@@ -921,6 +976,42 @@ JSUI.getArtboardSpecsInfo = function( obj )
     return artboardSpecs;
 }
 
+
+// var rectObj = { artboard: artboard, name: "#", tags: [ ["name", "value"], ["name", "value"] ], sendToBack: true  };
+JSUI.addArtboardRectangle = function ( obj )
+{
+	if(JSUI.isIllustrator)
+	{
+		if(!obj.artboard) return;
+
+		// switch to artboard coordiates *before* getting metrics
+		app.coordinateSystem = CoordinateSystem.ARTBOARDCOORDINATESYSTEM;
+	
+		var doc = app.activeDocument;
+		var coords = JSUI.getArtboardCoordinates(obj.artboard);
+	
+		var rect = doc.pathItems.rectangle( coords.x, -coords.y, coords.x+coords.width, coords.y+coords.height );
+		doc.selection = rect;
+	
+		var transp = new NoColor();
+		rect.strokeColor = transp;
+		rect.fillColor = obj.hex != undefined ? JSUI.hexToRGBobj(obj.hex) : transp;
+	 
+		rect.name = obj.name ? obj.name : "#";
+	
+		if(obj.tags)
+		{
+			Pslib.setTags( rect, obj.tags );
+		}
+	
+		if(obj.sendToBack)
+		{
+			rect.zOrder(ZOrderMethod.SENDTOBACK);
+		}
+	
+		return rect;
+	}
+}
 
 JSUI.createDialog = function( obj )
 {

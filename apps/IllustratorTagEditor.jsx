@@ -17,7 +17,6 @@ if(app.documents.length)
 
 function Main()
 {
-    // alert( "Hello, this is tag editor!" );
     var doc = app.activeDocument;
     var selection = doc.selection;
     var itemFound = false;
@@ -50,8 +49,23 @@ function Main()
 
     if (!itemFound)
     {
-        doc.selection = selection;
-        alert("Select a \"#\" PathItem and try again.");
+
+        // alert("Select a \"#\" PathItem and try again.");
+        var confirmCreateNew = false;
+        confirmCreateNew = JSUI.confirm( "No placeholder item found. Create new?" );
+
+        if(confirmCreateNew)
+        {
+            var artboard = JSUI.getActiveArtboard();
+            var rectObj = { artboard: artboard, name: "#", tags: [ ["name", artboard.name] ], sendToBack: true  };
+            var placeholder = JSUI.addArtboardRectangle( rectObj );
+            doc.selection = placeholder;
+            Main();
+        }
+        else
+        {        
+            doc.selection = selection;
+        }
     }
 }
 
@@ -206,12 +220,6 @@ function showUI(item)
     var editColumn = mainContainer.addColumn( { spacing: 10 });
     var setTagsPanel = editColumn.addPanel( { label: "Edit tag", alignment: "fill", margins: 15} );
 
-
-
-    // var currentTagsList = getTagsPanel.addEditText("undefined", { text: tagsStr, readonly: true, multiline: true, width: 300, height: 200 });
-    
-    // var getTagsBtn = getTagsPanel.addButton( { label: "Scan" });
-
     var nameRow = setTagsPanel.addRow( { alignment: "right", spacing: 0} );
     var tagNameEditText = nameRow.addEditText("undefined", { label: "Name:", characters: 30 });
     tagNameEditText.onChanging = function(){}; // make sure JSUI does not track the value for these
@@ -219,7 +227,7 @@ function showUI(item)
     
     var valueRow = setTagsPanel.addRow( { alignment: "right", spacing: 0} );
     var tagValueEditText = valueRow.addEditText("undefined", { label: "Value:", characters: 30 });
-    tagValueEditText.onChanging = function(){}; // make sure JSUI does not track the value for these
+    tagValueEditText.onChanging = function(){}; 
     tagValueEditText.onChanged = function(){};
 
     // update edittext values
@@ -230,9 +238,6 @@ function showUI(item)
         tagValueEditText.text = splt[1];
     }
 
-    // formatting happens here
-    // formatTagsForUIPresentation(tags, tagsColumn, tagNameEditText, tagValueEditText);
-
     var setremoveRow = setTagsPanel.addRow( { spacing: 10 });
     // var setTagsBtn = setremoveRow.addButton( { label: "Set" });
     var setTagslbBtn = setremoveRow.addButton( { label: "Set" });
@@ -240,29 +245,7 @@ function showUI(item)
 
     var advancedOptionsPanel = editColumn.addPanel( { label: "Advanced", orientation: "row", spacing: 10, alignment: "fill", margins: 15} );
     var clearAllTagsBtn = advancedOptionsPanel.addButton( { label: "Clear All" });
-    // var moreOptionsBtn = advancedOptionsPanel.addButton( { label: "More Options..." });
-    // function clearSelectedTags(){};
-    // var clearSelectedTagBtn = clearTagsPanel.addButton( { label: "Clear Selected", onClickFunction:function clearSelectedTags(tagNameEditText, tagValueEditText){ alert("Ahiiii!" + tagNameEditText.text + ": " + tagValueEditText.text);} }); // clearSelectedTags is replaced further down
-    // 
-    // function updateTags(){}
 
-    // getTagsBtn.onClick = function ()
-    // {
-    //     var tags = Pslib.scanItemsForTags(item)[0];
-        
-    //     if(tags.length)
-    //     {
-    //         // currentTagsList.text = str; 
-    //         // formatTagsForTextPresentation(tags);
-    //         formatTagsForUIPresentation(tags, tagsColumn, tagNameEditText, tagValueEditText);
-    //     }
-    // } 
-
-    // function restartUI(item, dialog)
-    // {
-    //     // win.close();
-    //     showUI(item, dialog);
-    // }
 
     setTagslbBtn.onClick = function ( )
     {
@@ -277,55 +260,6 @@ function showUI(item)
             tagsListbox.update();
         }
     }
-
-    // setTagsBtn.onClick = function ( )
-    // {
-    //     // get values
-    //     var name = tagNameEditText.text.trim();
-    //     var value = tagValueEditText.text.trim();
-
-    //     if(name != "")
-    //     {
-    //         // expects [ ["name", "value"], ["name", "value"]]
-    //         Pslib.setTags( item, [ [ name, value ] ] );
-
-    //         // refresh UI
-    //         // getTagsBtn.onClick();
-
-    //         // restart
-    //     // win.close();
-    //     // showUI();
-
-    //     // restartUI(item, win);
-    //         // win.show();
-    //         // var parent = updateableColumn.parent;
-    //         // win.remove(updateableColumn);
-
-
-    //         //  updateableColumn = mainContainer.addColumn();
-    //         //  getTagsPanel = updateableColumn.addPanel( { label: "Existing tags", width: 400, margins: 15, alignment: "fill" } );
-    //         //  tagsColumn = getTagsPanel.addColumn( { alignment: "fill", spacing: 10 });
-
-    //         //getTagsPanel = mainContainer.addPanel( { label: "Existing tags", width: 400, margins: 15, alignment: "fill" } );
-    //         // tagsColumn = getTagsPanel.addColumn( { alignment: "fill" });
-    //         // tagsColumn = parent.addColumn( { alignment: "fill" });
-
-    //         // var tagsColumn = getTagsPanel.addColumn( { alignment: "fill" });
-    //         // tags = Pslib.scanItemsForTags(item, "PathItem")[0];
-
-    //         // formatTagsForUIPresentation(tags, tagsColumn, tagNameEditText, tagValueEditText);
-
-            
-    //         // tagsColumn.show();
-
-    //         // formatTagsForUIPresentation(Pslib.scanItemsForTags(item, "PathItem")[0], tagsColumn);
-    //         // updateTags();
-    //         // win.show();
-
-    //         // showUI();
-
-    //     }
-    // } 
 
     removeTagsBtn.onClick = function ( )
     {
