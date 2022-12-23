@@ -19,6 +19,12 @@ function Main()
 {
     var doc = app.activeDocument;
     var selection = doc.selection;
+
+    // store current artboard specs for comparison with selected objects
+    var initialArtboardSelection = doc.artboards.getActiveArtboardIndex();
+    var initialArtboard = doc.artboards[initialArtboardSelection];
+    var initialArtboardCoords = JSUI.getArtboardCoordinates(initialArtboard);
+
     var itemFound = false;
 
     if(selection.length)
@@ -30,9 +36,14 @@ function Main()
             itemFound = true;
             showUI(item);
         }
-        else
+        else if(item.typename == "GroupItem")
         {
             itemFound = getPlaceholderItem();
+            if(itemFound != undefined) Main(itemFound);
+        }
+        else
+        {
+            itemFound = JSUI.getArtboardItem(initialArtboard, "#");
             if(itemFound) Main();
         }
         // else 
@@ -43,7 +54,7 @@ function Main()
     else
     {
         // if no selection active, look for placeholder # item, select it, and restart process
-        itemFound = getPlaceholderItem();
+        itemFound = JSUI.getArtboardItem(initialArtboard, "#");
         if(itemFound) Main();
     }
 
@@ -52,12 +63,14 @@ function Main()
 
         // alert("Select a \"#\" PathItem and try again.");
         var confirmCreateNew = false;
-        confirmCreateNew = JSUI.confirm( "No placeholder item found. Create new?" );
+        confirmCreateNew = JSUI.confirm( "No placeholder item found on artboard \""+initialArtboard.name+"\". Create new?" );
 
         if(confirmCreateNew)
         {
             var artboard = JSUI.getActiveArtboard();
-            var rectObj = { artboard: artboard, name: "#", tags: [ ["name", artboard.name] ], sendToBack: true  };
+            var indexNum = doc.artboards.getActiveArtboardIndex();
+            var pageNum = indexNum+1;
+            var rectObj = { artboard: artboard, name: "#", tags: [ ["name", artboard.name], ["index", indexNum], ["page", pageNum], ["assetID", ""] ], sendToBack: true  };
             var placeholder = JSUI.addArtboardRectangle( rectObj );
             doc.selection = placeholder;
             Main();
@@ -70,14 +83,11 @@ function Main()
 }
 
 // select first "#" PathItem if found on current artboard
-function getPlaceholderItem( artboard )
+function getPlaceholderItem()
 {
-    if(!artboard) { var artboard = JSUI.getActiveArtboard(); }
-
     var placeholder;
     var found = false;
     var doc = app.activeDocument;
-    doc.selectObjectsOnActiveArtboard();
     var selection = doc.selection;
 
     if(selection.length)
@@ -129,15 +139,15 @@ function showUI(item)
     var artboardName = artboard ? artboard.name : "";
 
     var tags = Pslib.scanItemsForTags( [item], "PathItem" )[0];
+    var listBoxSelection = 0;
+    // autoselect "assetID" tag if present
+    for(var i = 0; i < tags.length; i++) { if(tags[i][0] == "assetID"){ listBoxSelection = i; break; } }
 
     var win = new JSUI.createDialog( { title: "Illustrator Item Tag Editor", orientation: "column", margins: 15, spacing: 10, alignChildren: "fill", width: 0, height: 0, debugInfo:false } );
 
     var documentLabel = win.addRow( { alignment: "center" });
-    var itemStatus = win.addRow( { alignment: "center" });
-    var itemStatusExt = win.addRow( { alignment: "center" });
-    documentLabel.addStaticText( { text: "Document: " + doc.name, multiline: false, alignment: "left" } );
-    itemStatus.addStaticText( { text: "Artboard #" + (artboardIndex+1) + ": " + artboardName, multiline: false, alignment: "left" } );
-    itemStatusExt.addStaticText( { text: "Item: " + item.name + " (" + item.typename + ")" , multiline: false, alignment: "left" } );
+    var documentLabelStr = doc.name + "  [ Artboard " + (artboardIndex+1) + ": " + artboardName + " ]  " + item.typename + ":  " + item.name;
+    documentLabel.addStaticText( { text: documentLabelStr, multiline: false, alignment: "left" } );
 
     var mainContainer = win.addRow( { spacing: 10 } );
 
@@ -148,73 +158,68 @@ function showUI(item)
     var listboxColumn = mainContainer.addColumn();
     var listboxPanel = listboxColumn.addPanel( { label: "Existing tags", width: 400, margins: 15, alignChildren: "fill" } );
     listboxPanel.alignment = "fill";
-    // var tagsForDisplay = [];
-    // for(var i = 0; i < tags.length; i++)
-    // {
-    //     tagsForDisplay.push(tags[i].toString().replace(",", ":\t"));
-    // }
-    var tagsListbox = listboxPanel.addListBox( "tagsListbox", { list: tags, selection: 0, width: 300, height: 180, alignment: "fill" });
+    var tagsListbox = listboxPanel.addListBox( "tagsListbox", { list: tags, selection: listBoxSelection, width: 300, height: 180, alignment: "fill" });
 
     ////
 
-		// listbox callbacks
-		tagsListbox.onChange = function()
-		{
-			if(tagsListbox.selection != null)
-			{
-				var splt = tagsListbox.selection.toString().split(",");
-				var value = splt[1];
-	
-                tagNameEditText.text = splt[0];
+    // listbox callbacks
+    tagsListbox.onChange = function()
+    {
+        if(tagsListbox.selection != null)
+        {
+            var splt = tagsListbox.selection.toString().split(",");
+            var value = splt[1];
 
-				if(splt.length > 2)
-				{
-					for(var i = 2; i < splt.length; i++)
-					{
-						value += (i < splt.length ? "," : "")+splt[i];
-					}
-	
-				}
-				tagValueEditText.text = value;
-			}
-		};
-		
-		tagsListbox.update = function()
-		{
-			// store current length, selection
-			var currentLength = tagsListbox.items.length;
-			
-			// store selected item text
-			var currentSelection = tagsListbox.selection != null ? tagsListbox.selection.text : null;
-	
-			// // get properties from object
-			var tags = tags = Pslib.scanItemsForTags(item, "PathItem")[0];
-			
-			// remove items from list
-			tagsListbox.removeAll();
-			
-			if(tags.length)
-			{
-				for(var j = 0; tagsListbox.items.length < tags.length; j++)
-				{  
-					var item = tagsListbox.add ("item", tags[j].toString());
-								
-                    if(currentSelection != null)
+            tagNameEditText.text = splt[0];
+
+            if(splt.length > 2)
+            {
+                for(var i = 2; i < splt.length; i++)
+                {
+                    value += (i < splt.length ? "," : "")+splt[i];
+                }
+
+            }
+            tagValueEditText.text = value;
+        }
+    };
+    
+    tagsListbox.update = function()
+    {
+        // store current length, selection
+        var currentLength = tagsListbox.items.length;
+        
+        // store selected item text
+        var currentSelection = tagsListbox.selection != null ? tagsListbox.selection.text : null;
+
+        // // get properties from object
+        var tags = tags = Pslib.scanItemsForTags(item, "PathItem")[0];
+        
+        // remove items from list
+        tagsListbox.removeAll();
+        
+        if(tags.length)
+        {
+            for(var j = 0; tagsListbox.items.length < tags.length; j++)
+            {  
+                var item = tagsListbox.add ("item", tags[j].toString());
+                            
+                if(currentSelection != null)
+                {
+                    if(item.text == currentSelection)
                     {
-                        if(item.text == currentSelection)
-                        {
-                            tagsListbox.selection = item;
-                        }
-                        else if(tagsListbox.items.length > currentLength)
-                        {
-                            tagsListbox.selection = tagsListbox.items[tags.length-1];
-                        }
+                        tagsListbox.selection = item;
+                    }
+                    else if(tagsListbox.items.length > currentLength)
+                    {
+                        tagsListbox.selection = tagsListbox.items[tags.length-1];
                     }
                 }
-                tagsListbox.onChange();
-			}
-		};
-	
+            }
+            tagsListbox.onChange();
+        }
+    };
+
     /////
 
     var editColumn = mainContainer.addColumn( { spacing: 10 });
@@ -223,12 +228,12 @@ function showUI(item)
     var nameRow = setTagsPanel.addRow( { alignment: "right", spacing: 0} );
     var tagNameEditText = nameRow.addEditText("undefined", { label: "Name:", characters: 30 });
     tagNameEditText.onChanging = function(){}; // make sure JSUI does not track the value for these
-    tagNameEditText.onChanged = function(){};
+    tagNameEditText.onChange = function(){};
     
     var valueRow = setTagsPanel.addRow( { alignment: "right", spacing: 0} );
     var tagValueEditText = valueRow.addEditText("undefined", { label: "Value:", characters: 30 });
     tagValueEditText.onChanging = function(){}; 
-    tagValueEditText.onChanged = function(){};
+    tagValueEditText.onChange = function(){ if(tagNameEditText.text && tagValueEditText.text) setTagslbBtn.onClick() };
 
     // update edittext values
     if(tagsListbox.selection!=null)
@@ -244,7 +249,8 @@ function showUI(item)
     var removeTagsBtn = setremoveRow.addButton( { label: "Remove" });
 
     var advancedOptionsPanel = editColumn.addPanel( { label: "Advanced", orientation: "row", spacing: 10, alignment: "fill", margins: 15} );
-    var clearAllTagsBtn = advancedOptionsPanel.addButton( { label: "Clear All" });
+    var autoTagBtn = advancedOptionsPanel.addButton( { label: "Auto-Tag", helpTip: "Automatically add tags based on artboard name and index" });
+    var clearAllTagsBtn = advancedOptionsPanel.addButton( { label: "Clear All", helpTip: "Remove all tags" });
 
 
     setTagslbBtn.onClick = function ( )
@@ -293,6 +299,13 @@ function showUI(item)
         
     } 
 
+    autoTagBtn.onClick = function()
+    {
+        Pslib.setTags( item, [ ["name", artboardName],["index", artboardIndex],["page", artboardIndex+1],["assetID", ""] ]);
+        tagsListbox.update();
+    }
+
+    tagValueEditText.active = true;
     win.addCloseButton();
     win.show();
 }
