@@ -22,6 +22,7 @@
 	-----
 	
 	TODO
+	- better handle undefined path / 8103 error (file not saved)
 	- fix out-of-range issue with LZW string (feature removed for now)
 	- provide components for addVec2, addVec3, addVec4 (for XY, XYZ, RGBA, ARGB)
 
@@ -526,342 +527,6 @@ JSUI.getBackgroundColor = function()
 
 JSUI.backgroundColor = JSUI.getBackgroundColor();
 
-JSUI.getActiveArtboard = function()
-{
-	if(JSUI.isIllustrator)
-	{
-		var doc = app.activeDocument;
-		var i = doc.artboards.getActiveArtboardIndex();
-		var artboard = doc.artboards[i];
-	
-		return artboard;
-	}
-};
-
-JSUI.getArtboardCoordinates = function( artboard )
-{
-	if(JSUI.isIllustrator)
-	{
-		if(!artboard) { var artboard = JSUI.getActiveArtboard(); }
-
-		var rect = artboard.artboardRect;
-		var coords = {};
-
-		coords.name = artboard.name.trim();
-		coords.x = rect[0];
-		coords.y = (-rect[1]);
-		coords.width = rect[2] - rect[0];
-		coords.height = Math.abs(rect[3] - rect[1]);
-		coords.rect = rect;
-
-		// advanced logic for which we don't have to make the artboard active
-		coords.isSquare = coords.width == coords.height;
-		coords.isPortrait = coords.width < coords.height;
-		coords.isLandscape = coords.width > coords.height;
-		coords.hasIntegerCoords = coords.x == Math.round(coords.x) && coords.y == Math.round(coords.y) && coords.width == Math.round(coords.width) && coords.height == Math.round(coords.height);
-
-		return coords;
-	}
-}
-
-// get extended artboard metrics and information
-JSUI.getArtboardSpecs = function( artboard )
-{
-	if(JSUI.isIllustrator)
-	{
-		var isActive = false;
-		if(!artboard) { var artboard = JSUI.getActiveArtboard(); isActive = true; }
-		var coords = JSUI.getArtboardCoordinates(artboard);
-		var specs = coords;
-
-		var doc = app.activeDocument;
-		// specs.name = artboard.name;
-
-		// specs.x = coords.x;
-		// specs.y = coords.y;
-		// specs.width = coords.width;
-		// specs.height = coords.height;
-		// specs.rect = coords.rect;
-
-		// advanced logic for which we don't have to make the artboard active
-		// specs.isSquare = coords.isSquare;
-		// specs.isPortrait = coords.isPortrait;
-		// specs.isLandscape = coords.isLandscape;
-		// specs.hasIntegerCoords = coords.hasIntegerCoords; 
-
-		specs.isPow2 = specs.width.isPowerOf2() && specs.height.isPowerOf2();
-		specs.isMult4 = specs.width.isMult4() && specs.width.isMult4();
-		specs.isMult8 = specs.width.isMult8() && specs.width.isMult8();
-		specs.isMult16 = specs.width.isMult16() && specs.width.isMult16();
-
-		// if active, select items and harvest more information
-		if(isActive)
-		{
-			specs.index = doc.artboards.getActiveArtboardIndex();
-			specs.page = specs.index+1;
-
-			// specs.hasBitmap
-			// specs.itemCount
-			// specs.hasTaggedItem
-		}
-
-		return specs;
-	}
-}
-
-// fix for float coordinates
-JSUI.validateArtboardRects = function( artboards, offsetPageItems )
-{
-	if(JSUI.isIllustrator)
-	{
-		if(!artboards)
-		{
-			artboards = app.activeDocument.artboards;
-		}
-
-		var updated = false;
-
-		for(var i = 0; i < artboards.length; i++)
-		{
-			var artboard = artboards[i];
-			var rect = artboard.artboardRect;
-
-			var x = rect[0];
-			var y = rect[1];
-			var w = rect[2] - x;
-			var h = y - rect[3];
-			
-			// we need a method selectively allowing differences in hundredths / thousandths of pixels: 
-			// in this specific context 128.00007123 and 128.0 should be considered equal,
-			// as stored values do not precisely correspond to what illustrator shows in its UI.
-			if(x % 2 != 0 || y % 2 != 0 || w % 2 != 0 || h % 2 != 0) 
-			{
-				artboard.artboardRect = [ Math.round(x), Math.round(y), Math.round(rect[2]), Math.round(rect[3]) ];
-	
-				// should probably offset artboard pageItems by difference?
-				if(offsetPageItems)
-				{
-
-
-				}
-
-				updated = true;
-			}
-		}
-
-		return updated;
-	}
-}
-
-// simple function to find/replace/add text patterns in artboard names 
-// var obj = { find: "TextToFind", replace: "TextToReplaceWith", prefix: "Prefix_", suffix: "_Suffix" }
-JSUI.renameArtboards = function( artboards, obj )
-{
-	if(JSUI.isIllustrator)
-	{
-		if(!obj){ return; }
-
-		if(!artboards)
-		{
-			artboards = app.activeDocument.artboards;
-		}
-
-		for(var i = 0; i < artboards.length; i++)
-		{
-			var artboard = artboards[i];
-
-			if(obj.find)
-			{
-				artboard.name = artboard.name.replace(obj.find, obj.replace);
-			}
-
-			if(obj.prefix)
-			{
-				artboard.name  = obj.prefix + artboard.name;
-			}
-
-			if(obj.suffix)
-			{
-				artboard.name  = artboard.name + obj.suffix;
-			}
-		}
-	}
-}
-
-// select first art item found with on current artboard
-JSUI.getArtboardItem = function( artboard, nameStr )
-{
-	if(JSUI.isIllustrator)
-	{
-		if(!artboard) { var artboard = JSUI.getActiveArtboard(); }
-
-		var targetItem;
-		var found = false;
-		var doc = app.activeDocument;
-		doc.selectObjectsOnActiveArtboard();
-		var selection = doc.selection;
-	
-		if(selection.length)
-		{
-			for (var i = 0; i < selection.length; i++)
-			{
-				var item = selection[i];
-	
-				// if artboard has only one item, and item is a group
-				if( i == 0 && selection.length == 1 && item.typename == "GroupItem")
-				{
-					// enter isolation mode
-					item.isIsolated = true;
-					var groupItems = item.pageItems;
-					for (var j = 0; j < groupItems.length; j++)
-					{
-						var subItem = groupItems[j];
-						if(subItem.name == nameStr)
-						{
-							targetItem = subItem;
-							found = true;
-							doc.selection = subItem;
-							break;
-						}
-					}
-	
-					// exit isolation mode
-					item.isIsolated = false;
-				}
-	
-				else if(item.name == nameStr)
-				{
-					targetItem = item;
-					found = true;
-					doc.selection = item;
-					break;
-				}
-			}
-		}
-		return targetItem;
-	}
-}
-
-
-// photoshop only for now
-// still assumes pslib include
-JSUI.getArtboardSpecsInfo = function( obj )
-{
-    // return empty array if no document present
-    if(!app.documents.length)
-    {
-        return [];
-    }
-
-    if(!obj)
-    {
-        var obj = { };
-		// obj.artboards = [];
-		// if(JSUI.isIllustrator) obj.artboards = app.activeDocument.artboards;
-
-    }
-
-    var doc = app.activeDocument;
-    var originalActiveLayer = doc.activeLayer; // may not be an artboard!
-    // var originalActiveLayerID = getActiveLayerID();
-
-    if(!obj.artboards) obj.artboards = getArtboards();
-
-    var docSpecs = [];
-    var artboardSpecs = [];
-
-    var docSpecs = Pslib.getXmpDictionary( app.activeDocument, { source: null, hierarchy: null, specs: null, custom: null }, false, false, false, obj.namespace ? obj.namespace : Pslib.XMPNAMESPACE);
-    var docHasTags = !JSUI.isObjectEmpty(docSpecs);
-
-    // provide solution for exporting only active artboard specs
-    for(var i = 0; i < obj.artboards.length; i++)
-    {
-        var artboard = selectByID(obj.artboards[i][0]); // from Pslib
-
-        artboard = app.activeDocument.activeLayer;
-
-        // skip if extension needed but not found
-        if(obj.extension)
-        {
-            if( !artboard.name.hasSpecificExtension( obj.extension ) )
-            {
-                continue;
-            }
-        }
-
-        // if(artboard.name.hasSpecificExtension( obj.extension ? obj.extension : ".png"))
-        // {
-            // alert(app.activeDocument.activeLayer.name);
-            // var specs = obj.artboards ? obj.artboards : getArtboardSpecs(artboard, obj.parentFullName);
-            var specs = getArtboardSpecs(artboard, obj.parentFullName);
-            // alert(specs)
-            // inject document tags if needed
-            if(docHasTags)
-            {
-                // if no tags present, force document's
-                if(!specs.hasOwnProperty("tags"))
-                {             
-                    specs.tags = docSpecs;
-                }
-                // if tags object present, loop through template structure and inject as needed
-                else
-                {
-                    // source: null, hierarchy: null, specs: null, custom: null
-                    // here we assume that if a value is present, it should take precedence
-                    if(!specs.tags.hasOwnProperty("source"))
-                    {
-                       specs.tags.source = docSpecs.source;
-                    }
-                }
-            }
-            artboardSpecs.push(specs);
-        // }
-
-    }
-
-    // restore initial activeLayer
-    if(doc.activeLayer != originalActiveLayer) doc.activeLayer != originalActiveLayer;
-
-    return artboardSpecs;
-}
-
-
-// var rectObj = { artboard: artboard, name: "#", tags: [ ["name", "value"], ["name", "value"] ], sendToBack: true  };
-JSUI.addArtboardRectangle = function ( obj )
-{
-	if(JSUI.isIllustrator)
-	{
-		if(!obj.artboard) return;
-
-		// switch to artboard coordiates *before* getting metrics
-		app.coordinateSystem = CoordinateSystem.ARTBOARDCOORDINATESYSTEM;
-	
-		var doc = app.activeDocument;
-		var coords = JSUI.getArtboardCoordinates(obj.artboard);
-	
-		var rect = doc.pathItems.rectangle( coords.x, -coords.y, coords.x+coords.width, coords.y+coords.height );
-		doc.selection = rect;
-	
-		var transp = new NoColor();
-		rect.strokeColor = transp;
-		rect.fillColor = obj.hex != undefined ? JSUI.hexToRGBobj(obj.hex) : transp;
-	 
-		rect.name = obj.name ? obj.name : "#";
-	
-		if(obj.tags)
-		{
-			Pslib.setTags( rect, obj.tags );
-		}
-	
-		if(obj.sendToBack)
-		{
-			rect.zOrder(ZOrderMethod.SENDTOBACK);
-		}
-	
-		return rect;
-	}
-}
-
 JSUI.createDialog = function( obj )
 {
 	var obj = obj != undefined ? obj : {};
@@ -1226,19 +891,20 @@ catch(e)
 	//return JSUI.createDialog( obj );
 };
 
-// this will return a file object for relative "../../img/image.png" if found
-JSUI.getRelativePath = function( str )
+// extendscript only (relative to script file)
+// this will return a File object for relative "../../img/image.png" if found
+JSUI.getRelativePath = function( str, folderUri )
 {
     if(str == undefined) return;
 
-    var scriptFolder = JSUI.getScriptFile().parent;
+    var initialFolder = folderUri ? new Folder(folderUri) : JSUI.getScriptFile().parent;
     var relativePathStr = str;
 
     var matchesDotDotSlash = relativePathStr.match( /\.\.\//g );
     var hasMatch = matchesDotDotSlash != null;
     var relativePathEndStr = hasMatch ? relativePathStr.replace( /\.\.\//g, "") : relativePathStr;
 
-    var targetFolder = scriptFolder;
+    var targetFolder = initialFolder;
 
     for(var i = 0; i < matchesDotDotSlash.length; i++)
     {
@@ -1250,6 +916,55 @@ JSUI.getRelativePath = function( str )
 
     return file;
 };
+
+// this will return a new Folder object based on a location relative to an existing folder
+// string "../../folder" if found
+// "./folder", "/folder" and "folder" should all be considered valid
+JSUI.getRelativeFolderPath = function( str, folderObj )
+{
+    if(str == undefined) return;
+    if(typeof str != "string") return;
+    if(folderObj == undefined) return;
+    if( !(folderObj instanceof Folder) ) return;
+
+	var folderObj = new Folder(folderObj);
+    var relativePathStr = str.trim();
+	var relativePathFolderObj = new Folder(relativePathStr);
+
+	// first try and see if folder object exists
+	var folderObjExists = folderObj.exists;
+
+	// try and see if provided relativePath is actually a full path
+	var relativePathFolderObjExists = relativePathFolderObj.exists;
+
+	// if provided string is a valid path, assume we just need it as is
+	if(relativePathFolderObjExists)
+	{
+		return relativePathFolderObj;
+	}
+
+    var matchesDotDotSlash = relativePathStr.match( /\.\.\//g );
+	var matchesDotSlash = relativePathStr.match( /^\.\// ) != null; // period in first position: "./folder"
+
+    var hasMatch = matchesDotDotSlash != null;
+    var relativePathEndStr = hasMatch ? relativePathStr.replace( /\.\.\//g, "") : relativePathStr;
+
+    var targetFolder = folderObj;
+
+	if(matchesDotDotSlash != null)
+	{
+		for(var i = 0; i < matchesDotDotSlash.length; i++)
+		{
+			targetFolder = targetFolder.parent;
+		}	
+	}
+
+	// if period found in first position, remove it, assuming it means "this directory"
+	if(matchesDotSlash) relativePathEndStr = relativePathEndStr.replace(".", "")
+    var relativeFolder = new Folder(targetFolder + (relativePathEndStr.toString()[0] == "/" ? "" : "/") + relativePathEndStr);
+    return relativeFolder;
+};
+
 
 // standalone logic for ScriptUI image states to use with simple dual true/false logic
 // function should accept both strings and file objects
@@ -4124,7 +3839,10 @@ Object.prototype.addImage = function(obj)
 		// fallback in case image does not exist
 		//var c = this.add('statictext', undefined, "[Invalid URI: " + obj.imgFile + "]");
 		var c = this.addRectangle( "rect", { hexValue: undefined, width: obj.width, height: obj.height });
-		this.add('statictext', undefined, "[Invalid URI: " + ( obj.imgFile instanceof Object ? ( obj.imgFile instanceof File ? obj.imgFile.fsName : obj.imgFile.toString()) : obj.imgFile.toString()) + "]");
+
+		// fix for invalid image uri
+		// this.add('statictext', undefined, "[Invalid URI: " + ( obj.imgFile instanceof Object ? ( obj.imgFile instanceof File ? obj.imgFile.fsName : obj.imgFile.toString()) : obj.imgFile.toString()) + "]");
+		this.add('statictext', undefined, "[Invalid URI" + ( obj.imgFile ? ": " + ( obj.imgFile instanceof Object ? ( obj.imgFile instanceof File ? obj.imgFile.fsName : obj.imgFile.toString()) : obj.imgFile.toString()) : "")+ "]");
 		// this.add('statictext', undefined, "[Invalid URI: " + obj.imgFile + "]");
 	}
 
@@ -5782,7 +5500,7 @@ String.prototype.getFileNameWithoutExtension = function()
 	return match != null ? match[1] : null;
 };
 
-// get extension pattern
+// get extension pattern ".ext"
 String.prototype.getFileExtension = function()
 {
 	var match = this.trim().match(/\.[^\\.]+$/);
@@ -5795,7 +5513,7 @@ String.prototype.hasFileExtension = function()
 	return this.getFileExtension() != null;
 };
 
-// toggles pattern found at end of string
+// toggles extension pattern found at end of string
 String.prototype.addRemoveExtensionSuffix = function( str )
 {
     var originalStr = this.trim();
@@ -5837,7 +5555,7 @@ String.prototype.swapFileObjectFileExtension = function( newExtStr )
 {
 	var originalStr = this;
 	var newStr = originalStr;
-	var originalExt = originalStr.getFileExtension();
+	var originalExt = originalStr.getFileExtension(); // ".ext"
 
 	newStr = this.trim();
 	var match = newStr.match(/\.[^\\.]+$/);
@@ -6595,27 +6313,41 @@ JSUI.hexToRGBobj = function ( hexStr )
     return;
 };
 
-// RGBA values to hexadecimal string (255, 0, 128) becomes "FF0080"
+// RGB values to hexadecimal string: (255, 0, 128) becomes "FF0080"
 JSUI.RGBtoHex = function(r, g, b, a)
+// JSUI.RGBtoHex = function(r, g, b)
 {
 	return JSUI.toHex(r) + JSUI.toHex(g) + JSUI.toHex(b) + (a != undefined ? JSUI.toHex(a) : "")
+	// return JSUI.toHex(r) + JSUI.toHex(g) + JSUI.toHex(b);
+	// return ((1<<24)+(r<<16)+(g<<8)+b).toString(16).toUpperCase().slice(1);
 };
 
 // Number to hex string (128 becomes "80")
 JSUI.toHex = function(n)
 {
-	if (n == null) return "00";
-	n = parseInt(n); 
-	if (n == 0 || isNaN(n)) return "00";
-	n = Math.max(0, n); 
-	n = Math.min(n, 255); 
-	N = Math.round(n);
-	return "0123456789ABCDEF".charAt((n-n%16)/16) + "0123456789ABCDEF".charAt(n%16);
+	// if (n == null) return "00";
+	// n = parseInt(n); 
+	// if (n == 0 || isNaN(n)) return "00";
+	// n = Math.max(0, n); 
+	// n = Math.min(n, 255); 
+	// // n = Math.round(n);
+	// return "0123456789ABCDEF".charAt((n-n%16)/16) + "0123456789ABCDEF".charAt(n%16);
+
+	if (n == 0 || n == null || n == undefined || isNaN(n)) return "00";
+	if(isNaN(n)) n = parseInt(n);
+	// n = Math.max(0, Math.min(Math.round(n), 255));
+	n = Math.max(0, Math.min(n, 255));
+	// n = Math.max(0, n); 
+	// n = Math.min(n, 255); 
+	// n = Math.round(n);
+
+	return ((1<<8)+n).toString(16).toUpperCase().slice(1);
 };
 
 JSUI.cutHex = function(h)
 {
-	if(h.charAt(0)=="#") h = h.substring(1,7); else if(h.charAt(0)=="0" && h.charAt(1)=="x") h = h.substring(2,8); return h;
+	if(h.charAt(0)=="#") h = h.substring(1,7); 
+	else if(h.charAt(0)=="0" && h.charAt(1)=="x") h = h.substring(2,8); return h;
 };
 
 JSUI.HexToR = function(h) 

@@ -25,7 +25,8 @@
 	-----
 
 	TODO
-	- add support for standalone .XMP files (?)
+	- add support for reading standalone XMP/XML/JSON files 
+	- add method for getting match for artboard based on selected item bounds
 
 	- working on an advanced version of the layer metadata editor, might end up with separate apps
 	- will eventually need a way to copy/move chunks of xmp data from one layer to another layer, and from layer to containing document
@@ -322,19 +323,9 @@ if(Pslib.isPhotoshop)
 		ref.putIndex(cTID( "Lyr " ), idx)   
 		desc.putReference( cTID( "null" ), ref );   
 		desc.putBoolean( cTID( "MkVs" ), visible );   
-	executeAction( cTID( "slct" ), desc, DialogModes.NO );   
+	executeAction( cTID( "slct" ), desc, DialogModes.NO ); 
+	return app.activeDocument.activeLayer;  
 	}
-
-	function selectByID(id, add) {
-		if (add == undefined) add = false;
-		var desc1 = new ActionDescriptor();
-		var ref1 = new ActionReference();
-		ref1.putIdentifier(cTID('Lyr '), id);
-		desc1.putReference(cTID('null'), ref1);
-		if (add) desc1.putEnumerated(sTID("selectionModifier"), sTID("selectionModifierType"), sTID("addToSelection"));
-		executeAction(cTID('slct'), desc1, DialogModes.NO);
-	}
-
 		
 	// return intersection between all artboards and selected artboards
 	function getSelectedArtboards()
@@ -486,7 +477,13 @@ if(Pslib.isPhotoshop)
 		}   
 		return selectedLayers;   
 	}
-	
+
+	function isArtboard()
+	{
+		var ref = new ActionReference();
+		ref.putEnumerated(cTID("Lyr "), cTID("Ordn"), cTID("Trgt"));
+		return executeActionGet(ref).getBoolean(sTID("artboardEnabled"));
+	}
 
 
 }
@@ -501,12 +498,18 @@ else
 	getArtboards = function(){};
 	getAssetsPath = function(){};
 	getArtboardSpecs = function(){};
+
+	getAllArtboards = function(){};
+	getSelectedArtboards = function(){};
+	getSelectedLayersIdx = function(){};
+	isArtboard = function(){};
 }
 
 // metadata is only supported by Photoshop CS4+
 Pslib.isPsCS4andAbove = Pslib.isPhotoshop && parseInt(app.version.match(/^\d.\./)) >= 11;
 
 // here's some more stuff that can be useful
+// won't work for Bridge :D
 Pslib.isPsCCandAbove = Pslib.isPhotoshop && parseInt(app.version.match(/^\d.\./)) >= 14; 
 Pslib.isPsCS6 = (Pslib.isPhotoshop && app.version.match(/^13\./) != null);
 Pslib.isPsCS5 = (Pslib.isPhotoshop && app.version.match(/^12\./) != null);
@@ -516,8 +519,17 @@ Pslib.isPsCS3 = (Pslib.isPhotoshop  && app.version.match(/^10\./) != null);
 // Ps & Ai 2020+
 Pslib.is2020andAbove = Pslib.isPhotoshop ? (parseInt(app.version.match(/^\d.\./)) >= 21) : (parseInt(app.version.match(/^\d.\./)) >= 24); 
 
-// 2022 for CEP 11
+// 2022 for CEP 11 
 Pslib.is2022andAbove = Pslib.isPhotoshop ? (parseInt(app.version.match(/^\d.\./)) >= 23) : (parseInt(app.version.match(/^\d.\./)) >= 26); 
+
+Pslib.is2023andAbove = Pslib.isPhotoshop ? (parseInt(app.version.match(/^\d.\./)) >= 24) : (parseInt(app.version.match(/^\d.\./)) >= 27); 
+
+// default key-value pairs for document (usually XMP)
+Pslib.docKeyValuePairs = [ [ "source", null ], [ "range", null ], [ "destination", null ], [ "specs", null ],  [ "custom", null ]  ];
+// Pslib.docKeyValuePairs = [ [ "source", "range", "destination", "specs", "custom" ] ];
+
+// default key-value pairs for individual assets (either XMP or custom tags)
+Pslib.assetKeyValuePairs = [ [ "assetID", null ], [ "index", null ]  ];
 
 // #############  PER-LAYER METADATA FUNCTIONS
 
@@ -1026,7 +1038,7 @@ Pslib.getXmpDictionary = function( target, obj, allowEmptyStringBool, typeCaseBo
 			}
 			else if( !isNaN(Number(propValue)) )
 			{
-				// Workaround for cases where "000000" which should remain as is
+				// Workaround for cases where "000000" should remain as is
 					// if string has more than one character, if first character is a zero and second character is not a dot (decimals etc)
 					// then number or string was meant to keep its exact present form
 				if(propValue.length > 1 && ( (propValue[0] == "0" || propValue[0] == ".") && (propValue[1] != "." || propValue[1].toLowerCase() != "x") ) ) 
@@ -1337,21 +1349,26 @@ Pslib.getDocumentPath = function(doc)
 	}
 	else
 	{
+		var doc = doc != undefined ? doc : app.activeDocument;
+		if(app.activeDocument != doc) app.activeDocument = doc;
+
 		var docNameNoExt = doc.name.match(/([^\.]+)/)[1];
 		var docFullPath = doc.fullName;
 		var matchesSystem = docFullPath.toString().match( app.path) != null;
 		var defaultExportDir = docNameNoExt.replace(/[\s:\/\\*\?\"\<\>\|]/g, "_") + "-assets";
 		
 		// .fullName pointing to app.path means document has not been saved to disk
-		if(matchesSystem)
-		{
-			targetDirectory = new Folder ( defaultDocPath );
-			"~/" + Folder.desktop.name + "/AiXMPData";
-		}
-		else
-		{
-			targetDirectory = new Folder (docFullPath.parent + "/" + defaultExportDir);
-		}
+		// if(matchesSystem)
+		// {
+		// 	// targetDirectory = new Folder ( defaultDocPath );
+		// 	// "~/" + Folder.desktop.name + "/AiXMPData";
+		// }
+		// else
+		// {
+		// 	targetDirectory = new Folder (docFullPath.parent + "/" + defaultExportDir);
+		// }
+		// alert(docFullPath);
+		return matchesSystem ? undefined : docFullPath;
 	}
 };
 
@@ -1496,6 +1513,27 @@ Pslib.getTags = function( pageItem, tagsArr )
 	}
 }
 
+// simple bidimensional array to object conversion
+// arr = [ ["name1", "value1"], ["name2", "value2"]]
+// returns { name1: "value1", name2: "value2"}
+Pslib.arrayToObj = function( arr, obj )
+{
+	if(!arr) return;
+	if(!arr.length) return;
+	if(!obj) var obj = {};
+
+	for(var i = 0; i < arr.length; i++)
+	{
+		// property needed, but undefined allowed
+		if(arr[i][0] != undefined)
+		{
+			obj[arr[i][0]] = arr[i][1]; 
+		}
+
+	}
+	return obj;
+}
+
 // Illustrator: batch set tags
 // tagsArr: [ ["name", "value"], ["name", "value"]]
 Pslib.setTags = function( pageItem, tagsArr )
@@ -1584,7 +1622,7 @@ Pslib.removeAllTags = function( pageItem )
 	}
 }
 
-// Illustrator: remove all tags from item
+// Illustrator: scan items for any tags
 // expects an array of items
 Pslib.scanItemsForTags = function( items, filter )
 {
@@ -1654,6 +1692,1434 @@ Pslib.scanItemsForTags = function( items, filter )
 	}
 }
 
+// artboard functions: moved from JSUI
+
+Pslib.getActiveArtboard = function()
+{
+	if(Pslib.isIllustrator)
+	{
+		var doc = app.activeDocument;
+		var i = doc.artboards.getActiveArtboardIndex();
+		var artboard = doc.artboards[i];
+	
+		return artboard;
+	}
+}
+
+Pslib.getArtboardCoordinates = function( artboard )
+{
+	if(Pslib.isIllustrator)
+	{
+		if(!artboard)
+		{ 
+			var artboard = Pslib.getActiveArtboard();
+		}
+
+		// if(app.coordinateSystem != CoordinateSystem.ARTBOARDCOORDINATESYSTEM) app.coordinateSystem = CoordinateSystem.ARTBOARDCOORDINATESYSTEM;
+
+		var rect = artboard.artboardRect;
+		var coords = {};
+
+		coords.name = artboard.name.trim();
+		coords.x = rect[0];
+		coords.y = (-rect[1]);
+		coords.width = rect[2] - rect[0];
+		coords.height = Math.abs(rect[3] - rect[1]);
+		coords.rect = rect;
+		coords.centerX = coords.x + coords.width/2;
+		coords.centerY = coords.y - coords.height/2;
+
+		// advanced logic for which we don't have to make the artboard active
+		coords.isSquare = coords.width == coords.height;
+		coords.isPortrait = coords.width < coords.height;
+		coords.isLandscape = coords.width > coords.height;
+		coords.hasIntegerCoords = coords.x == Math.round(coords.x) && coords.y == Math.round(coords.y) && coords.width == Math.round(coords.width) && coords.height == Math.round(coords.height);
+
+		return coords;
+	}
+}
+
+// get extended artboard metrics and information
+// 
+Pslib.getArtboardSpecs = function( artboard )
+{
+	if(JSUI.isIllustrator)
+	{
+		var isActive = false;
+		if(!artboard) { var artboard = Pslib.getActiveArtboard(); isActive = true; }
+		var coords = Pslib.getArtboardCoordinates(artboard);
+		var specs = coords;
+
+		var doc = app.activeDocument;
+		// specs.name = artboard.name;
+
+		// specs.x = coords.x;
+		// specs.y = coords.y;
+		// specs.width = coords.width;
+		// specs.height = coords.height;
+		// specs.rect = coords.rect;
+
+		// advanced logic for which we don't have to make the artboard active
+		// specs.isSquare = coords.isSquare;
+		// specs.isPortrait = coords.isPortrait;
+		// specs.isLandscape = coords.isLandscape;
+		// specs.hasIntegerCoords = coords.hasIntegerCoords; 
+
+		specs.isPow2 = specs.width.isPowerOf2() && specs.height.isPowerOf2();
+		specs.isMult4 = specs.width.isMult4() && specs.width.isMult4();
+		specs.isMult8 = specs.width.isMult8() && specs.width.isMult8();
+		specs.isMult16 = specs.width.isMult16() && specs.width.isMult16();
+
+		// if active, select items and harvest more information
+		if(isActive)
+		{
+			specs.index = doc.artboards.getActiveArtboardIndex();
+			specs.page = specs.index+1;
+
+			// specs.hasBitmap
+			// specs.itemCount
+			// specs.hasTaggedItem
+		}
+
+		return specs;
+	}
+}
+
+Pslib.getViewCoordinates = function( view )
+{
+	if(Pslib.isIllustrator)
+	{
+		if(!view) { var view = app.activeDocument.views[0]; }
+    
+		var coords = {};
+	
+		var b = view.bounds;
+	
+		coords.x = b[0];
+		coords.y = b[1];
+		coords.width = Math.abs(coords.x - b[2]);
+		coords.height = Math.abs(coords.y - b[3]);
+	
+		coords.isPortrait = coords.width < coords.height;
+		coords.isLandscape = coords.width > coords.height;
+		coords.isSquare = coords.width == coords.height;
+	
+		coords.zoom = view.zoom;
+	
+		coords.width100 = coords.width * coords.zoom;
+		coords.height100 = coords.height * coords.zoom;
+	
+		return coords;
+	}
+}
+
+Pslib.zoomOnArtboard = function(artboard, forceValue)
+{   
+	if(JSUI.isIllustrator)
+	{
+		var doc = app.activeDocument;
+
+		if(typeof artboard == "number")
+		{
+			forceValue = artboard;
+			artboard = Pslib.getActiveArtboard();
+		}
+
+		var artboard = artboard ? artboard : Pslib.getActiveArtboard();
+	
+		app.coordinateSystem = CoordinateSystem.ARTBOARDCOORDINATESYSTEM;
+		var coords = Pslib.getArtboardCoordinates(artboard);
+		var viewCoords = Pslib.getViewCoordinates();
+	
+		var padding = 0.1; // 10% of visible view area
+	
+		var newBoundary = {};
+		var newZoomLvl = 4.0;
+	
+		newBoundary.width = coords.width + (coords.width * padding);
+		newBoundary.height = coords.height + (coords.height * padding);
+	
+		if ( coords.isPortrait && (coords.isSquare && viewCoords.isPortrait) )
+		{
+			newZoomLvl = viewCoords.width100 / newBoundary.width;
+		} 
+		else if (coords.isLandscape)
+		{
+			newZoomLvl = viewCoords.width100 / newBoundary.width;
+		}
+		else 
+		{
+			newZoomLvl = viewCoords.height100 / newBoundary.height;
+		}
+	
+		doc.views[0].zoom = forceValue ? forceValue : newZoomLvl;
+		doc.views[0].centerPoint = [coords.centerX, coords.centerY]; 
+	}
+}
+
+// fix for float coordinates
+Pslib.validateArtboardRects = function( artboards, offsetPageItems )
+{
+	if(JSUI.isIllustrator)
+	{
+		if(!artboards)
+		{
+			artboards = app.activeDocument.artboards;
+		}
+
+		var updated = false;
+
+		for(var i = 0; i < artboards.length; i++)
+		{
+			var artboard = artboards[i];
+			var rect = artboard.artboardRect;
+
+			var x = rect[0];
+			var y = rect[1];
+			var w = rect[2] - x;
+			var h = y - rect[3];
+			
+			// we need a method selectively allowing differences in hundredths / thousandths of pixels: 
+			// in this specific context 128.00007123 and 128.0 should be considered equal,
+			// as stored values do not precisely correspond to what illustrator shows in its UI.
+			if(x % 2 != 0 || y % 2 != 0 || w % 2 != 0 || h % 2 != 0) 
+			{
+				artboard.artboardRect = [ Math.round(x), Math.round(y), Math.round(rect[2]), Math.round(rect[3]) ];
+	
+				// should probably offset artboard pageItems by difference?
+				if(offsetPageItems)
+				{
+
+
+				}
+
+				updated = true;
+			}
+		}
+
+		return updated;
+	}
+}
+
+// simple function to find/replace/add text patterns in artboard names 
+// var obj = { find: "TextToFind", replace: "TextToReplaceWith", prefix: "Prefix_", suffix: "_Suffix" }
+Pslib.renameArtboards = function( artboards, obj )
+{
+	if(Pslib.isIllustrator)
+	{
+		if(!obj){ return; }
+
+		if(!artboards)
+		{
+			artboards = app.activeDocument.artboards;
+		}
+
+		for(var i = 0; i < artboards.length; i++)
+		{
+			var artboard = artboards[i];
+
+			if(obj.find)
+			{
+				artboard.name = artboard.name.replace(obj.find, obj.replace);
+			}
+
+			if(obj.prefix)
+			{
+				artboard.name  = obj.prefix + artboard.name;
+			}
+
+			if(obj.suffix)
+			{
+				artboard.name  = artboard.name + obj.suffix;
+			}
+		}
+	}
+}
+
+Pslib.documentFromArtboard = function( templateUri )
+{
+	if(Pslib.isIllustrator)
+	{
+		var sourceDoc = app.activeDocument;
+		var artboard = Pslib.getActiveArtboard(); 
+		var artboardName = artboard.name;
+		var duplicatedItems = [];
+
+		// set coordinates system before storing metrics
+		app.coordinateSystem = CoordinateSystem.DOCUMENTCOORDINATESYSTEM;
+
+		// store metric info
+		var artboardRect = artboard.artboardRect;
+		var artboardOrigin = artboard.rulerOrigin;
+
+		var newDoc = Pslib.createNewDocument( templateUri );
+
+		// get items to duplicate
+		app.activeDocument = sourceDoc;
+		sourceDoc.selectObjectsOnActiveArtboard();
+		var sel = sourceDoc.selection;
+
+		for (var i = 0; i < sel.length; i++)
+		{ 
+			var item = sel[i];
+			var newItem = item.duplicate(newDoc.layers[0], ElementPlacement.PLACEATEND);
+			duplicatedItems.push([ newItem, item.left, item.top ]);
+		}
+
+		// switch to new doc, adjust coordinates system
+		app.activeDocument = newDoc;
+		app.coordinateSystem = CoordinateSystem.DOCUMENTCOORDINATESYSTEM;
+
+		var destArtboard = newDoc.artboards[0];
+		destArtboard.rulerOrigin = artboardOrigin;
+		destArtboard.artboardRect = artboardRect;
+		destArtboard.name = artboardName;
+
+		// reposition items
+		for (var i = 0; i < duplicatedItems.length; i++)
+		{ 
+			var destItem = duplicatedItems[i][0];
+			destItem.left = duplicatedItems[i][1];
+			destItem.top = duplicatedItems[i][2];
+		}
+
+		// zoom on artboard area
+		// app.coordinateSystem = CoordinateSystem.ARTBOARDCOORDINATESYSTEM;
+		// var destCoords =  Pslib.getArtboardCoordinates(destArtboard);
+		// newDoc.views[0].zoom = 4.0;
+		// newDoc.views[0].centerPoint = [destCoords.centerX, destCoords.centerY]; 
+		Pslib.zoomOnArtboard(destArtboard);
+
+		return newDoc;
+	}
+}
+
+// create new document from current artboard, preserve metrics
+
+
+// // to be deprecated by Pslib.artboardsToFiles()
+// Pslib.artboardToFile = function( obj )
+// {
+// 	if(Pslib.isIllustrator)
+// 	{
+// 		if(!obj) { var obj = {}; }
+// 		if(!obj.artboard) { obj.artboard = Pslib.getActiveArtboard(); }
+
+
+// 		// let's consider getting an Folder object instead of a File
+// 		if(!obj.saveUri)
+// 		{
+// 			// get document assets path
+// 			// use same pattern as ExportForScreens
+// 		}
+
+// 		// prepare object to return forencic data along with
+// 		var resultObj = {};
+// 		var newDoc;
+
+// 		var sourceDoc = app.activeDocument;
+// 		// var originalSelection = sourceDoc.selection;
+
+// 		var sourceDocName = sourceDoc.name.toFileSystemSafeName();
+// 		// var sourceExt = sourceDocName.getFileExtension(); // may be useful with custom SVG stuff
+
+// 		var originalArtboard = Pslib.getActiveArtboard();
+
+// 		var artboardName = obj.artboard.name;
+// 		// var artboardNameFs = artboardName.toFileSystemSafeName();
+
+// 		var artboardIndex = sourceDoc.artboards.getActiveArtboardIndex();
+
+// 		// save/store JSON data ?
+// 		if(obj.jsonData)
+// 		{
+// 			var artboardJsonData = obj.jsonData;
+// 		}
+// 		else
+// 		{
+// 			var artboardJsonData = Pslib.getArtboardCoordinates(originalArtboard);
+// 			var docKeyValuePairs = Pslib.getXmpDictionary( sourceDoc, Pslib.docKeyValuePairs ); // get "source" tag from document if present
+
+// 			var tagsObj = Pslib.arrayToObj( Pslib.getAllTags( Pslib.getArtboardItem(originalArtboard, "#") ), {} );
+// 			artboardJsonData.tags = tagsObj;
+// 			artboardJsonData.index = artboardIndex;
+
+// 			// remove extra info
+// 			artboardJsonData.rect = undefined;
+// 			artboardJsonData.isSquare = undefined;
+// 			artboardJsonData.isPortrait = undefined;
+// 			artboardJsonData.isLandscape = undefined;
+// 			artboardJsonData.hasIntegerCoords = undefined;
+
+// 			artboardJsonData.parent = sourceDoc.name;
+// 			var documentLocalPath = Pslib.getDocumentPath(sourceDoc);
+// 			// artboardJsonData.parentFullName = documentLocalPath ? documentLocalPath.fsName : undefined; // absolute path
+// 			artboardJsonData.parentFullName = documentLocalPath ? documentLocalPath.toString() : undefined; // relative ~/
+
+// 			// get xmp tags if present (could be made dynamic)
+// 			if(docKeyValuePairs.source) artboardJsonData.source = docKeyValuePairs.source;
+// 			if(docKeyValuePairs.range) artboardJsonData.range = docKeyValuePairs.range;
+// 			if(docKeyValuePairs.destination) artboardJsonData.destination = docKeyValuePairs.destination; // custom export location
+// 			if(docKeyValuePairs.specs) artboardJsonData.specs = docKeyValuePairs.specs;
+// 			if(docKeyValuePairs.custom) artboardJsonData.custom = docKeyValuePairs.custom;
+// 		}
+
+// 		newDoc = Pslib.documentFromArtboard( obj.templateUri );
+
+// 		if(obj.saveUri)
+// 		{
+// 			// cast as file 
+// 			var outputFile = (obj.saveUri instanceof File) ? obj.saveUri : new File(obj.saveUri);
+
+// 			// get extension from uri : 
+// 			var extension = outputFile.toString().getFileExtension(); // ".ai" / ".psd"
+
+// 			// save to file system safe etc
+// 			// artboardNameFs
+
+// 			if(outputFile.exists)
+// 			{
+// 				if(obj.confirmReplace) 
+// 				{
+// 					var confirmMsg = "Replace existing file?\n\n" + outputFile.fsName;
+// 					var confirmBool = confirm(confirmMsg);
+					
+// 					if(confirmBool)
+// 					{
+// 						outputFile.remove();
+// 					}					
+// 				}
+// 				else
+// 				{
+// 					outputFile.remove();
+// 				}
+// 			}
+
+// 			// if ".ai", use saveAs() method
+// 			if(extension == ".ai")
+// 			{
+// 				if(obj.exportOptions)
+// 				{
+// 					var aiOpts = obj.exportOptions;
+// 				}
+// 				else
+// 				{
+// 					var aiOpts = new IllustratorSaveOptions();
+// 					aiOpts.pdfCompatible = true;
+// 					aiOpts.compressed = true;
+// 					aiOpts.embedICCProfile = true;
+// 					aiOpts.embedLinkedFiles = true;
+// 					aiOpts.saveMultipleArtboards = false;
+// 				}
+
+// 				// if(outputFile.exists)
+// 				// {
+// 				// 	var confirmMsg = "Replace existing file?\n\n" + outputFile.fsName;
+// 				// 	if(obj.confirmReplace) 
+// 				// 	{
+// 				// 		outputFile.remove();
+// 				// 		// outputFile = outputFile.saveDlg("Save artboard as Adobe Illustrator file", ("*.ai"));
+// 				// 	}
+// 				// }
+
+
+// 				newDoc.saveAs( outputFile, aiOpts);
+// 			}
+// 			// if ".psd", use exportFile() method
+// 			else if(extension == ".psd")
+// 			{
+// 				if(obj.exportOptions)
+// 				{
+// 					var psdOpts = obj.exportOptions;
+// 				}
+// 				else
+// 				{
+// 					var psdOpts = new ExportOptionsPhotoshop();
+
+// 					// (editable layers)
+// 					// var psdOpts = new ExportOptionsPhotoshop();
+// 					// psdOpts.antiAliasing = true;
+// 					// psdOpts.editableText = true;
+// 					// psdOpts.embedICCProfile = true;
+// 					// psdOpts.imageColorSpace = ImageColorSpace.RGB;
+// 					// psdOpts.maximumEditability = true;
+// 					// psdOpts.writeLayers = true;
+// 					// psdOpts.resolution = 72;
+					
+// 					// (merged layers)
+// 					psdOpts.antiAliasing = true;
+// 					psdOpts.editableText = false;
+// 					psdOpts.embedICCProfile = true;
+// 					psdOpts.imageColorSpace = ImageColorSpace.RGB;
+// 					psdOpts.maximumEditability = false;
+// 					psdOpts.writeLayers = false;
+// 					psdOpts.resolution = 72;
+// 				}
+// 				// if(outputFile.exists) outputFile.remove();
+// 				newDoc.exportFile( outputFile, ExportType.PHOTOSHOP, psdOpts);
+// 			}
+// 		}
+// 		// // if png, svg or pdf, use ExportForScreens
+// 		// else if(extension == ".png")
+// 		// {
+// 		// 	// obj.exportOptions
+// 		// }
+// 		// else if(extension == ".svg")
+// 		// {
+			
+// 		// }
+// 		// else if(extension == ".pdf")
+// 		// {
+			
+// 		// }
+
+// 		// output json data
+// 		if(obj.saveJson)
+// 		{
+// 			var jsonFile = outputFile.toString().swapFileObjectFileExtension(".json");
+// 			if(jsonFile.exists) jsonFile.remove();
+
+// 			var jsonFileCreated = JSUI.writeToFile(jsonFile, JSON.stringify(artboardJsonData, null, "\t"), "utf8");
+// 			resultObj.artboardJsonData = artboardJsonData;
+// 			if(jsonFileCreated) resultObj.jsonFile = jsonFile;
+// 		}
+
+// 		// close new document if saved
+// 		if(obj.close && obj.saveUri && extension != ".ai")
+// 		{
+// 			resultObj.outputFile = outputFile;
+// 			newDoc.close(SaveOptions.DONOTSAVECHANGES);
+// 		}
+
+// 		return resultObj;
+// 	}
+// }
+
+
+// assumes JSUI
+/*
+var obj = { 
+	saveUri: "path/to/file.psd", // save to psd/ai if destination path is provided
+	exportOptions: {}, // custom export options if needed
+	templateUri: "path/to/template.ait", //
+	saveJson: false,
+	jsonData: {}, // 
+	confirmReplace: false,
+	prefix: "",
+	suffix: "", 
+	close: false
+};
+ */
+
+
+// export process based on array of artboard indexes
+// you may think of this as a slower version of the Export For Screens command
+// with support for .ai + .psd output
+// (still uses Document.exportForScreens() method for PNG, SVG, PDF)
+// returns array of results objects
+
+// var obj = {
+//	pagesArr: [ 1, 2, 3, 4, 5 ] // 1-based (the artboard number on the Artboards palette)
+//
+//	}
+Pslib.artboardsToFiles = function( obj )
+{
+	if(Pslib.isIllustrator)
+	{ 
+		if(!obj) { var obj = {}; }
+
+		if(!app.documents.length) return;
+		var sourceDoc = app.activeDocument;
+
+		// if no indexes provided, get active artboard
+		if(!obj.pagesArr) { obj.pagesArr = [ sourceDoc.artboards.getActiveArtboardIndex()+1 ]; } // +1 so index zero means page one
+
+		// if provided pages range is a string, convert "1-5" to [ 1, 2, 3, 4, 5 ]
+		if(typeof obj.pagesArr == "string")
+		{
+			if(obj.pagesArr == "all")
+			{
+				// user means to export entire artboards collection
+				obj.pagesArr = "1" + ( sourceDoc.artboards.length > 1 ? ("-" + sourceDoc.artboards.length) : "" );
+				obj.pagesArr = obj.pagesArr.toRangesArr();
+			}
+			else if(!isNaN(parseInt(obj.pagesArr)))
+			{
+				obj.pagesArr = obj.pagesArr.toRangesArr(); 
+
+				// option to bypass this later using docKeyValuePairs.range
+				// issue here with multiple ranges in XMP?
+			}
+			else
+			{
+				// fallback to active artboard
+				obj.pagesArr = [ sourceDoc.artboards.getActiveArtboardIndex()+1 ];
+			}
+		}
+		
+		// additional sanitization check: make sure the array does not contain page numbers that go over the document's actual length
+		var highestNum = obj.pagesArr[obj.pagesArr.length-1];
+		
+		// show this only after getting range from XMP
+		// if( highestNum > sourceDoc.artboards.length )
+		// {
+		// 	alert("Error! Artboard range outside of document's rage (#" + highestNum + ")");
+		// 	return;
+		// }
+
+		// if extension user is aking for is invalid, abort right away
+		// force PNG if not provided
+		var extension = obj.extension ? obj.extension : ".png"; // ".ai" / ".psd" 
+		if(!(extension == ".png" || extension == ".psd" || extension == ".ai" || extension == ".svg" || extension == ".pdf" || extension == ".json" ))
+		{
+			alert("Error with output file format!\nMake sure you are using one of these:\n.png (default)\n.psd\n.ai\n.svg\n.pdf");
+			return;
+		}
+
+		// just in case
+		if(extension == ".json")
+		{
+			obj.saveJson = true;
+		}
+
+		// some preparation based on exportForScreens supported formats
+		if((extension == ".png" || extension == ".svg" || extension == ".pdf"))
+		{
+		    // // User's local "Create Sub-folders" setting from Export For Screens dialog (will create "1x" subfolder if true)
+			var smartExportUICreateFoldersPreference_UserValue = app.preferences.getIntegerPreference ('plugin/SmartExportUI/CreateFoldersPreference');
+			if(smartExportUICreateFoldersPreference_UserValue)
+			{   
+				app.preferences.setIntegerPreference ('plugin/SmartExportUI/CreateFoldersPreference', 0);
+			}
+		}
+		
+		var resultObjArr = [];
+		// var exportCount = 0;
+
+		var destinationFolder;
+
+		var docNameNoExt = sourceDoc.name.getFileNameWithoutExtension();
+		// var sourceDocName = sourceDoc.name.toFileSystemSafeName();
+		
+
+		// var originalSelection = sourceDoc.selection;
+
+		// if no destination folder specified, use Photoshop Generator pattern
+		if(!obj.saveUri)
+		{
+			var sourceDocPath = sourceDoc.path;
+			// var sourceDocFullName = sourceDoc.fullName;
+
+			// if Document.fullName is undefined, default export location is going to point to a system directory where we have no business saving files to.
+			// Windows shows the folder where the host application lives
+			// on macOS getting fullName for "Untitled-1" Illustrator document that has not yet been saved to disk returns "/Untitled-1" 
+			var matchesSystem = JSUI.isWindows ? (sourceDoc.fullName.match( app.path) != null) : (sourceDoc.fullName.toString() == ("/" + app.activeDocument.name));
+
+			if(matchesSystem) 
+			{
+				alert("Error: Document should be saved to disk at least once before exporting assets. Please try again.");
+				return;
+			}
+			destinationFolder = new Folder(sourceDocPath + "/"+ docNameNoExt.toFileSystemSafeName() + "-assets");			
+		}
+		else
+		{
+			destinationFolder = new Folder(obj.saveUri);
+		}
+
+		// get these before looping
+		var docKeyValuePairs = Pslib.getXmpDictionary( sourceDoc, Pslib.docKeyValuePairs ); // get "source" tag from document if present
+
+		// if .range property found in custom XMP namespace, use as is
+		if(docKeyValuePairs.range)
+		{
+			if(typeof docKeyValuePairs.range == "string")
+			{
+				if(!isNaN(parseInt(docKeyValuePairs.range)))
+				{
+					obj.pagesArr = docKeyValuePairs.range.toRangesArr();
+				}
+			}
+
+			highestNum = obj.pagesArr[obj.pagesArr.length-1];
+		}
+
+		if( highestNum > sourceDoc.artboards.length )
+		{
+			var rangeErrorMsg = "Range Error\nParameters are outside of the document's artboard collection (" + sourceDoc.artboards.length + ")\n\nClamp the values?\n\n" + obj.pagesArr.toString();
+
+			var confirmRangeClamp = confirm( rangeErrorMsg, "Confirm Range Clamping" );
+			if(confirmRangeClamp)
+			{
+				// trim array until numbers make sense.
+				while (highestNum > sourceDoc.artboards.length)
+				{
+					obj.pagesArr.pop();
+					highestNum = obj.pagesArr[obj.pagesArr.length-1];
+					// if($.level) $.writeln("highestNum: " + highestNum);
+					if(highestNum == 1) break;
+				}
+			}
+			else
+			{
+				return;
+			}
+		}
+
+		var destDirCheck = new Folder(destinationFolder);
+		var dirParent = destDirCheck.parent;
+
+		// if destination tag found, process info
+		// (should be easy to bypass)
+		if(docKeyValuePairs.destination)
+		{
+			// check if destination is relative or absolute
+			var relativeDir = JSUI.getRelativeFolderPath( docKeyValuePairs.destination, destinationFolder );
+			destinationFolder = relativeDir;
+
+			// alert("destDirCheck: " + destDirCheck + "\nParent exists: " + dirParent +  "\nparent exists: " + dirParent.exists + "\n\n" + relativeDir + "\ndestination exists: " + relativeDir.exists);
+		}
+
+		// if parent directory is present but target directory does not, create it.
+		if(dirParent.exists && !destinationFolder.exists)
+		{
+			if(obj.confirmCreateFolder)
+			{
+				// offer to create directory if it does not exist.
+				var createDirMsg = "This directory does not exist. Create?\n\n" + destinationFolder;
+				var confirmCreateDirectory = confirm(createDirMsg, "Confirm directory creation");
+				if(confirmCreateDirectory)
+				{
+					if(dirParent.exists)
+					{
+						destinationFolder.create();
+					}
+				}
+				else
+				{
+					return;
+				}
+			}
+			else
+			{
+				destinationFolder.create();
+			}
+		}
+
+		//
+		if(extension == ".png" || extension == ".svg" || extension == ".pdf" || extension == ".json" ) //obj.saveJson
+		{
+			var prefixStr = obj.prefix != undefined ? obj.prefix : "";
+
+            var exportOptions = new ExportForScreensItemToExport();
+			exportOptions.artboards = obj.pagesArr.toSimplifiedString(); // [1, 2, 3, 4, 5] becomes "1-5"
+            exportOptions.document = false; // exports docname.png/.svg
+
+			switch(extension)
+			{
+				case ".json" :
+				{
+					//
+					break;
+				}
+				case ".png" :
+				{
+					var formatType = ExportForScreensType.SE_PNG24;
+					var formatOptions = obj.formatOptions ? obj.formatOptions : new ExportForScreensOptionsPNG24();
+					// ExportForScreensOptionsPNG24.transparency (default: true)
+
+					// formatOptions.antiAliasing
+					//     AntiAliasingMethod.ARTOPTIMIZED
+					//
+					//     AntiAliasingMethod.None
+					//     AntiAliasingMethod.TYPEOPTIMIZED
+
+					// formatOptions.backgroundBlack (default false)
+					// ExportForScreensOptionsPNG24.interlaced (default false)
+
+					// ExportForScreensOptionsPNG24.scaleType
+					// ExportForScreensScaleType.SCALEBYFACTOR
+					//
+					// ExportForScreensScaleType.SCALEBYHEIGHT
+					// ExportForScreensScaleType.SCALEBYRESOLUTION
+					// ExportForScreensScaleType.SCALEBYWIDTH
+
+					// ExportForScreensOptionsPNG24.scaleTypeValue (default 1.0)
+
+					sourceDoc.exportForScreens(destinationFolder, formatType, formatOptions, exportOptions, prefixStr);
+					
+					break;
+				}
+				case ".svg" :
+				{
+					var formatType = ExportForScreensType.SE_SVG;
+					var formatOptions = obj.formatOptions ? obj.formatOptions : new ExportForScreensOptionsWebOptimizedSVG();
+
+
+                // formatOptions.coordinatePrecision = 3; // Int32 (range 1 - 7)
+
+                // formatOptions.cssProperties
+                    // SVGCSSPropertyLocation
+                    // SVGCSSPropertyLocation.ENTITIES
+                    // SVGCSSPropertyLocation.PRESENTATIONATTRIBUTES
+                    // SVGCSSPropertyLocation.STYLEATTRIBUTES
+                    // SVGCSSPropertyLocation.STYLEELEMENTS
+
+                // formatOptions.fontType
+                //     SVGFontType.OUTLINEFONT
+                //     SVGFontType.SVGFONT
+
+                // formatOptions.rasterImageLocation
+                //     RasterImageLocation.EMBED
+                //     RasterImageLocation.LINK
+                //     RasterImageLocation.PRESERVE
+
+                // formatOptions.svgId
+                //     SVGIdType.SVGIDMINIMAL
+                //     SVGIdType.SVGIDREGULAR
+                //     SVGIdType.SVGIDUNIQUE
+
+                // formatOptions.svgMinify = true/false
+
+                // formatOptions.svgResponsive = true/false
+
+					sourceDoc.exportForScreens(destinationFolder, formatType, formatOptions, exportOptions, prefixStr);
+
+					break;
+				}
+				case ".pdf" :
+				{
+					var formatType = ExportForScreensType.SE_PDF;
+					var formatOptions = obj.formatOptions ? obj.formatOptions : new ExportForScreensPDFOptions();
+
+					// .pdfPreset = ""
+
+					sourceDoc.exportForScreens(destinationFolder, formatType, formatOptions, exportOptions, prefixStr);
+
+					break;
+				}
+			}
+		}
+
+		// prepare object to return forensic info along with data
+		var resultObj = {};
+
+		if((extension == ".psd" || extension == ".ai" || extension == ".json") )
+		{
+			for(var i = 0; i < obj.pagesArr.length; i++)
+			{
+				app.activeDocument = sourceDoc;
+				var artboardIndex = obj.pagesArr[i];
+				sourceDoc.artboards.setActiveArtboardIndex(artboardIndex-1);
+				var originalArtboard = Pslib.getActiveArtboard();
+
+				var newDoc;
+
+				var artboardName = originalArtboard.name;
+				// var artboardNameFs = artboardName.toFileSystemSafeName();
+				// var artboardIndex = sourceDoc.artboards.getActiveArtboardIndex();
+				var placeholder;
+				var artboardJsonData = { }; 
+				// use provided JSON data
+				if(obj.jsonData)
+				{
+					artboardJsonData = obj.jsonData;
+				}
+				// build default JSON data structure
+				else
+				{
+					artboardJsonData = Pslib.getArtboardCoordinates(originalArtboard);
+					artboardJsonData.index = artboardIndex-1;
+					
+					// remove extra info
+					artboardJsonData.rect = undefined;
+					artboardJsonData.centerX = undefined;
+					artboardJsonData.centerY = undefined;
+
+					artboardJsonData.isSquare = undefined;
+					artboardJsonData.isPortrait = undefined;
+					artboardJsonData.isLandscape = undefined;
+					artboardJsonData.hasIntegerCoords = undefined;
+
+					// if asked to get advanced coordinates / tags, items must be selected on artboard (this is noticeably slower)
+					if(obj.advancedCoords)
+					{
+						placeholder = Pslib.getArtboardItem(originalArtboard, "#");
+
+						if(placeholder)
+						{
+							// this includes ALL tags found on placeholder
+							var tags = Pslib.getAllTags(placeholder)
+							var tagsObj = Pslib.arrayToObj( tags, {} );
+							artboardJsonData.tags = tagsObj;
+
+							// // target tags based on default key-value pairs for individual assets
+							// // Pslib.assetKeyValuePairs = [ [ "assetID", null ], [ "index", null ]  ];
+
+							// // transfer ALL tags
+							// for(var k = 0; k < tags.length; k++)
+							// {
+							// 	var pName = tags[k][0];
+							// 	var pValue = tags[pName];
+							// 	if(pValue != undefined && pValue != null)
+							// 	{
+							// 		if($.level) $.writeln(pName + ": " + pValue);
+							// 		if(tags[pName] != undefined) artboardJsonData[pName] = pValue;
+							// 	}
+							// }
+
+							// // transfer only tags present in Pslib.assetKeyValuePairs
+							// for(var k = 0; k < Pslib.assetKeyValuePairs.length; k++)
+							// {
+							// 	var tag = tagsObj[k];
+							// 	if(tag == undefined) continue;
+
+							// 	var pName = tag[0];
+							// 	var pValue = tag[1];
+
+							// 	if(Pslib.assetKeyValuePairs[k][0] == pName)
+							// 	{
+							// 		if(pValue != undefined && pValue != null)
+							// 		{
+							// 			if($.level) $.writeln(pName + ": " + pValue);
+							// 			if(tags[pName] != undefined) artboardJsonData[pName] = pValue;
+							// 		}
+							// 	}
+							// }
+						}
+					}
+
+					artboardJsonData.parent = sourceDoc.name;
+					var documentLocalPath = Pslib.getDocumentPath(sourceDoc);
+					// artboardJsonData.parentFullName = documentLocalPath ? documentLocalPath.fsName : undefined; // absolute path
+					artboardJsonData.parentFullName = documentLocalPath ? documentLocalPath.toString() : undefined; // relative ~/
+					
+					if(placeholder)
+					{
+						artboardJsonData.layer = placeholder.layer.name;
+					}
+
+					// // here we mostly want .source ... ?
+					// for(var k = 0; k < Pslib.docKeyValuePairs.length; k++)
+					// {
+					// 	var pName = Pslib.docKeyValuePairs[k][0];
+					// 	var pValue = docKeyValuePairs[pName];
+					// 	if(pValue != undefined && pValue != null)
+					// 	{
+					// 		if($.level) $.writeln(pName + ": " + pValue);
+					// 		if(docKeyValuePairs[pName] != undefined) artboardJsonData[pName] = docKeyValuePairs[pName];
+					// 	}
+					// }
+
+					// // get xmp tags if present
+					if(docKeyValuePairs.source) artboardJsonData.source = docKeyValuePairs.source;
+
+					// // default key-value pairs for document (usually XMP)
+					// // Pslib.docKeyValuePairs = [ [ "source", null ], [ "range", null ], [ "destination", null ], [ "specs", null ],  [ "custom", null ]  ];
+					// // // Pslib.docKeyValuePairs = [ [ "source", "range", "destination", "specs", "custom" ] ];
+
+					// // are there relevant at the child level?
+					// if(docKeyValuePairs.range) artboardJsonData.range = docKeyValuePairs.range;
+					// if(docKeyValuePairs.destination) artboardJsonData.destination = docKeyValuePairs.destination; // custom export location
+					// if(docKeyValuePairs.specs) artboardJsonData.specs = docKeyValuePairs.specs;
+					// if(docKeyValuePairs.custom) artboardJsonData.custom = docKeyValuePairs.custom;
+				}
+
+				// only create new document if exporting to PSD or AI
+				if (extension == ".psd" || extension == ".ai")
+				{
+					newDoc = Pslib.documentFromArtboard( obj.templateUri );
+				}
+
+				if(destinationFolder)
+				{
+					var outputFile = new File( destinationFolder + "/" + (obj.prefix != undefined ? obj.prefix : "") + artboardName + extension );
+
+					if (extension == ".psd" || extension == ".ai" || extension == ".json") 
+					{
+						if(outputFile.exists)
+						{
+							if(obj.confirmReplace) 
+							{
+								var confirmMsg = "Replace existing file?\n\n" + outputFile.fsName;
+								var confirmBool = confirm(confirmMsg);
+								
+								if(confirmBool)
+								{
+									outputFile.remove();
+								}					
+							}
+							else
+							{
+								outputFile.remove();
+							}
+						}
+					}
+
+
+					// if ".ai", use saveAs() method
+					if(extension == ".ai")
+					{
+						if(obj.exportOptions)
+						{
+							var aiOpts = obj.exportOptions;
+						}
+						else
+						{
+							var aiOpts = new IllustratorSaveOptions();
+							aiOpts.pdfCompatible = true;
+							aiOpts.compressed = true;
+							aiOpts.embedICCProfile = true;
+							aiOpts.embedLinkedFiles = true;
+							aiOpts.saveMultipleArtboards = false;
+						}
+
+						newDoc.saveAs( outputFile, aiOpts);
+						resultObj.outputFile = outputFile;
+					}
+					// if ".psd", use exportFile() method
+					else if(extension == ".psd")
+					{
+						if(obj.exportOptions)
+						{
+							var psdOpts = obj.exportOptions;
+						}
+						else
+						{
+							var psdOpts = new ExportOptionsPhotoshop();
+
+							// (editable layers)
+							// var psdOpts = new ExportOptionsPhotoshop();
+							// psdOpts.antiAliasing = true;
+							// psdOpts.editableText = true;
+							// psdOpts.embedICCProfile = true;
+							// psdOpts.imageColorSpace = ImageColorSpace.RGB;
+							// psdOpts.maximumEditability = true;
+							// psdOpts.writeLayers = true;
+							// psdOpts.resolution = 72;
+							
+							// (merged layers)
+							psdOpts.antiAliasing = true;
+							psdOpts.editableText = false;
+							psdOpts.embedICCProfile = true;
+							psdOpts.imageColorSpace = ImageColorSpace.RGB;
+							psdOpts.maximumEditability = false;
+							psdOpts.writeLayers = false;
+							psdOpts.resolution = 72;
+						}
+
+						newDoc.exportFile( outputFile, ExportType.PHOTOSHOP, psdOpts);
+						resultObj.outputFile = outputFile;
+					}
+				}
+
+				// output json data
+				if(obj.saveJson)
+				{
+					var jsonFile = outputFile.toString().swapFileObjectFileExtension(".json");
+					if(jsonFile.exists) jsonFile.remove();
+
+					var jsonFileCreated = false;
+
+					 if( !JSUI.isObjectEmpty(artboardJsonData) ) 
+					 jsonFileCreated = JSUI.writeToFile(jsonFile, JSON.stringify(artboardJsonData, null, "\t"), "utf8");
+					
+					if(jsonFileCreated)
+					{
+						resultObj.artboardJsonData = artboardJsonData;
+						resultObj.jsonFile = jsonFile;
+					}
+				}
+
+				// close new document if properly saved
+				if(obj.close && obj.saveUri && (extension == ".ai" || extension == ".psd"))
+				{
+					newDoc.close(SaveOptions.DONOTSAVECHANGES);
+					app.activeDocument = sourceDoc;
+				}
+				else if ( obj.saveUri && (extension == ".ai" || extension == ".psd") ) 
+				{
+					// zoom on content
+					Pslib.zoomOnArtboard(destArtboard);
+					// app.activeDocument.views[0].zoom = 1.0;
+				}
+
+				resultObjArr.push(resultObj);
+			}
+		}
+
+		if((extension == ".png" || extension == ".svg" || extension == ".pdf"))
+		{
+			resultObj.outputFile = outputFile;
+
+			// restore "Create Sub-folders" setting if needed
+			if(smartExportUICreateFoldersPreference_UserValue)
+			{
+				app.preferences.setIntegerPreference ('plugin/SmartExportUI/CreateFoldersPreference', 1);
+			}
+		}
+
+		// if global JSON file needed, build here from resulting array
+
+
+		return resultObjArr;
+	}
+}
+
+Pslib.createNewDocument = function( templateUri )
+{
+	if(Pslib.isIllustrator)
+	{
+		var newDoc;
+
+		if(templateUri)
+		{
+			var template = new File(templateUri);
+			if(template.exists)
+			{
+				newDoc =  app.open( templateUri );
+			}
+			else
+			{
+				// option to browse to .ait if needed here?
+				alert("Template URI invalid!\n" + templateUri);
+				return;
+			}
+		}
+		else
+		{
+			var dp = DocumentPreset;
+			dp.colorMode = DocumentColorSpace.RGB;
+			dp.width = 128;
+			dp.height = 128;
+			dp.previewMode = DocumentPreviewMode.PixelPreview;
+			dp.rasterResolution = DocumentRasterResolution.ScreenResolution;
+			dp.units = RulerUnits.Pixels;
+			dp.transparencyGrid = DocumentTransparencyGrid.TransparencyGridMedium;
+
+			// newDoc = app.documents.add( app.activeDocument.documentColorSpace);
+			newDoc = app.documents.addDocument("Web", dp);
+		}
+		return newDoc;
+	}
+}
+
+// select first art item found with on current artboard
+Pslib.getArtboardItem = function( artboard, nameStr )
+{
+	if(Pslib.isIllustrator)
+	{
+		if(!artboard) { var artboard = Pslib.getActiveArtboard(); }
+		if(!nameStr) { var nameStr = "#"; }
+
+		var targetItem;
+		var found = false;
+		var doc = app.activeDocument;
+		doc.selectObjectsOnActiveArtboard();
+		var selection = doc.selection;
+	
+		if(selection.length)
+		{
+			for (var i = 0; i < selection.length; i++)
+			{
+				var item = selection[i];
+	
+				// if artboard has only one item, and item is a group
+				if( i == 0 && selection.length == 1 && item.typename == "GroupItem")
+				{
+					// enter isolation mode
+					item.isIsolated = true;
+					var groupItems = item.pageItems;
+					for (var j = 0; j < groupItems.length; j++)
+					{
+						var subItem = groupItems[j];
+						if(subItem.name == nameStr)
+						{
+							targetItem = subItem;
+							found = true;
+							doc.selection = subItem;
+							break;
+						}
+					}
+	
+					// exit isolation mode
+					item.isIsolated = false;
+				}
+	
+				else if(item.name == nameStr)
+				{
+					targetItem = item;
+					found = true;
+					doc.selection = item;
+					break;
+				}
+			}
+		}
+		return targetItem;
+	}
+}
+
+
+// photoshop only
+Pslib.getArtboardSpecsInfo = function( obj )
+{
+    // return empty array if no document present
+    if(!app.documents.length)
+    {
+        return [];
+    }
+
+    if(!obj)
+    {
+        var obj = { };
+		// obj.artboards = [];
+		// if(JSUI.isIllustrator) obj.artboards = app.activeDocument.artboards;
+
+    }
+
+    var doc = app.activeDocument;
+    var originalActiveLayer = doc.activeLayer; // may not be an artboard!
+    // var originalActiveLayerID = getActiveLayerID();
+
+    if(!obj.artboards) obj.artboards = getArtboards();
+
+    var docSpecs = [];
+    var artboardSpecs = [];
+
+    var docSpecs = Pslib.getXmpDictionary( app.activeDocument, { source: null, hierarchy: null, specs: null, custom: null }, false, false, false, obj.namespace ? obj.namespace : Pslib.XMPNAMESPACE);
+    var docHasTags = !JSUI.isObjectEmpty(docSpecs);
+
+    // provide solution for exporting only active artboard specs
+    for(var i = 0; i < obj.artboards.length; i++)
+    {
+        // var artboard = selectByID(obj.artboards[i][0]); // from Pslib
+        var artboard = makeActiveByIndex(obj.artboards[i][0], false); // from Pslib
+
+        artboard = app.activeDocument.activeLayer;
+
+        // skip if extension needed but not found
+        if(obj.extension)
+        {
+            if( !artboard.name.hasSpecificExtension( obj.extension ) )
+            {
+                continue;
+            }
+        }
+
+        // if(artboard.name.hasSpecificExtension( obj.extension ? obj.extension : ".png"))
+        // {
+            // alert(app.activeDocument.activeLayer.name);
+            // var specs = obj.artboards ? obj.artboards : getArtboardSpecs(artboard, obj.parentFullName);
+            var specs = getArtboardSpecs(artboard, obj.parentFullName);
+            // alert(specs)
+            // inject document tags if needed
+            if(docHasTags)
+            {
+                // if no tags present, force document's
+                if(!specs.hasOwnProperty("tags"))
+                {             
+                    specs.tags = docSpecs;
+                }
+                // if tags object present, loop through template structure and inject as needed
+                else
+                {
+                    // source: null, hierarchy: null, specs: null, custom: null
+                    // here we assume that if a value is present, it should take precedence
+                    if(!specs.tags.hasOwnProperty("source"))
+                    {
+                       specs.tags.source = docSpecs.source;
+                    }
+                }
+            }
+            artboardSpecs.push(specs);
+        // }
+
+    }
+
+    // restore initial activeLayer
+    if(doc.activeLayer != originalActiveLayer) doc.activeLayer != originalActiveLayer;
+
+    return artboardSpecs;
+}
+
+
+// var rectObj = { artboard: artboard, name: "#", tags: [ ["name", "value"], ["name", "value"] ], sendToBack: true  };
+Pslib.addArtboardRectangle = function ( obj )
+{
+	if(JSUI.isIllustrator)
+	{
+		if(!obj.artboard) return;
+
+		// switch to artboard coordiates *before* getting metrics
+		app.coordinateSystem = CoordinateSystem.ARTBOARDCOORDINATESYSTEM;
+	
+		var doc = app.activeDocument;
+		var coords = Pslib.getArtboardCoordinates(obj.artboard);
+	
+		var rect = doc.pathItems.rectangle( coords.x, -coords.y, coords.x+coords.width, coords.y+coords.height );
+		doc.selection = rect;
+	
+		var transp = new NoColor();
+		rect.strokeColor = transp;
+		rect.fillColor = new NoColor(); //obj.hex != undefined ? JSUI.hexToRGBobj(obj.hex) : transp;
+	 
+		rect.name = obj.name ? obj.name : "#";
+	
+		if(obj.tags)
+		{
+			Pslib.setTags( rect, obj.tags );
+		}
+	
+		if(obj.sendToBack)
+		{
+			rect.zOrder(ZOrderMethod.SENDTOBACK);
+		}
+	
+		return rect;
+	}
+}
+
+
+// // beware: duplicate math functions from JSUI
+// // these are only created if JSUI object does not exist
+// if (typeof JSUI !== "object")
+// {
+// 	Number.prototype.isPowerOf2 = function()
+// 	{
+// 		var n = this.valueOf();
+// 		var abs = Math.abs(n);
+	
+// 		if(Math.floor(n) !== n) return false;
+// 		if(abs !== n) n = abs;
+// 		return n && (n & (n - 1)) === 0;
+// 	};
+	
+// 	Number.prototype.getNextPow2 = function()
+// 	{
+// 		var p = 2;
+// 		var n = Math.floor(this.valueOf());
+// 		if(n.isPowerOf2()) n++;
+	
+// 		while(n > p)
+// 		{
+// 			p = p * 2;
+// 		}
+// 		return p;
+// 	};
+	
+// 	Number.prototype.getPreviousPow2 = function()
+// 	{
+// 		var p = 2;
+// 		var n = this.valueOf();
+// 		if(n.isPowerOf2()) n--;
+// 		n = Math.floor(n);
+	
+// 		while(n >= p)
+// 		{
+// 			p = p * 2;
+// 		}
+// 		return p / 2;
+// 	};
+	
+// 	Number.prototype.isMultOf = function(m)
+// 	{
+// 		if(m == undefined || isNaN(m))
+// 		{
+// 			return;
+// 		}
+// 		var n = this.valueOf();
+// 		return (Math.ceil(n/m) * m == n);
+// 	};
+	
+// 	Number.prototype.getNextMultOf = function(m)
+// 	{
+// 		var n = this.valueOf();
+// 		if(n.isMultOf(m)) n++;
+// 		return (n % m == 0) ? n : ( n + (m - (n % m)) );
+// 	};
+	
+// 	Number.prototype.getPreviousMultOf = function(m)
+// 	{
+// 		var n = this.valueOf();
+// 		if(n.isMultOf(m)) n--;
+// 		// return (n % m == 0) ? n : ( n + (m - (n % m)) );
+	
+// 		if(n % m == 0) return n;
+// 		// else if(n < m) return n.getNextMultOf(m);
+// 		else if(n < m) return m;
+// 		else return n - (n % m);
+// 	};
+	
+// 	Number.prototype.isMult4 = function()
+// 	{
+// 		var n = this.valueOf();
+// 		return n.isMultOf(4);
+// 	};
+	
+// 	Number.prototype.getPreviousMult4 = function()
+// 	{
+// 		var n = this.valueOf();
+// 		n = n.getPreviousMultOf(4)
+// 		return n;
+// 	};
+	
+// 	Number.prototype.getNextMult4 = function()
+// 	{
+// 		var n = this.valueOf();
+// 		return n.getNextMultOf(4);
+// 	};
+	
+// 	Number.prototype.isMult8 = function()
+// 	{
+// 		var n = this.valueOf();
+// 		return n.isMultOf(8);
+// 	};
+	
+// 	Number.prototype.getPreviousMult8 = function()
+// 	{
+// 		var n = this.valueOf();
+// 		return n.getPreviousMultOf(8);
+// 	};
+	
+// 	Number.prototype.getNextMult8 = function()
+// 	{
+// 		var n = this.valueOf();
+// 		return n.getNextMultOf(8);
+// 	};
+	
+// 	// multiples of 16
+	
+// 	Number.prototype.isMult16 = function()
+// 	{
+// 		var n = this.valueOf();
+// 		return n.isMultOf(16);
+// 	};
+	
+// 	Number.prototype.getPreviousMult16 = function()
+// 	{
+// 		var n = this.valueOf();
+// 		return n.getPreviousMultOf(16);
+// 	};
+	
+// 	Number.prototype.getNextMult16 = function()
+// 	{
+// 		var n = this.valueOf();
+// 		return n.getNextMultOf(16);
+// 	};	
+
+// 	if($.level)
+// 	{
+// 		$.writeln("\nJSUI not found: Math function duplicates created.");
+// 	}
+// }
+// else
+// {
+// 	if($.level)
+// 	{
+// 		$.writeln("\nJSUI found: Native math functions will be used.");
+// 	}
+
+// }
 
 // DEBUG AREA
 
