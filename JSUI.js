@@ -5664,6 +5664,7 @@ Array.prototype.getRanges = function()
 // becomes "1-4,8,10-12,15-18,29"
 Array.prototype.toSimplifiedString = function()
 {
+	// if($.level) $.writeln(this);
 	var str = "";
 	var ranges = [];
 
@@ -5680,15 +5681,15 @@ Array.prototype.toSimplifiedString = function()
 		range.push(num);
 
 		// if next number in array is not an increment, push array and reset count
-		if(this[i+1] != undefined)
-		{
+		// if(this[i+1] != undefined)
+		// {
 			if( (num+1) != this[i+1] )
 			{
 				ranges.push(range);
 				if(this[i+1] == this[this.length-1]) ranges.push( [this[i+1]] );
 				range = [];
 			}
-		}
+		// }
 	}
 
 	// reformat string

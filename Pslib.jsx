@@ -1018,7 +1018,7 @@ Pslib.getXmpDictionary = function( target, obj, allowEmptyStringBool, typeCaseBo
     }
 
     // fetch XMP values
-    var propertiesArr = Pslib.getXmpProperties( target, tempArr, namespace ? namespace : Pslib.namespace );
+    var propertiesArr = Pslib.getXmpProperties( target, tempArr, namespace ? namespace : Pslib.XMPNAMESPACE );
 
 	if(propertiesArr != null)
 	{
@@ -1743,7 +1743,7 @@ Pslib.getArtboardCoordinates = function( artboard )
 // 
 Pslib.getArtboardSpecs = function( artboard )
 {
-	if(JSUI.isIllustrator)
+	if(Pslib.isIllustrator)
 	{
 		var isActive = false;
 		if(!artboard) { var artboard = Pslib.getActiveArtboard(); isActive = true; }
@@ -1813,13 +1813,20 @@ Pslib.getViewCoordinates = function( view )
 	}
 }
 
-Pslib.zoomOnArtboard = function(artboard, forceValue)
+// zoom and center on artboard
+// default padding is 0.1 (10% around main view)
+// note that the pixel preview option affects the displayed value
+Pslib.zoomOnArtboard = function(artboard, forceValue, paddingValue)
 {   
-	if(JSUI.isIllustrator)
+	if(Pslib.isIllustrator)
 	{
-		var doc = app.activeDocument;
+		if(!app.documents.length) { return false; }
 
-		if(typeof artboard == "number")
+		var doc = app.activeDocument;
+		var zoomed = false;
+
+		// if only provided value is a number, assume it's the zoom level
+		if(forceValue == undefined && (typeof artboard == "number"))
 		{
 			forceValue = artboard;
 			artboard = Pslib.getActiveArtboard();
@@ -1828,39 +1835,48 @@ Pslib.zoomOnArtboard = function(artboard, forceValue)
 		var artboard = artboard ? artboard : Pslib.getActiveArtboard();
 	
 		app.coordinateSystem = CoordinateSystem.ARTBOARDCOORDINATESYSTEM;
+
 		var coords = Pslib.getArtboardCoordinates(artboard);
-		var viewCoords = Pslib.getViewCoordinates();
+		var viewCoords = Pslib.getViewCoordinates(doc.views[0]);
 	
-		var padding = 0.1; // 10% of visible view area
-	
-		var newBoundary = {};
-		var newZoomLvl = 4.0;
-	
-		newBoundary.width = coords.width + (coords.width * padding);
-		newBoundary.height = coords.height + (coords.height * padding);
+		var paddingValue = paddingValue ? paddingValue : 0.1; // 10% of visible view area
+
+		var newBoundsW = coords.width + (coords.width * paddingValue);
+		var newBoundsH = coords.height + (coords.height * paddingValue);
+		var newZoomValue = forceValue ? forceValue : 4.0;
 	
 		if ( coords.isPortrait && (coords.isSquare && viewCoords.isPortrait) )
 		{
-			newZoomLvl = viewCoords.width100 / newBoundary.width;
+			newZoomValue = viewCoords.width100 / newBoundsW;
 		} 
 		else if (coords.isLandscape)
 		{
-			newZoomLvl = viewCoords.width100 / newBoundary.width;
+			newZoomValue = viewCoords.width100 / newBoundsW;
 		}
 		else 
 		{
-			newZoomLvl = viewCoords.height100 / newBoundary.height;
+			newZoomValue = viewCoords.height100 / newBoundsH;
 		}
 	
-		doc.views[0].zoom = forceValue ? forceValue : newZoomLvl;
-		doc.views[0].centerPoint = [coords.centerX, coords.centerY]; 
+		try
+		{
+			doc.views[0].zoom = newZoomValue;
+			doc.views[0].centerPoint = [coords.centerX, coords.centerY]; 
+			zoomed = true;
+		}
+		catch(e)
+		{
+
+		}
+
+		return zoomed;
 	}
 }
 
-// fix for float coordinates
+// round x+y coords and width+height of artboards
 Pslib.validateArtboardRects = function( artboards, offsetPageItems )
 {
-	if(JSUI.isIllustrator)
+	if(Pslib.isIllustrator)
 	{
 		if(!artboards)
 		{
@@ -1925,12 +1941,12 @@ Pslib.renameArtboards = function( artboards, obj )
 
 			if(obj.prefix)
 			{
-				artboard.name  = obj.prefix + artboard.name;
+				artboard.name = obj.prefix + artboard.name;
 			}
 
 			if(obj.suffix)
 			{
-				artboard.name  = artboard.name + obj.suffix;
+				artboard.name = artboard.name + obj.suffix;
 			}
 		}
 	}
@@ -1983,245 +1999,87 @@ Pslib.documentFromArtboard = function( templateUri )
 			destItem.top = duplicatedItems[i][2];
 		}
 
-		// zoom on artboard area
-		// app.coordinateSystem = CoordinateSystem.ARTBOARDCOORDINATESYSTEM;
-		// var destCoords =  Pslib.getArtboardCoordinates(destArtboard);
-		// newDoc.views[0].zoom = 4.0;
-		// newDoc.views[0].centerPoint = [destCoords.centerX, destCoords.centerY]; 
-		Pslib.zoomOnArtboard(destArtboard);
+		// zoom / center artboard in viewport
+		Pslib.zoomOnArtboard(destArtboard, undefined, 0.2);
 
 		return newDoc;
 	}
 }
 
-// create new document from current artboard, preserve metrics
-
-
-// // to be deprecated by Pslib.artboardsToFiles()
-// Pslib.artboardToFile = function( obj )
-// {
-// 	if(Pslib.isIllustrator)
-// 	{
-// 		if(!obj) { var obj = {}; }
-// 		if(!obj.artboard) { obj.artboard = Pslib.getActiveArtboard(); }
-
-
-// 		// let's consider getting an Folder object instead of a File
-// 		if(!obj.saveUri)
-// 		{
-// 			// get document assets path
-// 			// use same pattern as ExportForScreens
-// 		}
-
-// 		// prepare object to return forencic data along with
-// 		var resultObj = {};
-// 		var newDoc;
-
-// 		var sourceDoc = app.activeDocument;
-// 		// var originalSelection = sourceDoc.selection;
-
-// 		var sourceDocName = sourceDoc.name.toFileSystemSafeName();
-// 		// var sourceExt = sourceDocName.getFileExtension(); // may be useful with custom SVG stuff
-
-// 		var originalArtboard = Pslib.getActiveArtboard();
-
-// 		var artboardName = obj.artboard.name;
-// 		// var artboardNameFs = artboardName.toFileSystemSafeName();
-
-// 		var artboardIndex = sourceDoc.artboards.getActiveArtboardIndex();
-
-// 		// save/store JSON data ?
-// 		if(obj.jsonData)
-// 		{
-// 			var artboardJsonData = obj.jsonData;
-// 		}
-// 		else
-// 		{
-// 			var artboardJsonData = Pslib.getArtboardCoordinates(originalArtboard);
-// 			var docKeyValuePairs = Pslib.getXmpDictionary( sourceDoc, Pslib.docKeyValuePairs ); // get "source" tag from document if present
-
-// 			var tagsObj = Pslib.arrayToObj( Pslib.getAllTags( Pslib.getArtboardItem(originalArtboard, "#") ), {} );
-// 			artboardJsonData.tags = tagsObj;
-// 			artboardJsonData.index = artboardIndex;
-
-// 			// remove extra info
-// 			artboardJsonData.rect = undefined;
-// 			artboardJsonData.isSquare = undefined;
-// 			artboardJsonData.isPortrait = undefined;
-// 			artboardJsonData.isLandscape = undefined;
-// 			artboardJsonData.hasIntegerCoords = undefined;
-
-// 			artboardJsonData.parent = sourceDoc.name;
-// 			var documentLocalPath = Pslib.getDocumentPath(sourceDoc);
-// 			// artboardJsonData.parentFullName = documentLocalPath ? documentLocalPath.fsName : undefined; // absolute path
-// 			artboardJsonData.parentFullName = documentLocalPath ? documentLocalPath.toString() : undefined; // relative ~/
-
-// 			// get xmp tags if present (could be made dynamic)
-// 			if(docKeyValuePairs.source) artboardJsonData.source = docKeyValuePairs.source;
-// 			if(docKeyValuePairs.range) artboardJsonData.range = docKeyValuePairs.range;
-// 			if(docKeyValuePairs.destination) artboardJsonData.destination = docKeyValuePairs.destination; // custom export location
-// 			if(docKeyValuePairs.specs) artboardJsonData.specs = docKeyValuePairs.specs;
-// 			if(docKeyValuePairs.custom) artboardJsonData.custom = docKeyValuePairs.custom;
-// 		}
-
-// 		newDoc = Pslib.documentFromArtboard( obj.templateUri );
-
-// 		if(obj.saveUri)
-// 		{
-// 			// cast as file 
-// 			var outputFile = (obj.saveUri instanceof File) ? obj.saveUri : new File(obj.saveUri);
-
-// 			// get extension from uri : 
-// 			var extension = outputFile.toString().getFileExtension(); // ".ai" / ".psd"
-
-// 			// save to file system safe etc
-// 			// artboardNameFs
-
-// 			if(outputFile.exists)
-// 			{
-// 				if(obj.confirmReplace) 
-// 				{
-// 					var confirmMsg = "Replace existing file?\n\n" + outputFile.fsName;
-// 					var confirmBool = confirm(confirmMsg);
-					
-// 					if(confirmBool)
-// 					{
-// 						outputFile.remove();
-// 					}					
-// 				}
-// 				else
-// 				{
-// 					outputFile.remove();
-// 				}
-// 			}
-
-// 			// if ".ai", use saveAs() method
-// 			if(extension == ".ai")
-// 			{
-// 				if(obj.exportOptions)
-// 				{
-// 					var aiOpts = obj.exportOptions;
-// 				}
-// 				else
-// 				{
-// 					var aiOpts = new IllustratorSaveOptions();
-// 					aiOpts.pdfCompatible = true;
-// 					aiOpts.compressed = true;
-// 					aiOpts.embedICCProfile = true;
-// 					aiOpts.embedLinkedFiles = true;
-// 					aiOpts.saveMultipleArtboards = false;
-// 				}
-
-// 				// if(outputFile.exists)
-// 				// {
-// 				// 	var confirmMsg = "Replace existing file?\n\n" + outputFile.fsName;
-// 				// 	if(obj.confirmReplace) 
-// 				// 	{
-// 				// 		outputFile.remove();
-// 				// 		// outputFile = outputFile.saveDlg("Save artboard as Adobe Illustrator file", ("*.ai"));
-// 				// 	}
-// 				// }
-
-
-// 				newDoc.saveAs( outputFile, aiOpts);
-// 			}
-// 			// if ".psd", use exportFile() method
-// 			else if(extension == ".psd")
-// 			{
-// 				if(obj.exportOptions)
-// 				{
-// 					var psdOpts = obj.exportOptions;
-// 				}
-// 				else
-// 				{
-// 					var psdOpts = new ExportOptionsPhotoshop();
-
-// 					// (editable layers)
-// 					// var psdOpts = new ExportOptionsPhotoshop();
-// 					// psdOpts.antiAliasing = true;
-// 					// psdOpts.editableText = true;
-// 					// psdOpts.embedICCProfile = true;
-// 					// psdOpts.imageColorSpace = ImageColorSpace.RGB;
-// 					// psdOpts.maximumEditability = true;
-// 					// psdOpts.writeLayers = true;
-// 					// psdOpts.resolution = 72;
-					
-// 					// (merged layers)
-// 					psdOpts.antiAliasing = true;
-// 					psdOpts.editableText = false;
-// 					psdOpts.embedICCProfile = true;
-// 					psdOpts.imageColorSpace = ImageColorSpace.RGB;
-// 					psdOpts.maximumEditability = false;
-// 					psdOpts.writeLayers = false;
-// 					psdOpts.resolution = 72;
-// 				}
-// 				// if(outputFile.exists) outputFile.remove();
-// 				newDoc.exportFile( outputFile, ExportType.PHOTOSHOP, psdOpts);
-// 			}
-// 		}
-// 		// // if png, svg or pdf, use ExportForScreens
-// 		// else if(extension == ".png")
-// 		// {
-// 		// 	// obj.exportOptions
-// 		// }
-// 		// else if(extension == ".svg")
-// 		// {
-			
-// 		// }
-// 		// else if(extension == ".pdf")
-// 		// {
-			
-// 		// }
-
-// 		// output json data
-// 		if(obj.saveJson)
-// 		{
-// 			var jsonFile = outputFile.toString().swapFileObjectFileExtension(".json");
-// 			if(jsonFile.exists) jsonFile.remove();
-
-// 			var jsonFileCreated = JSUI.writeToFile(jsonFile, JSON.stringify(artboardJsonData, null, "\t"), "utf8");
-// 			resultObj.artboardJsonData = artboardJsonData;
-// 			if(jsonFileCreated) resultObj.jsonFile = jsonFile;
-// 		}
-
-// 		// close new document if saved
-// 		if(obj.close && obj.saveUri && extension != ".ai")
-// 		{
-// 			resultObj.outputFile = outputFile;
-// 			newDoc.close(SaveOptions.DONOTSAVECHANGES);
-// 		}
-
-// 		return resultObj;
-// 	}
-// }
-
-
-// assumes JSUI
+// Pslib.artboardsToFiles()
+// Only for Illustrator, assumes JSUI is also included
+// Advanced options using XMP
 /*
 var obj = { 
-	saveUri: "path/to/file.psd", // save to psd/ai if destination path is provided
-	exportOptions: {}, // custom export options if needed
-	templateUri: "path/to/template.ait", //
-	saveJson: false,
-	jsonData: {}, // 
-	confirmReplace: false,
-	prefix: "",
-	suffix: "", 
-	close: false
+	extension: ".png",							// output format: default is ".png", use ".json" if you only want JSON data and no images 
+	pagesArr: [ ],								// artboards to export: undefined value outputs current page, "all" for the entire collection (1-based, same number indicated on Artboards palette)
+	exportFolderUri: "/full/path/to/folder" 	// destination path // default: ./{DocumentName}-assets
+	document: false,							// saves entire layout to file along with artboard collection
+	exportOptions: {}, 							// custom export options to use for .ai/.psd format output
+	formatOptions: {}, 							// custom format options to use for .png/.svg/.pdf SmartExport ("Export For Screens")
+	templateUri: "/full/path/to/template.ait", 	// default: undefined, creates blank document using Web DocumentPreset if no template is provided
+	saveJson: false, 							// get basic coordinates from artboards (name, x, y, width, height)
+	advancedCoords: false, 						// get advanced coordinates for each artboard (slower, requires selecting items for each to get custom tags) 
+	dictionary: Pslib.docKeyValuePairs,			// bidimensional array of key/value pairs to get from document's XMP
+	bypassXmpRange: false,						// if true, does not honor the document's hardcoded .range value
+	bypassXmpDestination: false,				// if true, does not honor the document's hardcoded .destination value
+	bypassXmpSource: false,						// if true, does not honor the document's hardcoded .source value
+	namespace: undefined, 						// get document XMP tags from specific namespace
+	jsonData: {}, 								// default JSON data to include for each artboard 
+	confirmReplace: false,						// if true, will ask for permission to replace existing files
+	confirmCreateFolder: false,					// if true, will ask for permission to create directory if it does not exist in file system
+	prefix: "",									// prefix for each exported file (all supported formats)
+	objArrFunction: undefined,					// function to execute on resulting object
+	close: false								// for .ai + .psd, will leave new documents created from individual artboards open 
 };
  */
 
+/*
+	// advanced stuff
+
+	// advancedCoords gets values for tags defined in Pslib.docKeyValuePairs, 
+	// which you can override before running artboardsToFiles() ...
+
+	Pslib.XMPNAMESPACE = "http://www.geeklystrips.com/";
+	Pslib.XMPNAMESPACEPREFIX = "gs:";
+	XMPMeta.registerNamespace(Pslib.XMPNAMESPACE, Pslib.XMPNAMESPACEPREFIX);
+
+	// ...or include a namespace that is already handled earlier in the script
+	Pslib.artboardsToFiles( { saveJson: true, advancedCoords: true, dictionary: [ ["key","defaultValue"],["key","value"] ],  namespace: "http://www.domain.com/definition/"})
+
+	// hardcoded document-based XMP logic (these can potentially be used by external tools)
+	
+	obj.dictionary.range		 	// string, continuous or otherwise range of pages, so to speak -- "1-5, 7-8, 10, 12"
+	// 		a quick way to get a usable string for this is bringing up the Export For Screens dialog, selecting artboards, 
+	//		and copying the resulting value for Range to the clipboard
+	
+	obj.dictionary.destination 		// string, hardcoded export location, relative to current document "./images" or absolute "/full/path"
+	
+	obj.dictionary.source 			// string, usually a full path to the original source document used to export assets 
+									// copied to exported JSON files to facilitate ancestor retrieval from a different context
+									// you could choose to store several properties as part of a stringified object
+									// this is a complement to .parentFullName which will point to the user's local file and may not be what you need.
+
+
+
+	obj.objArrFunction				// function to be executed on resulting object
+*/
 
 // export process based on array of artboard indexes
 // you may think of this as a slower version of the Export For Screens command
 // with support for .ai + .psd output
 // (still uses Document.exportForScreens() method for PNG, SVG, PDF)
-// returns array of results objects
+
 
 // var obj = {
-//	pagesArr: [ 1, 2, 3, 4, 5 ] // 1-based (the artboard number on the Artboards palette)
+//	pagesArr: [ 1, 2, 3, 4, 5 ] 	// 1-based (the artboard number on the Artboards palette)
 //
 //	}
+// returns array of results objects
+ 
+// known bugs: multiple ranges "1-3,10-12" only yield first portion
+//
+
 Pslib.artboardsToFiles = function( obj )
 {
 	if(Pslib.isIllustrator)
@@ -2230,6 +2088,20 @@ Pslib.artboardsToFiles = function( obj )
 
 		if(!app.documents.length) return;
 		var sourceDoc = app.activeDocument;
+
+		// first check for system folder nonsense before proceeding
+			// if Document.fullName is undefined, default export location is going to point to a system directory where we have no business saving files to.
+			// on macOS getting fullName for "Untitled-1" Illustrator document that has not yet been saved to disk returns "/Untitled-1" 			
+			// Windows shows the folder where the host application lives
+			// var matchesSystem = JSUI.isWindows ? (sourceDoc.fullName.toString().match( app.path) != null) : (sourceDoc.fullName.toString() == ("/" + app.activeDocument.name));
+
+		var matchesSystem = JSUI.isWindows ? (sourceDoc.fullName.toString().match( app.path) != null) : (sourceDoc.fullName.toString() == ("/" + sourceDoc.name));
+
+		if(matchesSystem) 
+		{
+			alert("Error: Document should be saved to disk at least once before exporting assets. Please try again.");
+			return;
+		}
 
 		// if no indexes provided, get active artboard
 		if(!obj.pagesArr) { obj.pagesArr = [ sourceDoc.artboards.getActiveArtboardIndex()+1 ]; } // +1 so index zero means page one
@@ -2260,13 +2132,6 @@ Pslib.artboardsToFiles = function( obj )
 		// additional sanitization check: make sure the array does not contain page numbers that go over the document's actual length
 		var highestNum = obj.pagesArr[obj.pagesArr.length-1];
 		
-		// show this only after getting range from XMP
-		// if( highestNum > sourceDoc.artboards.length )
-		// {
-		// 	alert("Error! Artboard range outside of document's rage (#" + highestNum + ")");
-		// 	return;
-		// }
-
 		// if extension user is aking for is invalid, abort right away
 		// force PNG if not provided
 		var extension = obj.extension ? obj.extension : ".png"; // ".ai" / ".psd" 
@@ -2296,7 +2161,7 @@ Pslib.artboardsToFiles = function( obj )
 		var resultObjArr = [];
 		// var exportCount = 0;
 
-		var destinationFolder;
+		var destinationFolder = obj.exportFolderUri;
 
 		var docNameNoExt = sourceDoc.name.getFileNameWithoutExtension();
 		// var sourceDocName = sourceDoc.name.toFileSystemSafeName();
@@ -2304,40 +2169,61 @@ Pslib.artboardsToFiles = function( obj )
 
 		// var originalSelection = sourceDoc.selection;
 
-		// if no destination folder specified, use Photoshop Generator pattern
-		if(!obj.saveUri)
+		if(obj.exportFolderUri)
+		{
+			var exportFolderUriStr = obj.exportFolderUri.toString().trim();
+			if(exportFolderUriStr.length)
+			{		
+				// "./" can be dangerous, but valid
+				if(exportFolderUriStr == "./")
+				{
+					// destinationFolder = JSUI.getRelativeFolderPath( obj.exportFolderUri, sourceDoc.path);
+					destinationFolder = sourceDoc.path;
+				}
+				// if first character is a period or a slash, assume relative pattern
+				// if(exportFolderUriStr[0] == "." || (exportFolderUriStr[0] == "/" && exportFolderUriStr.length > 2))
+				else if((exportFolderUriStr.match( /^\.\// ) != null) && exportFolderUriStr.length > 2)
+				{
+					// destinationFolder = sourceDoc.path;
+					destinationFolder = JSUI.getRelativeFolderPath( obj.exportFolderUri, sourceDoc.path);
+				}
+				else
+				{
+					// if we have no periods, no slashes, no backslashes, 
+					var matchesDot = exportFolderUriStr.match( /\./g ) != null;
+					var matchesSlash = exportFolderUriStr.match( /\//g ) != null;
+					var matchesBackslash = exportFolderUriStr.match( /\\/g ) != null;
+					
+					// assume a simple directory name to add in same location as source document
+					if(!matchesDot && !matchesSlash && !matchesBackslash)
+					{
+						destinationFolder =  new Folder(sourceDoc.path + "/" + obj.exportFolderUri); 
+					}
+				}
+			}
+		}
+
+		// if no destination folder specified, force Photoshop Generator pattern
+		if(!obj.exportFolderUri)
 		{
 			var sourceDocPath = sourceDoc.path;
-			// var sourceDocFullName = sourceDoc.fullName;
-
-			// if Document.fullName is undefined, default export location is going to point to a system directory where we have no business saving files to.
-			// Windows shows the folder where the host application lives
-			// on macOS getting fullName for "Untitled-1" Illustrator document that has not yet been saved to disk returns "/Untitled-1" 
-			var matchesSystem = JSUI.isWindows ? (sourceDoc.fullName.match( app.path) != null) : (sourceDoc.fullName.toString() == ("/" + app.activeDocument.name));
-
-			if(matchesSystem) 
-			{
-				alert("Error: Document should be saved to disk at least once before exporting assets. Please try again.");
-				return;
-			}
 			destinationFolder = new Folder(sourceDocPath + "/"+ docNameNoExt.toFileSystemSafeName() + "-assets");			
-		}
-		else
-		{
-			destinationFolder = new Folder(obj.saveUri);
 		}
 
 		// get these before looping
-		var docKeyValuePairs = Pslib.getXmpDictionary( sourceDoc, Pslib.docKeyValuePairs ); // get "source" tag from document if present
+		// not going through decodeURI automatically?
+		var docKeyValuePairs = Pslib.getXmpDictionary( sourceDoc, obj.dictionary ? obj.dictionary : Pslib.docKeyValuePairs, false, false, false, obj.namespace ? obj.namespace : Pslib.XMPNAMESPACE); // get "source" tag from document if present
 
-		// if .range property found in custom XMP namespace, use as is
-		if(docKeyValuePairs.range)
+		// if .range property found in custom XMP namespace, use it to override the export location
+		if(docKeyValuePairs.range && !obj.bypassXmpRange)
 		{
-			if(typeof docKeyValuePairs.range == "string")
+			var xmpRange = decodeURI(docKeyValuePairs.range).replace(/[\s]/g,'');
+
+			if(typeof xmpRange == "string")
 			{
-				if(!isNaN(parseInt(docKeyValuePairs.range)))
+				if(!isNaN(parseInt(xmpRange)))
 				{
-					obj.pagesArr = docKeyValuePairs.range.toRangesArr();
+					obj.pagesArr = xmpRange.toRangesArr();
 				}
 			}
 
@@ -2346,7 +2232,7 @@ Pslib.artboardsToFiles = function( obj )
 
 		if( highestNum > sourceDoc.artboards.length )
 		{
-			var rangeErrorMsg = "Range Error\nParameters are outside of the document's artboard collection (" + sourceDoc.artboards.length + ")\n\nClamp the values?\n\n" + obj.pagesArr.toString();
+			var rangeErrorMsg = "Error:\nInput range is outside of document's total artboard collection (" + sourceDoc.artboards.length + ")\n\nClamp values?\n\n[" + obj.pagesArr.toString() +"]";
 
 			var confirmRangeClamp = confirm( rangeErrorMsg, "Confirm Range Clamping" );
 			if(confirmRangeClamp)
@@ -2366,19 +2252,57 @@ Pslib.artboardsToFiles = function( obj )
 			}
 		}
 
+		// if destination tag found, process info
+		if(docKeyValuePairs.destination	&& !obj.bypassXmpDestination)
+		{
+			var xmpUriStr = decodeURI(docKeyValuePairs.destination).trim();
+
+			// if obj.exportFolderUri was NOT provided and we have a .destination defined in XMP, 
+			// remove "-assets" pattern relative to activeDocument path and use source file path as a template
+			// there should be a check to make sure an output file is not going to replace the active document on disk
+			if(!obj.exportFolderUri) destinationFolder = sourceDoc.path;
+
+			// check if destination is relative or absolute
+			var relativeDir = JSUI.getRelativeFolderPath( xmpUriStr, destinationFolder );
+			destinationFolder = relativeDir;
+
+			// issue IF single-word path in XMP && single-word path in obj.exportFolderUri: 
+			// currently results in this pattern: {Document.path}/{obj.exportFolderUri}/{xmp.destination}
+
+			// if we have no periods, no slashes, no backslashes, 
+			var matchesDot = xmpUriStr.match( /\./g ) != null;
+			var matchesSlash = xmpUriStr.match( /\//g ) != null;
+			var matchesBackslash = xmpUriStr.match( /\\/g ) != null;
+			
+			// assume a simple directory name to add in same location as source document (?)
+			if(!matchesDot && !matchesSlash && !matchesBackslash)
+			{
+				destinationFolder =  new Folder(sourceDoc.path + "/" + xmpUriStr); 
+			}
+
+			if((xmpUriStr.match( /^\.\// ) != null) && xmpUriStr.length > 2)
+			{
+				// destinationFolder = sourceDoc.path;
+				destinationFolder = JSUI.getRelativeFolderPath( xmpUriStr, sourceDoc.path);
+			}
+		}
+
+		// alert( "exportFolderUri!\n" + obj.exportFolderUri + "\n" + obj.exportFolderUri.match(/^\.\//) + "\n" + destinationFolder);
+
+		// issue here if chain of directories to create is longer than one
+		// "./images" will work, "./output/images" will not 
 		var destDirCheck = new Folder(destinationFolder);
 		var dirParent = destDirCheck.parent;
 
-		// if destination tag found, process info
-		// (should be easy to bypass)
-		if(docKeyValuePairs.destination)
+		// at this point if .parent points to system folder, abort
+		if(dirParent.toString() == "/" || dirParent.toString().match(app.path) != null)
 		{
-			// check if destination is relative or absolute
-			var relativeDir = JSUI.getRelativeFolderPath( docKeyValuePairs.destination, destinationFolder );
-			destinationFolder = relativeDir;
-
-			// alert("destDirCheck: " + destDirCheck + "\nParent exists: " + dirParent +  "\nparent exists: " + dirParent.exists + "\n\n" + relativeDir + "\ndestination exists: " + relativeDir.exists);
+			alert("Error: Destination path invalid Please try again.\n\n" + destinationFolder);
+			return;
 		}
+		
+
+		// alert("destDirCheck: " + destDirCheck + "\nParent exists: " + dirParent +  "\nparent exists: " + dirParent.exists + "\n\n" + relativeDir + "\ndestination exists: " + relativeDir.exists);
 
 		// if parent directory is present but target directory does not, create it.
 		if(dirParent.exists && !destinationFolder.exists)
@@ -2410,10 +2334,10 @@ Pslib.artboardsToFiles = function( obj )
 		if(extension == ".png" || extension == ".svg" || extension == ".pdf" || extension == ".json" ) //obj.saveJson
 		{
 			var prefixStr = obj.prefix != undefined ? obj.prefix : "";
-
+			// var suffixStr = obj.suffix != undefined ? obj.suffix : ""; // this won't work with ExportForScreens
             var exportOptions = new ExportForScreensItemToExport();
 			exportOptions.artboards = obj.pagesArr.toSimplifiedString(); // [1, 2, 3, 4, 5] becomes "1-5"
-            exportOptions.document = false; // exports docname.png/.svg
+            exportOptions.document = obj.document ? obj.document : false; // exports docname.png/.svg
 
 			switch(extension)
 			{
@@ -2504,10 +2428,12 @@ Pslib.artboardsToFiles = function( obj )
 		// prepare object to return forensic info along with data
 		var resultObj = {};
 
-		if((extension == ".psd" || extension == ".ai" || extension == ".json") )
+		// if((extension == ".psd" || extension == ".ai" || extension == ".json") || obj.saveJson )
+		if((extension == ".psd" || extension == ".ai" || extension == ".json" || extension == ".png" || extension == ".svg" || extension == ".pdf" ) || obj.saveJson )
 		{
 			for(var i = 0; i < obj.pagesArr.length; i++)
 			{
+				resultObj = {};
 				app.activeDocument = sourceDoc;
 				var artboardIndex = obj.pagesArr[i];
 				sourceDoc.artboards.setActiveArtboardIndex(artboardIndex-1);
@@ -2612,17 +2538,10 @@ Pslib.artboardsToFiles = function( obj )
 					// }
 
 					// // get xmp tags if present
-					if(docKeyValuePairs.source) artboardJsonData.source = docKeyValuePairs.source;
-
-					// // default key-value pairs for document (usually XMP)
-					// // Pslib.docKeyValuePairs = [ [ "source", null ], [ "range", null ], [ "destination", null ], [ "specs", null ],  [ "custom", null ]  ];
-					// // // Pslib.docKeyValuePairs = [ [ "source", "range", "destination", "specs", "custom" ] ];
-
-					// // are there relevant at the child level?
-					// if(docKeyValuePairs.range) artboardJsonData.range = docKeyValuePairs.range;
-					// if(docKeyValuePairs.destination) artboardJsonData.destination = docKeyValuePairs.destination; // custom export location
-					// if(docKeyValuePairs.specs) artboardJsonData.specs = docKeyValuePairs.specs;
-					// if(docKeyValuePairs.custom) artboardJsonData.custom = docKeyValuePairs.custom;
+					if(docKeyValuePairs.source && !obj.bypassXmpSource)
+					{
+						artboardJsonData.source = docKeyValuePairs.source;
+					}
 				}
 
 				// only create new document if exporting to PSD or AI
@@ -2655,7 +2574,6 @@ Pslib.artboardsToFiles = function( obj )
 							}
 						}
 					}
-
 
 					// if ".ai", use saveAs() method
 					if(extension == ".ai")
@@ -2732,26 +2650,86 @@ Pslib.artboardsToFiles = function( obj )
 				}
 
 				// close new document if properly saved
-				if(obj.close && obj.saveUri && (extension == ".ai" || extension == ".psd"))
+				// if(obj.close && obj.exportFolderUri && (extension == ".ai" || extension == ".psd"))
+				if(obj.close && (extension == ".ai" || extension == ".psd"))
 				{
 					newDoc.close(SaveOptions.DONOTSAVECHANGES);
 					app.activeDocument = sourceDoc;
 				}
-				else if ( obj.saveUri && (extension == ".ai" || extension == ".psd") ) 
+				else if ( obj.exportFolderUri && (extension == ".ai" || extension == ".psd") ) 
 				{
 					// zoom on content
 					Pslib.zoomOnArtboard(destArtboard);
-					// app.activeDocument.views[0].zoom = 1.0;
 				}
 
+				if((extension == ".png" || extension == ".svg" || extension == ".pdf"))
+				{
+					resultObj.outputFile = outputFile;
+				}
 				resultObjArr.push(resultObj);
 			}
 		}
 
+		// if asked to export entire document
+		if(obj.document)
+		{
+			if(app.activeDocument != sourceDoc)
+			{
+				app.activeDocument = sourceDoc;
+			}
+
+			var outputFile = new File( destinationFolder + "/" + (obj.prefix != undefined ? obj.prefix : "") + docNameNoExt + extension );
+
+			if(extension == ".psd")
+			{
+				if(obj.exportOptions)
+				{
+					var psdOpts = obj.exportOptions;
+				}
+				else
+				{
+					var psdOpts = new ExportOptionsPhotoshop();
+					
+					// (merged layers)
+					psdOpts.antiAliasing = true;
+					psdOpts.editableText = false;
+					psdOpts.embedICCProfile = true;
+					psdOpts.imageColorSpace = ImageColorSpace.RGB;
+					psdOpts.maximumEditability = false;
+					psdOpts.writeLayers = false;
+					psdOpts.resolution = 72;
+				}
+	
+				sourceDoc.exportFile( outputFile, ExportType.PHOTOSHOP, psdOpts);
+			}
+			if(extension == ".ai")
+			{
+				if(obj.exportOptions)
+				{
+					var aiOpts = obj.exportOptions;
+				}
+				else
+				{
+					var aiOpts = new IllustratorSaveOptions();
+					aiOpts.pdfCompatible = true;
+					aiOpts.compressed = true;
+					aiOpts.embedICCProfile = true;
+					aiOpts.embedLinkedFiles = true;
+					aiOpts.saveMultipleArtboards = false;
+				}
+
+				// here, saving "as" basically destroys the original document
+				// we need to saveAs, then reopen original
+				// this can be dangerous if one of the exported has the same name
+				var sourceDocFullPath = sourceDoc.fullName;
+				sourceDoc.saveAs( outputFile, aiOpts);
+				sourceDoc.close(SaveOptions.DONOTSAVECHANGES);
+				sourceDoc = app.open(sourceDocFullPath);
+			}
+		}	
+
 		if((extension == ".png" || extension == ".svg" || extension == ".pdf"))
 		{
-			resultObj.outputFile = outputFile;
-
 			// restore "Create Sub-folders" setting if needed
 			if(smartExportUICreateFoldersPreference_UserValue)
 			{
@@ -2759,12 +2737,42 @@ Pslib.artboardsToFiles = function( obj )
 			}
 		}
 
-		// if global JSON file needed, build here from resulting array
-
+		// if single JSON file needed for entire hierarchy, build here from resulting array
+		if(obj.objArrFunction != undefined)
+		{
+			var objArrFunctionResults = obj.objArrFunction(resultObjArr);
+			// option to return results instead?
+			// return objArrFunctionResults;
+		}
 
 		return resultObjArr;
 	}
 }
+
+// wrapper used to quickly export current artboard
+Pslib.artboardToFile = function( obj )
+{
+	if(Pslib.isIllustrator)
+	{
+		if(!obj) obj = {};
+		obj.pagesArr = undefined;
+		obj.bypassXmpRange = true;
+		return Pslib.artboardsToFiles( obj );
+	}
+}
+
+// wrapper used to quickly export all artboards
+Pslib.allArtboardsToFiles = function( obj )
+{
+	if(Pslib.isIllustrator)
+	{
+		if(!obj) obj = {};
+		obj.pagesArr = "all";
+		obj.bypassXmpRange = true;
+		return Pslib.artboardsToFiles( obj );
+	}
+}
+
 
 Pslib.createNewDocument = function( templateUri )
 {
@@ -2788,14 +2796,14 @@ Pslib.createNewDocument = function( templateUri )
 		}
 		else
 		{
-			var dp = DocumentPreset;
+			var dp = new DocumentPreset();
 			dp.colorMode = DocumentColorSpace.RGB;
 			dp.width = 128;
 			dp.height = 128;
 			dp.previewMode = DocumentPreviewMode.PixelPreview;
-			dp.rasterResolution = DocumentRasterResolution.ScreenResolution;
+			dp.rasterResolution = DocumentRasterResolution.ScreenResolution; // .HighResolution, .MediumResolution
 			dp.units = RulerUnits.Pixels;
-			dp.transparencyGrid = DocumentTransparencyGrid.TransparencyGridMedium;
+			dp.transparencyGrid = DocumentTransparencyGrid.TransparencyGridMedium; // .TransparencyGridDark
 
 			// newDoc = app.documents.add( app.activeDocument.documentColorSpace);
 			newDoc = app.documents.addDocument("Web", dp);
@@ -2873,7 +2881,7 @@ Pslib.getArtboardSpecsInfo = function( obj )
     {
         var obj = { };
 		// obj.artboards = [];
-		// if(JSUI.isIllustrator) obj.artboards = app.activeDocument.artboards;
+		// if(Pslib.isIllustrator) obj.artboards = app.activeDocument.artboards;
 
     }
 
@@ -2946,7 +2954,7 @@ Pslib.getArtboardSpecsInfo = function( obj )
 // var rectObj = { artboard: artboard, name: "#", tags: [ ["name", "value"], ["name", "value"] ], sendToBack: true  };
 Pslib.addArtboardRectangle = function ( obj )
 {
-	if(JSUI.isIllustrator)
+	if(Pslib.isIllustrator)
 	{
 		if(!obj.artboard) return;
 
@@ -2979,147 +2987,14 @@ Pslib.addArtboardRectangle = function ( obj )
 	}
 }
 
-
-// // beware: duplicate math functions from JSUI
-// // these are only created if JSUI object does not exist
-// if (typeof JSUI !== "object")
-// {
-// 	Number.prototype.isPowerOf2 = function()
-// 	{
-// 		var n = this.valueOf();
-// 		var abs = Math.abs(n);
-	
-// 		if(Math.floor(n) !== n) return false;
-// 		if(abs !== n) n = abs;
-// 		return n && (n & (n - 1)) === 0;
-// 	};
-	
-// 	Number.prototype.getNextPow2 = function()
-// 	{
-// 		var p = 2;
-// 		var n = Math.floor(this.valueOf());
-// 		if(n.isPowerOf2()) n++;
-	
-// 		while(n > p)
-// 		{
-// 			p = p * 2;
-// 		}
-// 		return p;
-// 	};
-	
-// 	Number.prototype.getPreviousPow2 = function()
-// 	{
-// 		var p = 2;
-// 		var n = this.valueOf();
-// 		if(n.isPowerOf2()) n--;
-// 		n = Math.floor(n);
-	
-// 		while(n >= p)
-// 		{
-// 			p = p * 2;
-// 		}
-// 		return p / 2;
-// 	};
-	
-// 	Number.prototype.isMultOf = function(m)
-// 	{
-// 		if(m == undefined || isNaN(m))
-// 		{
-// 			return;
-// 		}
-// 		var n = this.valueOf();
-// 		return (Math.ceil(n/m) * m == n);
-// 	};
-	
-// 	Number.prototype.getNextMultOf = function(m)
-// 	{
-// 		var n = this.valueOf();
-// 		if(n.isMultOf(m)) n++;
-// 		return (n % m == 0) ? n : ( n + (m - (n % m)) );
-// 	};
-	
-// 	Number.prototype.getPreviousMultOf = function(m)
-// 	{
-// 		var n = this.valueOf();
-// 		if(n.isMultOf(m)) n--;
-// 		// return (n % m == 0) ? n : ( n + (m - (n % m)) );
-	
-// 		if(n % m == 0) return n;
-// 		// else if(n < m) return n.getNextMultOf(m);
-// 		else if(n < m) return m;
-// 		else return n - (n % m);
-// 	};
-	
-// 	Number.prototype.isMult4 = function()
-// 	{
-// 		var n = this.valueOf();
-// 		return n.isMultOf(4);
-// 	};
-	
-// 	Number.prototype.getPreviousMult4 = function()
-// 	{
-// 		var n = this.valueOf();
-// 		n = n.getPreviousMultOf(4)
-// 		return n;
-// 	};
-	
-// 	Number.prototype.getNextMult4 = function()
-// 	{
-// 		var n = this.valueOf();
-// 		return n.getNextMultOf(4);
-// 	};
-	
-// 	Number.prototype.isMult8 = function()
-// 	{
-// 		var n = this.valueOf();
-// 		return n.isMultOf(8);
-// 	};
-	
-// 	Number.prototype.getPreviousMult8 = function()
-// 	{
-// 		var n = this.valueOf();
-// 		return n.getPreviousMultOf(8);
-// 	};
-	
-// 	Number.prototype.getNextMult8 = function()
-// 	{
-// 		var n = this.valueOf();
-// 		return n.getNextMultOf(8);
-// 	};
-	
-// 	// multiples of 16
-	
-// 	Number.prototype.isMult16 = function()
-// 	{
-// 		var n = this.valueOf();
-// 		return n.isMultOf(16);
-// 	};
-	
-// 	Number.prototype.getPreviousMult16 = function()
-// 	{
-// 		var n = this.valueOf();
-// 		return n.getPreviousMultOf(16);
-// 	};
-	
-// 	Number.prototype.getNextMult16 = function()
-// 	{
-// 		var n = this.valueOf();
-// 		return n.getNextMultOf(16);
-// 	};	
-
-// 	if($.level)
-// 	{
-// 		$.writeln("\nJSUI not found: Math function duplicates created.");
-// 	}
-// }
-// else
-// {
-// 	if($.level)
-// 	{
-// 		$.writeln("\nJSUI found: Native math functions will be used.");
-// 	}
-
-// }
+// from JSUI if not included along with Pslib
+if(typeof JSUI !== "object")
+{
+	String.prototype.trim = function()
+	{
+		return this.replace(/^[\s]+|[\s]+$/g,'');
+	};
+}
 
 // DEBUG AREA
 
