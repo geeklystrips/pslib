@@ -132,6 +132,7 @@ Pslib.isPs64bits = BridgeTalk.appVersion.match(/\d\d$/) == '64';
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
+Pslib.isInDesign = app.name == "Adobe InDesign";
 Pslib.isBridge = app.name == "Adobe Bridge";
 
 if(Pslib.isPhotoshop)
@@ -661,7 +662,23 @@ Pslib.getXmp = function (target, createNew)
 		try
 		{
 			if($.level) $.writeln("Attempting to get metadata for target \"" + target.name + "\"");
-			xmp = new XMPMeta( Pslib.isIllustrator ? target.XMPString : target.xmpMetadata.rawData );
+
+			if(Pslib.isInDesign)
+			{
+				xmp = new XMPMeta(Pslib.getInDesignDocumentXMP(target));
+			}
+			else if(Pslib.isPhotoshop)
+			{
+				xmp = new XMPMeta(target.xmpMetadata.rawData );
+			}
+			else if(Pslib.isIllustrator)
+			{
+				xmp = new XMPMeta(target.XMPString);
+			}
+			else
+			{
+				xmp = new XMPMeta();
+			}
 		}
 		catch( e )
 		{
@@ -677,20 +694,41 @@ Pslib.getXmp = function (target, createNew)
 	}
 };
 
+// get xmp data from active InDesign document
+Pslib.getInDesignDocumentXMP = function( target )
+{
+	if(!app.documents.length) return;
+	if(Pslib.isInDesign)
+	{
+		var target = target ? target : app.activeDocument;
+		var file = new File( Folder.temp + "/indesignmeta.xmp" );
+		file.encoding="UTF-8";
+		target.metadataPreferences.save(xmpFile);
+		file.open('r');
+		var xmpStr = file.read();
+		file.close();
+		file.remove();
+	
+		return new XMPMeta(xmpStr);
+	}
+	return;
+}
+
 // get property: returns a string
 Pslib.getXmpProperty = function (target, property, namespace)
 {
 	// make sure XMP lib stuff is available
 	if(Pslib.loadXMPLibrary())
 	{
-		var target = (target == undefined ? ( Pslib.isIllustrator ? app.activeDocument : app.activeDocument.activeLayer) : target);
+		var target = (target == undefined ? ( (Pslib.isIllustrator || Pslib.isInDesign ) ? app.activeDocument : app.activeDocument.activeLayer) : target);
 		var value;
 		var xmp;
 		
 		// access metadata
 		try
 		{
-			xmp = new XMPMeta( Pslib.isIllustrator ? target.XMPString : target.xmpMetadata.rawData );
+			// xmp = new XMPMeta( Pslib.isIllustrator ? target.XMPString : target.xmpMetadata.rawData );
+			xmp = Pslib.getXmp(target);
 			value = decodeURI(xmp.getProperty(namespace ? namespace : Pslib.XMPNAMESPACE, property));
 			return value;
 		
@@ -711,14 +749,19 @@ Pslib.deleteXmpProperty = function (target, property, namespace)
 	// load library
 	if(Pslib.loadXMPLibrary())
 	{
-		var target = (target == undefined ? ( Pslib.isIllustrator ? app.activeDocument : app.activeDocument.activeLayer) : target);
-		var xmp = Pslib.getXmp(target);
+		var target = (target == undefined ? ( (Pslib.isIllustrator || Pslib.isInDesign)  ? app.activeDocument : app.activeDocument.activeLayer) : target);
+		var xmp;
+		if(Pslib.isIllustrator || Pslib.isPhotoshop) xmp = Pslib.getXmp(target);
+		// in the case of indesign, we are removing property live from document, not from xmp object
+		else if(Pslib.isInDesign) xmp = target.metadataPreferences;
 		
 		try
 		{
 			xmp.deleteProperty(namespace ? namespace : Pslib.XMPNAMESPACE, property);
+
 			if(Pslib.isPhotoshop) target.xmpMetadata.rawData = xmp.serialize();
 			else if(Pslib.isIllustrator) target.XMPString = xmp.serialize();
+			// else if(Pslib.isInDesign) // no need to go there...?
 			return true;
 		}
 		catch( e )
@@ -1347,7 +1390,7 @@ Pslib.getDocumentPath = function(doc)
 		var desc = executeActionGet(ref);
 		return desc.hasKey(cTID('FilR')) ? desc.getPath(cTID('FilR')) : undefined;
 	}
-	else
+	else if(Pslib.isIllustrator)
 	{
 		var doc = doc != undefined ? doc : app.activeDocument;
 		if(app.activeDocument != doc) app.activeDocument = doc;
@@ -1355,7 +1398,7 @@ Pslib.getDocumentPath = function(doc)
 		var docNameNoExt = doc.name.match(/([^\.]+)/)[1];
 		var docFullPath = doc.fullName;
 		var matchesSystem = docFullPath.toString().match( app.path) != null;
-		var defaultExportDir = docNameNoExt.replace(/[\s:\/\\*\?\"\<\>\|]/g, "_") + "-assets";
+		// var defaultExportDir = docNameNoExt.replace(/[\s:\/\\*\?\"\<\>\|]/g, "_") + "-assets";
 		
 		// .fullName pointing to app.path means document has not been saved to disk
 		// if(matchesSystem)
@@ -1368,6 +1411,20 @@ Pslib.getDocumentPath = function(doc)
 		// 	targetDirectory = new Folder (docFullPath.parent + "/" + defaultExportDir);
 		// }
 		// alert(docFullPath);
+		return matchesSystem ? undefined : docFullPath;
+	}
+	else if(Pslib.isInDesign)
+	{
+		var docFullPath;
+		var matchesSystem = true;
+		
+		try{
+			docFullPath = doc.fullName;
+			matchesSystem = docFullPath.toString().match( app.path ) != null;
+		}
+		catch(e){}
+
+		// alert("docFullPath: " + docFullPath);
 		return matchesSystem ? undefined : docFullPath;
 	}
 };
@@ -1782,6 +1839,92 @@ Pslib.getArtboardSpecs = function( artboard )
 		}
 
 		return specs;
+	}
+}
+
+// quick check for selection / collection of items intersecting with artboard geometry
+// if getItems, returns array of overlaps
+Pslib.getItemsOverlapArtboard = function( itemsArr, artboard, getItems )
+{
+	if(Pslib.isIllustrator)
+	{
+		if(!app.documents.length) return;
+		var doc = app.activeDocument;
+
+		if(!artboard) var artboard = Pslib.getActiveArtboard();
+		if(!itemsArr) var itemsArr = doc.selection ? doc.selection : undefined;
+		if(!itemsArr) return;
+
+		if(getItems) var overlapsArr = [];
+
+		var artboardCoords = Pslib.getArtboardCoordinates(artboard);
+
+		var abx1 = artboardCoords.x;
+		var abx2 = artboardCoords.x + artboardCoords.width;
+		var aby1 = artboardCoords.y;
+		var aby2 = artboardCoords.y + artboardCoords.height;
+
+		var overlaps = false;
+
+		// function returns true if a single item in collection overlaps artboard geometry
+		for(var i = 0; i < itemsArr.length; i++)
+		{
+			var item = itemsArr[i];
+			var itemCoords = { x: item.left, y: -item.top, width: item.width, height: item.height};
+
+			var itx1 = itemCoords.x; 
+			var itx2 = itemCoords.x + itemCoords.width;
+			var ity1 = itemCoords.y;
+			var ity2 = itemCoords.y + itemCoords.height;
+			
+			var thisItemOverlaps = ((abx1 < itx2) && (itx1 < abx2) && (aby1 < ity2) && (ity1 < aby2));
+			if(thisItemOverlaps)
+			{
+				overlaps = true;
+				if(getItems) overlapsArr.push(item);
+				// if not returning items, break the loop early
+				else break; 
+			}
+		}
+
+		return getItems ? overlapsArr : overlaps;
+	}
+}
+
+// get collection of artboards for which selected items have an overlap with
+// tried using .splice on a copy of doc.artboards, illustrator does NOT like it
+Pslib.getArtboardsFromSelectedItems = function( itemsArr, getPagesBool )
+{
+	if(Pslib.isIllustrator)
+	{
+		if(!app.documents.length) return;
+		var doc = app.activeDocument;
+
+		if(!itemsArr) var itemsArr = doc.selection ? doc.selection : undefined;
+		if(!itemsArr) return;
+
+		var docArtboards = doc.artboards;
+		var artboards = [];
+
+		for(var j = docArtboards.length-1; j >= 0; j--)
+		{
+			var artboard = docArtboards[j];
+			var artboardFound = false;
+
+			for(var i = 0; i < itemsArr.length; i++)
+			{
+				var item = itemsArr[i];
+				artboardFound = Pslib.getItemsOverlapArtboard([item], artboard, false);
+				
+				if(artboardFound)
+				{
+					artboards.push(getPagesBool ? (j+1) : artboard );
+					break;
+				}
+			}
+		}
+
+		return artboards;
 	}
 }
 
