@@ -665,7 +665,8 @@ Pslib.getXmp = function (target, createNew)
 
 			if(Pslib.isInDesign)
 			{
-				xmp = new XMPMeta(Pslib.getInDesignDocumentXMP(target));
+				// xmp = new XMPMeta(Pslib.getInDesignDocumentXMP(target));
+				xmp = Pslib.getInDesignDocumentXMP(target);
 			}
 			else if(Pslib.isPhotoshop)
 			{
@@ -683,7 +684,7 @@ Pslib.getXmp = function (target, createNew)
 		catch( e )
 		{
 			if($.level) $.writeln("Metadata could not be found for target \"" + target.name + "\"" + (createNew ? "\nCreating new XMP object." : "") );
-			if(createNew) xmp = new XMPMeta();
+			if(createNew && !Pslib.isInDesign) xmp = new XMPMeta();
 		}
 
 		return xmp;
@@ -703,11 +704,13 @@ Pslib.getInDesignDocumentXMP = function( target )
 		var target = target ? target : app.activeDocument;
 		var file = new File( Folder.temp + "/indesignmeta.xmp" );
 		file.encoding="UTF-8";
-		target.metadataPreferences.save(xmpFile);
+
+		target.metadataPreferences.save(xmpFile); // this cannot happen while ScriptUI is showing a dialog!
+
 		file.open('r');
 		var xmpStr = file.read();
 		file.close();
-		file.remove();
+		// file.remove();
 	
 		return new XMPMeta(xmpStr);
 	}
@@ -783,7 +786,11 @@ Pslib.deleteXmpProperties = function (target, propertiesArray, namespace)
 	if(Pslib.loadXMPLibrary())
 	{
 		var target = (target == undefined ? ( Pslib.isIllustrator ? app.activeDocument : app.activeDocument.activeLayer) : target);
-		var xmp = Pslib.getXmp(target);
+		// var xmp = Pslib.getXmp(target);
+				
+		if(Pslib.isIllustrator || Pslib.isPhotoshop) xmp = Pslib.getXmp(target);
+		// in the case of indesign, we are removing property live from document, not from xmp object
+		else if(Pslib.isInDesign) xmp = target.metadataPreferences;
 		
 		try
 		{
@@ -826,9 +833,33 @@ Pslib.setXmpProperties = function (target, propertiesArray, namespace)
 		try
 		{
 		//    xmp = new XMPMeta( target.xmpMetadata.rawData );
-		   xmp = new XMPMeta( Pslib.isIllustrator ? target.XMPString : target.xmpMetadata.rawData );
+		//    xmp = new XMPMeta( Pslib.isIllustrator ? target.XMPString : target.xmpMetadata.rawData );
+
+		if(Pslib.isIllustrator || Pslib.isPhotoshop )
+		{
+			xmp = Pslib.getXmp(target);
+		}
+		else if(Pslib.isInDesign)
+		{
+			xmp = target.metadataPreferences;
+			// alert("Adding property to indesign doc");
+		}
+
+		   // if scriptui interfering...
+		   if(xmp === undefined)
+		   {
+				var file = new File( Folder.temp + "/indesignmeta.xmp" );
+				file.encoding = "UTF-8";
+				file.open('r');
+				var xmpStr = file.read();
+				file.close();
+
+				xmp = new XMPMeta(xmpStr);
+		   }
+
 		   if($.level) $.writeln("XMP Metadata successfully fetched from target \"" + target.name + "\"");
-		} catch( e ) 
+		} 
+		catch( e ) 
 		{
 		//	if($.level) $.writeln("XMP metadata could not be found for target \"" + target.name + "\".\nCreating new floating XMP container.");
 			xmp = new XMPMeta(  );
@@ -844,7 +875,8 @@ Pslib.setXmpProperties = function (target, propertiesArray, namespace)
 			// modify metadata
 			try
 			{
-				var propertyExists = xmp.doesPropertyExist(namespace ? namespace : Pslib.XMPNAMESPACE, prop);
+				// var propertyExists = xmp.doesPropertyExist(namespace ? namespace : Pslib.XMPNAMESPACE, prop);
+				var propertyExists = Pslib.isInDesign ? false : xmp.doesPropertyExist(namespace ? namespace : Pslib.XMPNAMESPACE, prop);
 				
 				// add new property if not found
 				if(!propertyExists)
@@ -875,6 +907,7 @@ Pslib.setXmpProperties = function (target, propertiesArray, namespace)
 		// apply and serialize
 		if(Pslib.isPhotoshop) target.xmpMetadata.rawData = xmp.serialize();
 		else if(Pslib.isIllustrator) target.XMPString = xmp.serialize();
+		else if(Pslib.isInDesign) target.metadataPreferences = xmp.serialize();
 		// if($.level) $.writeln("Provided properties were successfully added to object \"" + target.name + "\"");
 
 
@@ -902,7 +935,8 @@ Pslib.getXmpProperties = function (target, propertiesArray, namespace)
 		// access metadata
 		try
 		{
-		   xmp = new XMPMeta( Pslib.isIllustrator ? target.XMPString : target.xmpMetadata.rawData );
+		//    xmp = new XMPMeta( Pslib.isIllustrator ? target.XMPString : target.xmpMetadata.rawData );
+		   xmp = Pslib.getXmp(target);
 		   if($.level) $.writeln("XMP Metadata successfully fetched from target \"" + target.name + "\"");
 		} catch( e ) 
 		{
@@ -967,12 +1001,22 @@ Pslib.getPropertiesArray = function (target, namespace, nsprefix)
 		// access metadata
 		try
 		{
-		   xmp = new XMPMeta( Pslib.isIllustrator ? target.XMPString : target.xmpMetadata.rawData );
+		//    xmp = new XMPMeta( Pslib.isIllustrator ? target.XMPString : target.xmpMetadata.rawData );
+			xmp = Pslib.getXmp(target);
 		   if($.level) $.writeln("XMP Metadata successfully fetched from target \"" + target.name + "\"");
 		} catch( e ) 
 		{
 			if($.level) $.writeln("XMP metadata could not be found for target \"" + target.name + "\".\nCreating new XMP metadata container.");
 			return null;
+		}
+
+		if(Pslib.isInDesign)
+		{
+			if ( xmp === undefined )
+			{
+				if($.level) $.writeln("XMP metadata could not be found for target \"" + target.name + "\".\nCreating new XMP metadata container.");
+				return null;
+			}
 		}
 	
 		// XMPConst.ITERATOR_JUST_CHILDREN	XMPConst.ITERATOR_JUST_LEAFNODES	XMPConst.ITERATOR_JUST_LEAFNAMES	XMPConst.ITERATOR_INCLUDE_ALIASES
