@@ -1967,7 +1967,7 @@ Pslib.getArtboardsFromSelectedItems = function( itemsArr, getPagesBool )
 				}
 			}
 		}
-
+		artboards.reverse();
 		return artboards;
 	}
 }
