@@ -1,6 +1,8 @@
 /*
     IllustratorTagEditor.jsx
 
+    TODO
+    - add color picker for placeholder color?
 
 
 */
@@ -17,13 +19,14 @@ if(app.documents.length)
 
 function Main()
 {
+    var placeholderPatternStr = "#";
     var doc = app.activeDocument;
     var selection = doc.selection;
 
     // store current artboard specs for comparison with selected objects
     var initialArtboardSelection = doc.artboards.getActiveArtboardIndex();
     var initialArtboard = doc.artboards[initialArtboardSelection];
-    var initialArtboardCoords = JSUI.getArtboardCoordinates(initialArtboard);
+    var initialArtboardCoords = Pslib.getArtboardCoordinates(initialArtboard);
 
     var itemFound = false;
 
@@ -43,35 +46,32 @@ function Main()
         }
         else
         {
-            itemFound = JSUI.getArtboardItem(initialArtboard, "#");
+            itemFound = Pslib.getArtboardItem(initialArtboard, placeholderPatternStr);
             if(itemFound) Main();
         }
-        // else 
-        // {
-        //     alert("Select a \"#\" PathItem and try again.");
-        // }
     }
     else
     {
-        // if no selection active, look for placeholder # item, select it, and restart process
-        itemFound = JSUI.getArtboardItem(initialArtboard, "#");
+        // if no selection active, look for placeholder item, select it, and restart process
+        itemFound = Pslib.getArtboardItem(initialArtboard, placeholderPatternStr);
         if(itemFound) Main();
     }
 
     if (!itemFound)
     {
-
-        // alert("Select a \"#\" PathItem and try again.");
         var confirmCreateNew = false;
-        confirmCreateNew = JSUI.confirm( "No placeholder item found on artboard \""+initialArtboard.name+"\". Create new?" );
+        // confirmCreateNew = JSUI.confirm( "No placeholder item found on artboard \""+initialArtboard.name+"\". Create new?" );
+        confirmCreateNew = confirm( "No placeholder item found on artboard \""+initialArtboard.name+"\". Create new?" );
 
         if(confirmCreateNew)
         {
-            var artboard = JSUI.getActiveArtboard();
+            var artboard = Pslib.getActiveArtboard();
             var indexNum = doc.artboards.getActiveArtboardIndex();
             var pageNum = indexNum+1;
-            var rectObj = { artboard: artboard, name: "#", tags: [ ["name", artboard.name], ["index", indexNum], ["page", pageNum], ["assetID", ""] ], sendToBack: true  };
-            var placeholder = JSUI.addArtboardRectangle( rectObj );
+            var rectObj = { artboard: artboard, name: placeholderPatternStr, tags: [ ["name", artboard.name], ["index", indexNum], ["page", pageNum], ["assetID", ""] ], hex: undefined, opacity: undefined, layer: doc.layers.getByName("Placeholders"), sendToBack: true  };
+
+            var placeholder = Pslib.addArtboardRectangle( rectObj );
+ 
             doc.selection = placeholder;
             Main();
         }
@@ -82,7 +82,7 @@ function Main()
     }
 }
 
-// select first "#" PathItem if found on current artboard
+// select first PathItem if found on current artboard
 function getPlaceholderItem()
 {
     var placeholder;
@@ -105,7 +105,7 @@ function getPlaceholderItem()
                 for (var j = 0; j < groupItems.length; j++)
                 {
                     var subItem = groupItems[j];
-                    if(subItem.name == "#")
+                    if(subItem.name == placeholderPatternStr)
                     {
                         placeholder = subItem;
                         found = true;
@@ -118,7 +118,7 @@ function getPlaceholderItem()
                 item.isIsolated = false;
             }
 
-            else if(item.name == "#")
+            else if(item.name == placeholderPatternStr)
             {
                 placeholder = item;
                 found = true;
@@ -134,7 +134,7 @@ function showUI(item)
 {
     var doc = app.activeDocument;
     var item = item;
-    var artboard = JSUI.getActiveArtboard();
+    var artboard = Pslib.getActiveArtboard();
     var artboardIndex = doc.artboards.getActiveArtboardIndex();
     var artboardName = artboard ? artboard.name : "";
 
@@ -150,10 +150,6 @@ function showUI(item)
     documentLabel.addStaticText( { text: documentLabelStr, multiline: false, alignment: "left" } );
 
     var mainContainer = win.addRow( { spacing: 10 } );
-
-    // var updateableColumn = mainContainer.addColumn( { alignChildren: "fill" });
-    // var getTagsPanel = updateableColumn.addPanel( { label: "Existing tags", width: 400, margins: 15, alignment: "fill" } );
-    // var tagsColumn = getTagsPanel.addColumn( { alignment: "fill", spacing: 10 });
 
     var listboxColumn = mainContainer.addColumn();
     var listboxPanel = listboxColumn.addPanel( { label: "Existing tags", width: 400, margins: 15, alignChildren: "fill" } );
@@ -178,7 +174,6 @@ function showUI(item)
                 {
                     value += (i < splt.length ? "," : "")+splt[i];
                 }
-
             }
             tagValueEditText.text = value;
         }
@@ -252,16 +247,13 @@ function showUI(item)
     var autoTagBtn = advancedOptionsPanel.addButton( { label: "Auto-Tag", helpTip: "Automatically add tags based on artboard name and index" });
     var clearAllTagsBtn = advancedOptionsPanel.addButton( { label: "Clear All", helpTip: "Remove all tags" });
 
-
     setTagslbBtn.onClick = function ( )
     {
-        // get values
         var name = tagNameEditText.text.trim();
         var value = tagValueEditText.text.trim();
 
         if(name != "")
         {
-            // expects [ ["name", "value"], ["name", "value"]]
             Pslib.setTags( item, [ [ name, value ] ] );
             tagsListbox.update();
         }
@@ -277,31 +269,18 @@ function showUI(item)
 
             tagNameEditText.text = "";
             tagValueEditText.text = "";
-            // win.close();
-            // showUI();
         }
     }
 
-    // function updateTags()
-    // {
-    //     var tags = Pslib.scanItemsForTags(item, "PathItem")[0];
-    //     formatTagsForUIPresentation(tags, tagsColumn, tagNameEditText, tagValueEditText);
-    // }
-
-
-    // clearTagsBtn.onClick = function (item)
-    clearAllTagsBtn.onClick = function (  )
+    clearAllTagsBtn.onClick = function()
     {
         Pslib.removeAllTags(item);
-        tagsListbox.update();
-        // currentTagsList.text = "";
-        // win.close();
-        
+        tagsListbox.update();      
     } 
 
     autoTagBtn.onClick = function()
     {
-        Pslib.setTags( item, [ ["name", artboardName],["index", artboardIndex],["page", artboardIndex+1],["assetID", ""] ]);
+        Pslib.setTags( item, [ ["name", artboardName], ["index", artboardIndex], ["page", artboardIndex+1], ["assetID", ""] ]);
         tagsListbox.update();
     }
 
@@ -309,53 +288,3 @@ function showUI(item)
     win.addCloseButton();
     win.show();
 }
-
-// function formatTagsForTextPresentation( tags )
-// {
-//     var str = "";
-
-//     if(tags.length)
-//     {
-//         for(var i = 0; i < tags.length; i++)
-//         {
-//             var tag = tags[i]; 
-//             str += ((i==0?"":"\n") + tag[0] + ": " + tag[1]);
-//         }
-//     }
-
-//     return str;
-// }
-
-// function formatTagsForUIPresentation( tags, container, nameEditT, tagEditT )
-// {
-//     if(tags.length)
-//     {
-//         var rows = [];
-//         var buttons = [];
-//         var values = [];
-
-//         // add rows
-//         for(var i = 0; i < tags.length; i++)
-//         {
-//             rows.push( container.addRow( { alignment: "fill", spacing: 10 }) );
-//         }
-
-//         for(var i = 0; i < tags.length; i++)
-//         {
-//             var tag = tags[i];
-            
-//             // namesCol.addEditText("undefined", {text: tag[0], readonly: true, multiline: false, characters: tag[0].length });
-//             // nasty hack: using helptip property to pass info, haha.
-
-//             buttons.push( rows[i].addButton( { label: tag[0], width: 150, helpTip:tag[1], onClickFunction: function(){ nameEditT.text = this.label; tagEditT.text = this.helpTip; /*alert( "helpTip: " + this.helpTip + "\nvaluesArr: " + values[i] )*/ }, alignment: "left" } ) );
-
-//             // valuesCol.addEditText("undefined", {text: tag[1], readonly: true, multiline: false, characters: tag[1].length });
-//             values.push( rows[i].addEditText("undefined", { text: tag[1], readonly: true, multiline: false, characters: 30, alignment: "right" }) );
-//         }
-//         // activate first button
-//         buttons[0].onClick();
-//         buttons[0].active = true;
-//     }
-// }
-
-

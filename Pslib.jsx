@@ -127,7 +127,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version, used in tool window titles. Maybe.
-Pslib.version = 0.64;
+Pslib.version = 0.65;
 Pslib.isPs64bits = BridgeTalk.appVersion.match(/\d\d$/) == '64';
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
@@ -1538,6 +1538,7 @@ Pslib.setAltArrayProperty = function (xmp, propName, arr, namespace)
 
 	// if(Pslib.isPhotoshop) target.xmpMetadata.rawData = xmp.serialize();
 	// else if(Pslib.isIllustrator) target.XMPString = xmp.serialize();
+	return xmp;
 }
 
 
@@ -1564,6 +1565,7 @@ Pslib.getAllTags = function( pageItem )
 				var tag = tags[i];
 	
 				var name = tag.name;
+				if(name == "BBAccumRotation") continue;
 				var value = tag.value;
 				tagsArr.push([ name, value ]);
 				if($.level) $.writeln( "\t"+ name + ": " + value );
@@ -1584,7 +1586,7 @@ Pslib.getTags = function( pageItem, tagsArr )
 			return
 		}
 	
-		if($.level) $.writeln( "\nGetting all tags on " +  pageItem.typename + " " + pageItem.name);
+		if($.level) $.writeln( "\nGetting tags on " +  pageItem.typename + " " + pageItem.name);
 
 		var harvestedTagsArr = [];
 		var tags = pageItem.tags;
@@ -1596,6 +1598,8 @@ Pslib.getTags = function( pageItem, tagsArr )
 				var tag = tags[i];
 	
 				var name = tag.name;
+				// you probably want to skip this one
+				// if(name == "BBAccumRotation") continue;
 				var value = tag.value;
 	
 				// compare with provided array to match names
@@ -1654,7 +1658,8 @@ Pslib.setTags = function( pageItem, tagsArr )
 			var name = tagArr[0];
 			var value = tagArr[1];
 
-			if(value != undefined || value != null)
+			// "" (empty string) should be considered valid
+			if(value != undefined && value != null && value != "BBAccumRotation")
 			{
 				var tag = pageItem.tags.add();
 				tag.name = name;
@@ -1689,6 +1694,7 @@ Pslib.removeTags = function( pageItem, tagsArr )
 			{
 				if(tag.name == tagsArr[j])
 				{
+					if(tag.name == "BBAccumRotation") continue; // skip this one
 					pageItem.tags[i].remove();
 				}
 			}
@@ -1715,6 +1721,7 @@ Pslib.removeAllTags = function( pageItem )
 		{
 			for(var i = pageItem.tags.length-1; i > (-1); i--)
 			{
+				if(pageItem.tags[i].name == "BBAccumRotation") continue; // don't touch this one
 				pageItem.tags[i].remove();
 			}
 			success = true;
@@ -1779,6 +1786,7 @@ Pslib.scanItemsForTags = function( items, filter )
 						var tag = tags[j];
 			
 						var name = tag.name;
+						if(name == "BBAccumRotation") continue; // skip this one
 						var value = tag.value;
 			
 						if($.level) $.writeln( "\t"+ name + ": " + value );
@@ -1793,8 +1801,7 @@ Pslib.scanItemsForTags = function( items, filter )
 	}
 }
 
-// artboard functions: moved from JSUI
-
+// artboard functions
 Pslib.getActiveArtboard = function()
 {
 	if(Pslib.isIllustrator)
@@ -1804,6 +1811,96 @@ Pslib.getActiveArtboard = function()
 		var artboard = doc.artboards[i];
 	
 		return artboard;
+	}
+}
+
+Pslib.getArtboardByName = function (nameStr, activateBool)
+{
+	if(Pslib.isIllustrator)
+	{
+		var doc = app.activeDocument;
+		var artboard = doc.artboards.getByName(nameStr);
+
+		if(artboard)
+		{
+			if(activateBool)
+			{
+				for(var i = 0; i < doc.artboards.length; i++)
+				{
+					if(doc.artboards[i] == artboard)
+					{
+						doc.artboards.setActiveArtboardIndex(i);
+						break;
+					}
+	
+				}
+			}
+			return artboard;
+		}
+	}
+}
+
+// get artboard index without having to make it active
+Pslib.getArtboardIndex = function (artboard, activateBool)
+{
+	if(Pslib.isIllustrator)
+	{
+		var doc = app.activeDocument;
+		var index;
+
+		for(var i = 0; i < doc.artboards.length; i++)
+		{
+			if(doc.artboards[i] == artboard)
+			{
+				index = i;
+				if(activateBool) doc.artboards.setActiveArtboardIndex(i);
+				break;
+			}
+		}
+
+		return index;
+	}	
+}
+
+// okay-ish for getting indexes IF you don't have multiple artboards with the same name
+Pslib.getArtboardIndexByName = function (nameStr, activateBool)
+{
+	if(Pslib.isIllustrator)
+	{
+		var doc = app.activeDocument;
+		var artboard = doc.artboards.getByName(nameStr);
+		var index;
+
+		for(var i = 0; i < doc.artboards.length; i++)
+		{
+			if(doc.artboards[i] == artboard)
+			{
+				index = i;
+				if(activateBool) doc.artboards.setActiveArtboardIndex(i);
+				break;
+			}
+		}
+
+		return index;
+	}	
+}
+
+// get simple artboard names array
+Pslib.getArtboardNames = function( artboards )
+{
+	if(Pslib.isIllustrator)
+	{
+		if(!artboards)
+		{
+			artboards = app.activeDocument.artboards;
+		}
+
+		var artboardNames = [];
+		for(var i = 0; i < artboards.length; i++)
+		{
+			artboardNames.push(artboards[i]);
+		}
+		return artboardNames;
 	}
 }
 
@@ -2111,31 +2208,176 @@ Pslib.renameArtboards = function( artboards, obj )
 	if(Pslib.isIllustrator)
 	{
 		if(!obj){ return; }
+		// if(!obj){ var obj = {} }; // this could be valid if used by sanitization function
 
 		if(!artboards)
 		{
 			artboards = app.activeDocument.artboards;
 		}
 
+		var renamedArr = [];
 		for(var i = 0; i < artboards.length; i++)
 		{
 			var artboard = artboards[i];
+			var originalStr = artboard.name;
+			var renamedStr = artboard.name.trim();
 
 			if(obj.find)
 			{
 				artboard.name = artboard.name.replace(obj.find, obj.replace);
+				renamedStr = artboard.name;
 			}
 
-			if(obj.prefix)
+			// can be empty
+			if(obj.prefix != undefined)
 			{
 				artboard.name = obj.prefix + artboard.name;
+				renamedStr = artboard.name;
 			}
 
-			if(obj.suffix)
+			// can be empty
+			if(obj.suffix != undefined)
 			{
 				artboard.name = artboard.name + obj.suffix;
+				renamedStr = artboard.name;
+			}
+			if(renamedStr != originalStr) renamedArr.push(renamedStr);
+			else renamedArr.push(undefined); // push nothing, just so returned array length matches original
+		}
+		return renamedArr;
+	}
+}
+
+// replace any whitespace characters in artboard collection names
+// default replacement is underscore, define optional object as { replace: "^-^" } to use something else
+Pslib.renameArtboardsWhiteSpace = function( artboards, obj )
+{
+	if(Pslib.isIllustrator)
+	{
+		if(!obj){ var obj = {} }; 
+		return Pslib.renameArtboards( artboards, { find: new RegExp(/[\s]/g), replace: obj.replace != undefined ? obj.replace : "_" } );
+	}
+}
+
+// deal with special characters: whitespace, slash, backslash, question, exclamation, quotes etc (default replacement is "_")
+// default replacement is underscore, define optional object as { replace: "^-^" } to use something else
+Pslib.renameArtboardsSystemSafe = function( artboards, obj )
+{	
+	if(Pslib.isIllustrator)
+	{
+		if(!obj){ var obj = {} }; 
+		return Pslib.renameArtboards( artboards, { find: new RegExp(/[\s:\/\\*\?\!\"\'\<\>\|]/g), replace: obj.replace != undefined ? obj.replace : "_" } );
+	}
+}
+
+// this is broken for now!
+Pslib.moveItemsToLayer = function( items, layer )
+{	
+	if(Pslib.isIllustrator)
+	{
+		if(!app.documents.length) return;
+		
+		var doc = app.activeDocument;
+		// var initialSelection = doc.selection;
+		if(!items)
+		{
+			// items = doc.pageItems;
+			items = doc.selection;
+		}
+		// doc.selection = items;
+
+		var movedItems = [];
+		var layerWasLocked = false;
+		var layerWasHidden = false;
+
+		// if user passed string instead of layer object, attempt to get layer by name
+		if(typeof layer == "string")
+		{
+			layer = doc.layers.getByName(layer);
+
+			// if not found, fallback to default value
+			if(!layer)
+			{
+				layer = doc.layers.getByName("Placeholders");
+			}
+			if(!layer)
+			{
+				layer = doc.layers.getByName("placeholders");
 			}
 		}
+
+		if(!layer || layer.typename != "Layer")
+		{
+			return movedItems;
+		}
+
+		if(layer.typename == "Layer")
+		{
+			if(layer.locked)
+			{
+				layer.locked = false;
+				layerWasLocked = true;
+			}
+
+			if(!layer.visible)
+			{
+				layer.visible = true;
+				layerWasHidden = true;
+			}
+	
+			for(var i = 0; i < items.length; i++)
+			// for (var i = items.length-1; i >=0; i--) 
+			{
+				var item = items[i];
+				doc.selection = item;
+				// try{
+					// doc.selection = [item];
+					// if(item.parent != layer)
+					// {
+						// item.move(layer, ElementPlacement.PLACEATEND);
+						// item.move(layer, ElementPlacement.PLACEATBEGINNING);
+						// doc.selection[0].move(layer, ElementPlacement.PLACEINSIDE);
+
+						// doc.selection[0].zOrder(ZOrderMethod.SENDTOBACK);
+
+						try
+						{
+							doc.selection[0].move(layer, ElementPlacement.PLACEINSIDE);
+							movedItems.push(item);
+						}
+						catch(e)
+						{
+						// 	alert("ERROR:\n" + e);
+						}
+
+						// item.moveToEnd(layer);
+						// doc.selection[0].moveToEnd(layer);
+						// item.moveToBeginning(layer);
+						
+						// if($.level) $.writeln(i + " moved " + item.name + " to " + layer.name + "  parent: " + item.parent.name);
+					// }
+
+					// alert(item.name + "\nparent: " + item.parent.typename);
+				// }
+				// catch(e)
+				// {
+				// 	alert("ERROR:\n" + e);
+				// }
+			}
+	
+			if(layerWasLocked)
+			{
+				layer.locked = true;
+			}
+			if(layerWasHidden)
+			{
+				layer.visible = false;
+			}
+		}
+
+		// doc.selection = initialSelection;
+
+		return movedItems;
 	}
 }
 
@@ -2960,7 +3202,6 @@ Pslib.allArtboardsToFiles = function( obj )
 	}
 }
 
-
 Pslib.createNewDocument = function( templateUri )
 {
 	if(Pslib.isIllustrator)
@@ -3054,7 +3295,6 @@ Pslib.getArtboardItem = function( artboard, nameStr )
 	}
 }
 
-
 // photoshop only
 Pslib.getArtboardSpecsInfo = function( obj )
 {
@@ -3137,15 +3377,20 @@ Pslib.getArtboardSpecsInfo = function( obj )
     return artboardSpecs;
 }
 
-
-// var rectObj = { artboard: artboard, name: "#", tags: [ ["name", "value"], ["name", "value"] ], sendToBack: true  };
+// var rectObj = { artboard: artboard, name: "#", tags: [ ["name", "value"], ["name", "value"] ], hex: "FB5008", opacity: 50, layer: LayerObject, sendToBack: true  };
+// 
 Pslib.addArtboardRectangle = function ( obj )
 {
+	if(!obj)
+	{
+		var obj = {};
+	}
+
 	if(Pslib.isIllustrator)
 	{
 		if(!obj.artboard) return;
 
-		// switch to artboard coordiates *before* getting metrics
+		// switch to artboard coordinates *before* getting metrics
 		app.coordinateSystem = CoordinateSystem.ARTBOARDCOORDINATESYSTEM;
 	
 		var doc = app.activeDocument;
@@ -3156,8 +3401,9 @@ Pslib.addArtboardRectangle = function ( obj )
 	
 		var transp = new NoColor();
 		rect.strokeColor = transp;
-		rect.fillColor = new NoColor(); //obj.hex != undefined ? JSUI.hexToRGBobj(obj.hex) : transp;
-	 
+		rect.fillColor = obj.hex != undefined ? Pslib.hexToRGBobj(obj.hex) : transp;
+		rect.opacity = obj.opacity != undefined ? obj.opacity : 0.65;
+
 		rect.name = obj.name ? obj.name : "#";
 	
 		if(obj.tags)
@@ -3165,6 +3411,31 @@ Pslib.addArtboardRectangle = function ( obj )
 			Pslib.setTags( rect, obj.tags );
 		}
 	
+		if(obj.layer)
+		{
+			if(typeof obj.layer == "string")
+			{
+				obj.layer = doc.layers.getByName(obj.layer);
+
+				// if not found, fallback to default
+				if(!obj.layer)
+				{
+					obj.layer = doc.layers.getByName("Placeholders");
+				}
+				if(!obj.layer)
+				{
+					obj.layer = doc.layers.getByName("placeholders");
+				}
+			}
+
+			// send to back (of layer)
+			if(obj.layer)
+			{
+				rect.move(obj.layer, ElementPlacement.PLACEATEND);
+			}
+		}
+
+		// make object the last in selection
 		if(obj.sendToBack)
 		{
 			rect.zOrder(ZOrderMethod.SENDTOBACK);
@@ -3173,6 +3444,112 @@ Pslib.addArtboardRectangle = function ( obj )
 		return rect;
 	}
 }
+
+// get items with specific name from provided artboards collection
+Pslib.getArtboardItems = function( artboardsArr, nameStr )
+{
+	if(Pslib.isIllustrator)
+	{
+		if(!app.documents.length)
+		{
+			return;
+		}
+
+		if(!artboardsArr) { var artboardsArr = app.activeDocument.artboards; }
+		if(!nameStr) { var nameStr = "#"; }
+
+		var artboardItems = [];
+
+		for (var i = 0; i < artboardsArr.length; i++)
+		{
+			var item = Pslib.getArtboardItem( artboardsArr[i], nameStr );
+			if(item)
+			{
+				artboardItems.push(item);
+			}
+		}
+		return artboardItems;
+	}
+}
+
+
+// RGB hex functions from JSUI
+
+// get array of normalized values from hex string
+// "#f760e3" becomes [0.96862745098039,0.37647058823529,0.89019607843137,1];
+Pslib.hexToRGB = function (hex)
+{
+	var color = hex.trim().replace('#', '');
+	var r = parseInt(color.slice(0, 2), 16) / 255;
+	var g = parseInt(color.slice(2, 4), 16) / 255;
+	var b = parseInt(color.slice(4, 6), 16) / 255;
+	return [r, g, b, 1];
+};
+
+// hex string to Photoshop/Illustrator color object
+Pslib.hexToRGBobj = function ( hexStr )
+{
+    var hex = hexStr != undefined ? hexStr : "000000";
+
+	// illustrator does not have a direct hexValue property
+	if(Pslib.isIllustrator)
+	{
+		var color = new RGBColor();
+		color.red = JSUI.HexToR(hex);
+		color.green = JSUI.HexToG(hex);
+		color.blue = JSUI.HexToB(hex);
+		return color;
+	}
+	else if(Pslib.isPhotoshop)
+	{
+		var color = new SolidColor();
+		color.rgb.hexValue = hex;
+		return color;
+	}
+
+    return;
+};
+
+// RGB values to hexadecimal string: (255, 0, 128) becomes "FF0080"
+Pslib.RGBtoHex = function(r, g, b, a)
+{
+	return Pslib.toHex(r) + Pslib.toHex(g) + Pslib.toHex(b) + (a != undefined ? JSUI.toHex(a) : "")
+};
+
+// Number to hex string (128 becomes "80")
+Pslib.toHex = function(n)
+{
+	if (n == 0 || n == null || n == undefined || isNaN(n)) return "00";
+	if(isNaN(n)) n = parseInt(n);
+	n = Math.max(0, Math.min(n, 255));
+	return ((1<<8)+n).toString(16).toUpperCase().slice(1);
+};
+
+Pslib.cutHex = function(h)
+{
+	if(h.charAt(0)=="#") h = h.substring(1,7); 
+	else if(h.charAt(0)=="0" && h.charAt(1)=="x") h = h.substring(2,8); return h;
+};
+
+Pslib.HexToR = function(h) 
+{
+	return parseInt((Pslib.cutHex(h)).substring(0,2), 16);
+};
+
+Pslib.HexToG = function(h) 
+{
+	return parseInt((Pslib.cutHex(h)).substring(2,4), 16);
+};
+
+Pslib.HexToB = function(h)
+{
+	return parseInt((Pslib.cutHex(h)).substring(4,6), 16);
+};
+
+Pslib.HexToA = function(h)
+{
+	return parseInt((Pslib.cutHex(h)).substring(6,8), 16);
+};
 
 // from JSUI if not included along with Pslib
 if(typeof JSUI !== "object")

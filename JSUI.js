@@ -65,7 +65,7 @@ if(typeof JSUI !== "object")
 }
 
 /* version	*/
-JSUI.version = "0.979";
+JSUI.version = "0.98";
 
 // do some of the stuff differently depending on $.level and software version
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -5686,7 +5686,9 @@ Array.prototype.toSimplifiedString = function()
 			if( (num+1) != this[i+1] )
 			{
 				ranges.push(range);
-				if(this[i+1] == this[this.length-1]) ranges.push( [this[i+1]] );
+				// if(this[i+1] == this[this.length-1]) ranges.push( [this[i+1]] );
+				// avoid duplication of last item in ranges!
+				if(this[i+1] == this[this.length-1] && this[i+1] != this[i]) ranges.push( [this[i+1]] );
 				range = [];
 			}
 		// }
