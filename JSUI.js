@@ -623,8 +623,8 @@ JSUI.createDialog = function( obj )
 
 		var buttons = messageContainer.addRow( { spacing: 20 } );
 
-		var no = buttons.addButton( { label: "No", name: "cancel", width: 125, height: 44, alignment: "right" });
-		var yes = buttons.addButton( { label: "Yes", name: "ok", width: 125, height: 44, alignment: "left" });
+		var no = buttons.addButton( { label: "No", name: "cancel", width: 125, height: 32, alignment: "right" });
+		var yes = buttons.addButton( { label: "Yes", name: "ok", width: 125, height: 32, alignment: "left" });
 
 		yes.onClick = function()
 		{
@@ -657,8 +657,8 @@ JSUI.createDialog = function( obj )
 		
 
 		var buttons = messageContainer.addRow( { spacing: obj.spacing } );
- 		var cancel = buttons.addButton( { label: "Cancel", name: "cancel", width: 125, height: 44, alignment: "right" });
-		var ok = buttons.addButton( { label: obj.confirmLabel != undefined ? obj.confirmLabel : "Confirm", name: "ok", onClickFunction: obj.onClickFunction, width: 125, height: 44, alignment: "right" });
+ 		var cancel = buttons.addButton( { label: "Cancel", name: "cancel", width: 125, height: 32, alignment: "right" });
+		var ok = buttons.addButton( { label: obj.confirmLabel != undefined ? obj.confirmLabel : "Confirm", name: "ok", onClickFunction: obj.onClickFunction, width: 125, height: 32, alignment: "right" });
 
 		textfield.active = true;
 
@@ -1155,7 +1155,7 @@ Object.prototype.Components = new Array();
 Object.prototype.addCloseButton = function( labelStr )
 {
 	var labelStr = labelStr != undefined ? labelStr : "";
-	var closeButton = this.addButton( { label: labelStr ? labelStr : "Close", name: "ok", width: 150, height: 44, alignment: "center" });
+	var closeButton = this.addButton( { label: labelStr ? labelStr : "Close", name: "ok", width: 150, height: 32, alignment: "center" });
 	return closeButton;
 };
 
