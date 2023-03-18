@@ -3665,7 +3665,7 @@ Object.prototype.addButton = function(imgNameStr, obj)
 				var scriptUIStatesObj = this.scriptUIstates;
 			}
 
-			if($.level) $.writeln("Updating jsui button: " + scriptUIStatesObj.active);
+			// if($.level) $.writeln("Updating jsui button: " + scriptUIStatesObj.active);
 
 			if(JSUI.isCS6)
 			{

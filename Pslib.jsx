@@ -380,12 +380,13 @@ if(Pslib.isPhotoshop)
 				(r = new ActionReference()).putProperty(sTID("property"), p = sTID('artboard'));
 				r.putIndex(sTID("layer"), i);
 
-				// get artboard name
+				// get artboard name, ID and bounds 
 				var ref = new ActionReference();
 				ref.putIndex( cTID( "Lyr " ), i);
 				var layerDesc = executeActionGet(ref);
 				var artboardName = layerDesc.getString(sTID ("name"));
-
+				var artboardID = layerDesc.getInteger(cTID('LyrI'));
+				
 				var artboard = executeActionGet(r).getObjectValue(p),
 					artboardRect = artboard.getObjectValue(sTID("artboardRect")),
 					bounds = {
@@ -396,7 +397,7 @@ if(Pslib.isPhotoshop)
 		
 					};
 				
-					artboards.push({ name: artboardName, index: i, x: bounds.top, y: bounds.left, width: bounds.right - bounds.left, height: bounds.bottom - bounds.top });
+					artboards.push({ name: artboardName, index: i, id: artboardID, x: bounds.top, y: bounds.left, width: bounds.right - bounds.left, height: bounds.bottom - bounds.top });
 				}
 		}
 
@@ -430,6 +431,7 @@ if(Pslib.isPhotoshop)
 				ref.putIndex( cTID( "Lyr " ), i);
 				var layerDesc = executeActionGet(ref);
 				var artboardName = layerDesc.getString(sTID ("name"));
+				var artboardID = layerDesc.getInteger(cTID('LyrI'));
 	
 				var artboard = executeActionGet(r).getObjectValue(p),
 					artboardRect = artboard.getObjectValue(sTID("artboardRect")),
@@ -440,13 +442,15 @@ if(Pslib.isPhotoshop)
 						bottom: artboardRect.getDouble(sTID('bottom')),
 		
 					};
-				artboards.push({ name: artboardName, index: i, x: bounds.top, y: bounds.left, width: bounds.right - bounds.left, height: bounds.bottom - bounds.top });
+				artboards.push({ name: artboardName, index: i, id: artboardID, x: bounds.top, y: bounds.left, width: bounds.right - bounds.left, height: bounds.bottom - bounds.top });
 			 }
 		}
 	
 		return artboards;
 	}
 
+	// get list of selected layer INDEXES 
+	// (only relevant to the current order of layers in the root stack at the moment of running the script)
 	function getSelectedLayersIdx()
 	{   
 		var selectedLayers = new Array();
@@ -456,28 +460,71 @@ if(Pslib.isPhotoshop)
 		if( desc.hasKey( sTID( 'targetLayers' ) ) ){   
 		   desc = desc.getList( sTID( 'targetLayers' ));   
 			var c = desc.count; 
-			var selectedLayers = new Array();   
+			var selectedLayers = new Array();  
+			var increment = 0; 
 			for(var i=0;i<c;i++){   
 			  try{   
 				 activeDocument.backgroundLayer;   
-				 selectedLayers.push(  desc.getReference( i ).getIndex() );   
+				//  selectedLayers.push(  desc.getReference( i ).getIndex() );   
 			  }catch(e){   
-				 selectedLayers.push(  desc.getReference( i ).getIndex()+1 );   
+				//  selectedLayers.push(  desc.getReference( i ).getIndex()+1 );  
+				increment = 1; 
 			  }   
+			  selectedLayers.push(  desc.getReference( i ).getIndex() + increment ); 
 			}   
 		 }else{   
 		   var ref = new ActionReference();   
 		   ref.putProperty( cTID("Prpr") , cTID( "ItmI" ));   
 		   ref.putEnumerated( cTID("Lyr "), cTID("Ordn"), cTID("Trgt") );   
+		   var increment = 0; 
 		   try{   
 			  activeDocument.backgroundLayer;   
-			  selectedLayers.push( executeActionGet(ref).getInteger(cTID( "ItmI" ))-1);   
+			//   selectedLayers.push( executeActionGet(ref).getInteger(cTID( "ItmI" ))-1);  
+			increment = 1;
+
 		   }catch(e){   
-			  selectedLayers.push( executeActionGet(ref).getInteger(cTID( "ItmI" )));   
+			//   selectedLayers.push( executeActionGet(ref).getInteger(cTID( "ItmI" )));   
 		   }   
+		   selectedLayers.push( executeActionGet(ref).getInteger(cTID( "ItmI" )) - increment); 
 		}   
 		return selectedLayers;   
 	}
+	// // get list of selected layer IDs 
+	// // (persistent within the life of the document, as long as said layer / artboard is not deleted)
+	// function getSelectedLayersIDs()
+	// {   
+	// 	var selectedLayers = new Array();
+	// 	var ref = new ActionReference();   
+	// 	ref.putEnumerated( cTID("Dcmn"), cTID("Ordn"), cTID("Trgt") );   
+	// 	var desc = executeActionGet(ref);   
+	// 	if( desc.hasKey( sTID( 'targetLayers' ) ) ){   
+	// 	   desc = desc.getList( sTID( 'targetLayers' ));   
+	// 		var c = desc.count; 
+	// 		var selectedLayers = new Array();   
+	// 		var increment = 0; 
+	// 		for(var i=0;i<c;i++){   
+	// 		  try{   
+	// 			 activeDocument.backgroundLayer;   
+	// 		  }catch(e){   
+	// 			increment = 1; 
+	// 		  }   
+	// 		  selectedLayers.push(  desc.getReference( i ).getIndex() + increment );  
+	// 		}   
+	// 	 }else{   
+	// 	   var ref = new ActionReference();   
+	// 	   ref.putProperty( cTID("Prpr") , cTID( "ItmI" ));   
+	// 	   ref.putEnumerated( cTID("Lyr "), cTID("Ordn"), cTID("Trgt") );   
+	// 	   var increment = 0; 
+	// 	   try{   
+	// 		  	activeDocument.backgroundLayer;   
+	// 			increment = 1;
+
+	// 	   }catch(e){   
+	// 	   }   
+	// 	   selectedLayers.push( executeActionGet(ref).getInteger(cTID( "ItmI" )) - increment); 
+	// 	}   
+	// 	return selectedLayers;   
+	// }
 
 	function isArtboard()
 	{
@@ -1001,11 +1048,15 @@ Pslib.getPropertiesArray = function (target, namespace, nsprefix)
 		// access metadata
 		try
 		{
-		//    xmp = new XMPMeta( Pslib.isIllustrator ? target.XMPString : target.xmpMetadata.rawData );
-			xmp = Pslib.getXmp(target);
+		   xmp = new XMPMeta( Pslib.isIllustrator ? target.XMPString : target.xmpMetadata.rawData );
+			// xmp = Pslib.getXmp(target);
 		   if($.level) $.writeln("XMP Metadata successfully fetched from target \"" + target.name + "\"");
 		} catch( e ) 
 		{
+			if(Pslib.isPhotoshop)
+			{
+				xmp = new XMPMeta();
+			}
 			if($.level) $.writeln("XMP metadata could not be found for target \"" + target.name + "\".\nCreating new XMP metadata container.");
 			return null;
 		}
