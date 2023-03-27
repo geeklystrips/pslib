@@ -65,7 +65,7 @@ if(typeof JSUI !== "object")
 }
 
 /* version	*/
-JSUI.version = "0.98";
+JSUI.version = "0.981";
 
 // do some of the stuff differently depending on $.level and software version
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -5247,6 +5247,73 @@ JSUI.isObjectEmpty = function(obj)
 	return JSON.stringify(obj) === '{\n\n}';
 };
 
+// for quick console logging of objects (JSON) or arrays
+JSUI.quickLog = function(obj, arrDepthInt, msgStr)
+{
+	if($.level)
+	{
+		if(!obj) return;
+
+		if( msgStr == undefined && (typeof arrDepthInt == "string")) 
+		{
+			msgStr = arrDepthInt;
+			arrDepthInt = 0;
+		}
+
+		if(arrDepthInt == undefined) arrDepthInt = 0;
+		var indent = "";
+		for(var i = 1; i < arrDepthInt; i++)
+		{
+			indent += "\t";
+		}
+
+		if(msgStr && (arrDepthInt == 0)) $.writeln( msgStr );
+
+		if(obj instanceof Object)
+		{
+			if(JSUI.isObjectEmpty(obj)) { $.writeln(JSON.stringify(obj, null, "\t")); return; }
+			$.writeln(JSON.stringify(obj, null, "\t"));
+		}
+		else if(obj instanceof Array)
+		{
+			$.writeln(indent+"[");
+			for(var i = 0; i < obj.length; i++)
+			{
+				var arrItem = obj[i];
+				if(arrItem instanceof Object || arrItem instanceof Array)
+				{
+					JSUI.quickLog(arrItem, arrDepthInt);
+				}
+				else
+				{
+					$.writeln(indent+arrItem+ "    " + (typeof arrItem).toUpperCase());
+				}
+			}
+			$.writeln(indent+"]");
+		}
+		else
+		{
+			$.writeln(indent+obj+ "    " + (typeof obj).toUpperCase());
+		}
+	}
+};
+
+// high resolution timer -- used twice in a row to make sure that we are not working with a rogue / leak
+JSUI.startTimer = function()
+{
+	$.hiresTimer;
+	$.hiresTimer;
+}
+
+JSUI.stopTimer = function()
+{
+	// var durationSec = ($.hiresTimer/1000000000);
+	var durationSec = ($.hiresTimer * 0.000001);
+	var durationStr =  durationSec + " sec";
+	if($.level) $.writeln(" Duration: " + durationStr);
+	return durationSec;
+}
+
 // write/modify a single property value to/from  INI file
 // without affecting the current scope's JSUI.PREFS values
 JSUI.writeProperty = function(file, propertyName, propertyValue, header)
@@ -5499,6 +5566,105 @@ String.prototype.getFileNameWithoutExtension = function()
 	var match = this.match(/([^\.]+)/);
 	return match != null ? match[1] : null;
 };
+
+// and since this pattern is used a lot...
+String.prototype.getDocumentName = function()
+{
+	return this.trim().getFileNameWithoutExtension().toFileSystemSafeName();
+};
+
+// an approximation! special characters are not encouraged, but allowed
+String.prototype.getAssetsFolderName = function()
+{
+	return (this.getDocumentName() + "-assets");
+};
+
+// 
+String.prototype.getAssetsFolderLocation = function( folderUri, allowNonExistantBool, createBool, allowMultipleParentsCreationBool )
+{
+	var name = this.getAssetsFolderName();
+
+	var currentDocument = false;
+	var hasDocuments = app.activeDocument.length;
+	var matchesSystem = false;
+	var targetFolder;
+
+	// sanitize
+	if(folderUri)
+	{
+		if( !(folderUri instanceof Folder))
+		{
+			if(typeof folderUri == "string")
+			{
+				folderUri = new Folder(folderUri);
+			}
+			// are we working with a File? if so, assume we want its parent
+			if(folderUri instanceof File)
+			{
+				folderUri = folderUri.parent;
+			}
+		}
+
+		var testFolder = new Folder(folderUri);
+
+		if(testFolder.exists)
+		{
+			matchesSystem = JSUI.isWindows ? (testFolder.toString().match(app.path) != null) : (testFolder.toString() == ("/" + (hasDocuments ? app.activeDocument.name : "")));
+			if(!matchesSystem)
+			{
+				targetFolder = testFolder;
+			}
+		}
+		// it's entirely possible we want to point to a directory that will be created later on
+		else
+		{
+			if(allowNonExistantBool) targetFolder = testFolder;
+		}
+	}
+	// if no argument passed, assume we want to use current document
+	else
+	{
+		if(hasDocuments)
+		{
+			currentDocument = true;
+		}
+		folderUri = JSUI.getDocumentFullPath();
+		if(folderUri) targetFolder = folderUri.parent;
+		if(!targetFolder) { return } // issue if document does not exist on disk
+	}
+
+	// var targetFolder = currentDocument ? JSUI.getDocumentFullPath() : location;
+	// var location = app.documents.length ? ( JSUI.isPhotoshop ? app.activeDocument.path) : undefined;
+	var assetsLocation = new Folder(targetFolder + "/"+ name);
+	if(createBool)
+	{
+		if(allowMultipleParentsCreationBool)
+		{
+			assetsLocation.create();
+		}
+		else if(assetsLocation.parent.exists)
+		{
+			assetsLocation.create();
+		}
+	}
+	// return targetFolder ? assetsLocation : undefined;
+	return assetsLocation;
+};
+
+
+// // simple wrapper for creating "-assets" folder for current document
+// String.prototype.getAssetsFolder = function()
+// {
+// 	return this.getAssetsFolderLocation(undefined, undefined, true);
+// };
+
+// simple wrapper for creating "-assets" folder for current document
+// only use this with app.activeDocument.name, on a document which has been saved to disk at least once
+String.prototype.createAssetsFolder = function()
+{
+	return this.getAssetsFolderLocation(undefined, undefined, true);
+};
+
 
 // get extension pattern ".ext"
 String.prototype.getFileExtension = function()
