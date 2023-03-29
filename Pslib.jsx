@@ -381,7 +381,10 @@ Pslib.docKeyValuePairs = [ [ "source", null ], [ "range", null ], [ "destination
 // Pslib.docKeyValuePairs = [ [ "source", "range", "destination", "specs", "custom" ] ];
 
 // default key-value pairs for individual assets (either XMP or custom tags)
-Pslib.assetKeyValuePairs = [ [ "assetID", null ], [ "index", null ] ];
+// Pslib.assetKeyValuePairs = [ [ "assetID", null ], [ "index", null ] ];
+Pslib.assetKeyValuePairs = [ [ "assetID", null ] ];
+Pslib.storedAssetPropertyNamesArr = [ "assetName", "assetArtboardID", "assetID"];
+Pslib.assetKeyConversionArr = [ ];
 
 // #############  PER-LAYER METADATA FUNCTIONS
 
@@ -819,7 +822,7 @@ Pslib.getXmpProperties = function (target, propertiesArray, namespace)
 						val = decodeURI(xmp.getProperty(namespace ? namespace : Pslib.XMPNAMESPACE, prop));
 						// if($.level) $.writeln("\tgetting property: [" + prop + ": " + val +"]  " + typeof val);
 						
-						if($.level) $.writeln("\t" + propertiesArray[i][0]+ ": " + val + "\n");
+						if($.level) $.writeln("  " + propertiesArray[i][0]+ ": " + val + "\n");
 						updatedArray.push([propertiesArray[i][0], val]);
 					}
 					else
@@ -1343,9 +1346,9 @@ Pslib.getDocumentPath = function(doc)
 // <rdf:Seq>
 //    <rdf:li rdf:parseType="Resource">
 // 	  <rdf:value/>
-// 	  	<xmp:qualifier1>value1</xmp:qualifier1>
-// 	  	<xmp:qualifier2>value2</xmp:qualifier2>
-// 	  	<xmp:qualifier3>value3</xmp:qualifier3>
+// 	  	<ns:qualifier1>value1</ns:qualifier1>
+// 	  	<ns:qualifier2>value2</ns:qualifier2>
+// 	  	<ns:qualifier3>value3</ns:qualifier3>
 //    </rdf:li>
 //    <rdf:li rdf:parseType="Resource">
 // 	  <rdf:value/>
@@ -1354,8 +1357,13 @@ Pslib.getDocumentPath = function(doc)
 // </rdf:Seq>
 // </ns:PropertyName>
 
+// plain function for creating ordered array (Seq) in provided XMP Meta object
+// only manipulates xmp object, serialization must happen somewhere else)
 Pslib.setOrderedArray = function (xmp, propName, arr, namespace)
 {
+	if(!xmp) return;
+	// if(!app.documents.length){ return; }
+
 	var namespace = namespace ? namespace : Pslib.XMPNAMESPACE;
 	var prefix = XMPMeta.getNamespacePrefix(namespace);
 
@@ -1368,15 +1376,13 @@ Pslib.setOrderedArray = function (xmp, propName, arr, namespace)
 
 	// xmp.setProperty(namespace, propName, null, XMPConst.ARRAY_IS_ALTERNATIVE); // <prefix:propName>
 	xmp.setProperty(namespace, propName, null, XMPConst.ARRAY_IS_ORDERED); // <prefix:propName>
-	if($.level) $.writeln( "<"+prefix+propName+">" ); 
+	if($.level) $.writeln( "\n<"+prefix+propName+">\n  <rdf:Seq/>" ); 
 
 	for(var i = 0; i < arr.length; i++)
 	{
-		// var defaultValue = arr[i].length > 2 ? arr[i][2] : ""; // 
-		
 		xmp.appendArrayItem(namespace, propName, ""); // <rdf:value> -- opportunity to include extra info or fallback value here
 
-		if($.level) $.writeln( "\t<rdf:value/>" );
+		if($.level) $.writeln( "    <rdf:li rdf:parseType=\"Resource\">\n    <rdf:value/>" );
 
 		for(var j = 0; j < arr[i].length; j++)
 		{
@@ -1385,51 +1391,360 @@ Pslib.setOrderedArray = function (xmp, propName, arr, namespace)
 			var value = subArr[1];
 
 			xmp.setQualifier(namespace, propName+'['+(i+1)+']', namespace, qualifier, value);
-			if($.level) $.writeln( "\t<"+prefix+qualifier+">"+value+"</"+prefix+qualifier+">" );
+			if($.level) $.writeln( "    <"+prefix+qualifier+">"+value+"</"+prefix+qualifier+">" );
 		}
+		if($.level) $.writeln( "     </rdf:li>" ); 
 	}
-	if($.level) $.writeln( "</"+prefix+propName+">" ); 
+	if($.level) $.writeln( "  </rdf:Seq>\n</"+prefix+propName+">\n" ); 
 
 	return xmp;
 }
 
-Pslib.getOrderedArray = function (xmp, propName, arr, namespace, getObjBool)
-{
-    if(!namespace) namespace = Pslib.XMPNAMESPACE;
-    var prefix = XMPMeta.getNamespacePrefix(namespace);
 
-    var propertyExists = xmp.doesPropertyExist(namespace, propName);
+// wrapper for Pslib.setOrderedArray()
+// takes care of conversion between local xmp properties and stored array item qualifiers
+// in this context, Pslib.getAdvancedSpecs() should also work for illustrator
+Pslib.pushDataCollectionToOrderedArray = function( obj )
+{
+    if(!app.documents.length){ return; }
+    if(!obj) obj = {};
+
+    JSUI.startTimer();
+
+    var doc = app.activeDocument;
+    var xmpUpdated = false;
+
+    if(!obj.xmp) obj.xmp = Pslib.getXmp(doc, false);
+    if(!obj.arrNameStr) obj.arrNameStr = "ManagedArtboards";
+    
+    // if no artboards given, use selected artboards
+    if(!obj.artboardObjArr) obj.artboardObjArr = Pslib.getSpecsForSelectedArtboards();
+    
+    // arbitrary list of xmp array item objects, likely obtained from a related process
+    // can be a selection of items we need to preserve while flushing the current stored XMP array
+    if(!obj.existingArrayItems) obj.existingArrayItems = [];
+
+    if(!obj.requiredQualifiers) obj.requiredQualifiers = Pslib.assetKeyValuePairs; // default:  [ [ "assetID", null ] ];
+    if(!obj.converter) obj.converter = Pslib.assetKeyConversionArr; // default is empty array, no conversion
+    if(!obj.namespace) obj.namespace = Pslib.XMPNAMESPACE;
+
+    if(obj.deleteExisting == undefined) obj.deleteExisting = false;
+
+    var propertyExists = obj.xmp.doesPropertyExist(obj.namespace, obj.arrNameStr);
+
+    var preExistingArrayItems = [];
+    var itemCount = 0;
+
+	if(propertyExists)
+    {
+        if(obj.deleteExisting)
+        {
+            itemCount = obj.xmp.countArrayItems(obj.namespace, obj.arrNameStr);
+            obj.xmp.deleteProperty(obj.namespace, obj.arrNameStr);
+            JSUI.quickLog("deleted " + itemCount+ " array items");
+        }
+        else
+        {
+            // if there is existing data that we need to keep and work with, get it here
+            preExistingArrayItems = Pslib.getDataCollectionFromOrderedArray( obj );
+            
+            itemCount = obj.xmp.countArrayItems(obj.namespace, obj.arrNameStr);
+
+            // JSUI.quickLog(preExistingArrayItems, "\npreExistingArrayItems items: " +(preExistingArrayItems.length));
+        }
+    }
+
+    // get additional specs for artboards (layer xmp / item tags)
+    if(obj.artboardObjArr.length)
+    {
+        obj.artboardObjArr = Pslib.getAdvancedSpecs(obj.artboardObjArr, { dictionary: Pslib.arrayToObj(obj.requiredQualifiers), converter: obj.converter });
+        // obj.artboardObjArr = Pslib.filterDataObjectArray(obj.artboardObjArr, obj.converter);
+        // JSUI.quickLog(obj.artboardObjArr, "\nobj.artboardObjArr: " +(obj.artboardObjArr.length));
+
+    }
+
+    // obj.existingArrayItems allows passing an arbitrary number of items taken from the same document, or another source.
+    if(obj.existingArrayItems.length)
+    {
+        obj.existingArrayItems = Pslib.getAdvancedSpecs(obj.existingArrayItems, { dictionary: Pslib.arrayToObj(obj.requiredQualifiers), converter: obj.converter });
+        // obj.existingArrayItems = Pslib.filterDataObjectArray(obj.existingArrayItems);
+
+        // JSUI.quickLog(obj.existingArrayItems, "\nobj.existingArrayItems: " +(obj.existingArrayItems.length));
+    }
+
+    // add existing stuff to new array...?
+
+    var seqArrayItems = [];
+    // var seqArrayObjects = [];
+
+    for(var i = 0; i < obj.artboardObjArr.length; i++)
+    {
+        var artboardObj = obj.artboardObjArr[i];
+
+        if(artboardObj)
+        {
+            var hasRequiredQualifier = false;
+            for(var j = 0; j < obj.requiredQualifiers.length; j++)
+            {
+                var qualItem = obj.requiredQualifiers[j][0];
+
+                if(artboardObj[qualItem] != undefined )
+                {
+                    hasRequiredQualifier = true;
+                    break;
+                }
+            }
+            // if no qualifier found, skip
+            if(hasRequiredQualifier)
+            {
+                var itemArr = [];
+                // these two are hard-coded for maintenance and syncing purposes
+                // (if user renames artboard/changes the order of artboards in stack)
+                if(artboardObj.name) itemArr.push(["assetName", artboardObj.name]);
+                if(artboardObj.id) itemArr.push(["assetArtboardID", artboardObj.id]);
+
+                for(var j = 0; j < obj.requiredQualifiers.length; j++)
+                {
+                    var qualItem = obj.requiredQualifiers[j][0];
+
+                    if(artboardObj[qualItem] != undefined )
+                    {
+                        // take care of converting legacy property name to array item property qualifier
+                        for(var k = 0; k < obj.converter.length; k++)
+                        {
+                            if(qualItem == obj.converter[0])
+                            {
+                                qualItem == obj.converter[1];
+                            } 
+                        }
+                        itemArr.push([qualItem, artboardObj[qualItem] ]);
+
+                    }
+                }
+                
+                seqArrayItems.push(itemArr);
+                // seqArrayItems.push(Pslib.pairArrCollectionToObj(itemArr));
+                // seqArrayItems.push(Pslib.pairArrToObj(itemArr));
+                // seqArrayObjects.push( Pslib.pairArrToObj(itemArr));
+
+            }
+        }
+    }
+
+
+    // default usecase is pushing provided specs to array
+    // if array items are already being filtered by the current process, deal with them here 
+    if(propertyExists && !obj.deleteExisting)
+    {
+        for(var i = 0; i < preExistingArrayItems.length; i++)
+        {
+            seqArrayItems.push(preExistingArrayItems[i]);
+            // JSUI.quickLog(preExistingArrayItems[i]);
+        }
+    }
+    // JSUI.quickLog(seqArrayItems, "\nCurrent Harvest: " +(seqArrayItems.length));
+
+    for(var i = 0; i < obj.existingArrayItems.length; i++)
+    {
+        seqArrayItems.push(obj.existingArrayItems[i]);
+        // JSUI.quickLog(obj.existingArrayItems[i]);
+    }
+
+    // reorder array based on 
+    seqArrayItems = seqArrayItems.sort( Pslib.compareArtboardID );
+
+    if(seqArrayItems.length)
+    {
+        // JSUI.quickLog("Pushing " + seqArrayItems.length + " item"+(seqArrayItems.length > 1 ? "s" : "")+" to \"" + obj.arrNameStr + "\"");
+        obj.xmp = Pslib.setOrderedArray(obj.xmp, obj.arrNameStr, seqArrayItems, obj.namespace);
+        xmpUpdated = true;
+    }
+    else
+    {
+        if(obj.clearIfEmpty)
+        {
+            obj.xmp.deleteProperty(obj.namespace, obj.arrNameStr);
+        }
+    }
+
+	// serialize and update document XMP
+    if(xmpUpdated)
+    {
+        if(Pslib.isPhotoshop) doc.xmpMetadata.rawData = obj.xmp.serialize();
+        else if(Pslib.isIllustrator) doc.XMPString = obj.xmp.serialize();
+    }
+
+    JSUI.stopTimer();
+
+    return obj.artboardObjArr;
+}
+
+// Pslib.getOrderedArrayItems = function (xmp, propName, arr, namespace, getObjBool)
+Pslib.getOrderedArrayItems = function ( obj )
+{
+    if(!app.documents.length){ return; }
+
+	// JSUI.startTimer();
+
+	var doc = app.activeDocument;
+
+	if(!obj) obj = {};
+	if(!obj.xmp) obj.xmp = Pslib.getXmp(doc, false);
+	if(!obj.arrNameStr) obj.arrNameStr = "ManagedArtboards";
+    if(!obj.arr) obj.arr = Pslib.storedAssetPropertyNamesArr; // [ "assetName", "assetArtboardID", "assetID"]
+	if(!obj.range) obj.range = "all"; // range string, 1-based. "1-5"  "1,6,10,13-16"
+    if(!obj.namespace) obj.namespace = Pslib.XMPNAMESPACE;
+    if(!obj.getObjBool) obj.getObjBool = false;
+
+    // var prefix = XMPMeta.getNamespacePrefix(namespace);
+
+    var propertyExists = obj.xmp.doesPropertyExist(obj.namespace, obj.arrNameStr);
 
 	if(!propertyExists)
 	{
         return;
 	}
 	var resultsArr = [];
+	var itemCount = obj.xmp.countArrayItems(obj.namespace, obj.arrNameStr);
+	
+	// "all" is default, gets a full array of integers   
+	var rangeIntArr = (obj.range == "all" ? ("1" + (itemCount > 1 ? "-"+itemCount : "") ) : obj.range ).toRangesArr();
 
-    // safeguard for property not found here?
-    for(var i = 1; i <= xmp.countArrayItems(namespace, propName); i++)
+    // for(var i = 1; i <= itemCount; i++)
+    for(var h = 0; h < rangeIntArr.length; h++)
     {
+		var i = rangeIntArr[h]; 
+
         var itemObj = { };
         var itemArr = [ ];
-        if($.level) $.writeln("\n"+ propName + " " + i + ": "); 
-        for(var j = 0; j < arr.length; j++)
+        if($.level) $.writeln("\n"+obj.arrNameStr+"["+i+"]"); 
+        for(var j = 0; j < obj.arr.length; j++)
         {
-            var qualifier = arr[j];
-            var value = decodeURI(xmp.getQualifier(namespace, propName+"["+i+"]", namespace, qualifier).toString());
+            // var qualifier = arr[j];
+            var qualifier = (obj.arr[j] instanceof Array) ? obj.arr[j][0] : obj.arr[j];
+            var value = decodeURI(obj.xmp.getQualifier(obj.namespace, obj.arrNameStr+"["+i+"]", obj.namespace, qualifier).toString());
 			value = Pslib.autoTypeDataValue(value);
 
-            if($.level) $.writeln(qualifier+": " + value); 
+            if($.level) $.writeln("  "+qualifier+": " + value); 
 
-            if( value != undefined &&  value != "undefined" )
+            if( value != undefined)
             {
-                itemObj[qualifier] = value;
-                itemArr.push([ qualifier, value]);
+				if( (value != "undefined") && (value != "null"))
+				{
+					itemObj[qualifier] = value;
+					itemArr.push([ qualifier, value]);
+				}
             }
         }
-        resultsArr.push(getObjBool ? itemObj : itemArr);
+        resultsArr.push(obj.getObjBool ? itemObj : itemArr);
     }
+	// JSUI.stopTimer();
+
 	return resultsArr;
 }
+
+// target one specific artboard in AltArray
+// Pslib.getSingleArtboardDataArrayItem( 2, obj )
+Pslib.getSingleArtboardDataItemFromArray = function( indexInt, obj )
+{
+    if(!obj) obj = {}
+    obj.range = indexInt.toString();
+	obj.getObjBool = true;
+	var arr = Pslib.getOrderedArrayItems( obj );
+    return arr.length != undefined ? arr[0] : arr;
+}
+
+
+// wrapper 
+Pslib.getDataCollectionFromOrderedArray = function( obj )
+{
+    if(!app.documents.length){ return; }
+
+	JSUI.startTimer();
+
+    var doc = app.activeDocument;
+    if(!obj) obj = {};
+    if(!obj.xmp) obj.xmp = Pslib.getXmp(doc, false);
+    if(!obj.arrNameStr) obj.arrNameStr = "ManagedArtboards";
+    if(!obj.arr) obj.arr = Pslib.storedAssetPropertyNamesArr; // [ "assetName", "assetArtboardID", "assetID"]
+    if(!obj.range) obj.range = "all"; // range string, 1-based. "1-5"  "1,6,10,13-16"
+    if(!obj.requiredQualifiers) obj.requiredQualifiers = Pslib.assetKeyValuePairs;
+    if(!obj.converter) obj.converter = Pslib.assetKeyConversionArr; // default: empty array
+    if(!obj.namespace) obj.namespace = Pslib.XMPNAMESPACE;
+    // if(!obj.getObjBool) obj.getObjBool = false; // always getting objects
+
+    var docXmpArtboardsSpecs = Pslib.getOrderedArrayItems( { xmp: obj.xmp, arrNameStr: obj.arrNameStr, arr: obj.arr, namespace: obj.namespace, getObjBool: true});
+	
+	JSUI.stopTimer();
+
+    return docXmpArtboardsSpecs;
+
+    // // JSUI.quickLog(docXmpArtboardsSpecs);
+
+    // var filteredData = [];
+
+    // for(var i = 0; i < docXmpArtboardsSpecs.length; i++)
+    // {
+    //     var xmpArtboardSpecs = docXmpArtboardsSpecs[i];
+    //     var filteredItem = {};
+
+    //     // var hasRequiredQualifier = false;
+    //     // for(var j = 0; j < obj.requiredQualifiers.length; j++)
+    //     // {
+    //     //     var qualItem = obj.requiredQualifiers[j][0];
+
+    //     //     if(xmpArtboardSpecs[qualItem] != undefined )
+    //     //     {
+    //     //         hasRequiredQualifier = true;
+    //     //         break;
+    //     //     }
+    //     // }
+
+    //     // if(hasRequiredQualifier)
+    //     // {
+    //         // if(xmpArtboardSpecs.assetName) filteredItem.assetName = xmpArtboardSpecs.assetName;
+    //         // if(xmpArtboardSpecs.assetArtboardID) filteredItem.assetArtboardID = xmpArtboardSpecs.assetArtboardID;
+            
+    //         for(var j = 0; j < obj.arr.length; j++)
+    //         {
+    //             var storedQualifier = obj.arr[j];
+    //             if(xmpArtboardSpecs[storedQualifier] != undefined) filteredItem[storedQualifier] = xmpArtboardSpecs[storedQualifier];
+    //         }
+
+    //         for(var j = 0; j < obj.requiredQualifiers.length; j++)
+    //         {
+    //             var qualItem = obj.requiredQualifiers[j][0];
+                
+    //             // convert qualifier here if required
+
+    //             // take care of converting legacy property name to array item property qualifier
+    //             for(var k = 0; k < obj.converter.length; k++)
+    //             {
+    //                 if(qualItem == obj.converter[0])
+    //                 {
+    //                     qualItem == obj.converter[1];
+    //                 } 
+    //             }
+
+    //             if(xmpArtboardSpecs[qualItem] != undefined)
+    //             {
+    //                 filteredItem[qualItem] = xmpArtboardSpecs[qualItem];
+    //             }
+    //         }
+    
+            
+    //     // }
+
+    //     filteredData.push(filteredItem);
+    // }
+    // // JSUI.quickLog(filteredData);
+    // // JSUI.quickLog(docXmpArtboardsSpecs);
+
+    // JSUI.stopTimer();
+
+    // return filteredData;
+}
+
 
 Pslib.autoTypeDataValue = function( propValue, allowEmptyStringBool, allowNullBool )
 {
@@ -1965,11 +2280,39 @@ Pslib.getSpecsForSelectedArtboards = function()
 		}
 		return artboards;
 	}
+	else if(Pslib.isIllustrator)
+	{
+		var doc = app.activeDocument;
+		var initialSelection = doc.selection;
 
-	// these could definitely be adapted for retrieving Photoshop artboard geometry
-	// Pslib.getItemsOverlapArtboard = function( itemsArr, artboard, getItems )
-	// Pslib.getArtboardsFromSelectedItems = function( itemsArr, getPagesBool )
+		var artboards = Pslib.getArtboardsFromSelectedItems();
+		var artboardsCoords = [];
+		for(var i = 0; i < artboards.length; i++)
+		{
+			var artboard = artboards[i];
+			// var coords = Pslib.getArtboardCoordinates(artboard);
+			var artboardIndex = Pslib.getArtboardIndex(artboard, true);
+			// coordsObj.index = artboardIndex;
+			// doc.artboards.setActiveArtboardIndex(artboardIndex-1);
 
+			placeholder = Pslib.getArtboardItem(artboard, "#");
+			var specsObj = { name: artboard.name.toFileSystemSafeName(), id: (artboardIndex+1) };
+			if(placeholder)
+			{
+				var tags = Pslib.getTags(placeholder, [ ["assetID", null] ]);
+				if(tags.length)
+				{
+					specsObj = Pslib.arrayToObj( tags, specsObj );
+				}
+			}
+			artboardsCoords.push(specsObj);
+		}
+
+		if(initialSelection) doc.selection = initialSelection;
+
+		JSUI.quickLog(artboardsCoords);
+		return artboardsCoords;
+	}
 }
 
 Pslib.getSpecsForAllArtboards = function()
@@ -2017,32 +2360,42 @@ Pslib.getSpecsForAllArtboards = function()
 	
 		return artboards;
 	}
+	else if(Pslib.isIllustrator)
+	{
+		return Pslib.getArtboardCollectionCoordinates();
+	}
+
 }
 
 // typically used in conjunction with Pslib.getSpecsForSelectedArtboards()/Pslib.getSpecsForAllArtboards()
 // based on "light" specs quickly obtained from artboards, select layer objects to gather custom xmp data if present on layer objects
-// var obj = { dictionary: [ ["propertyname1", null], ["propertyname2", null], ["propertyname3", null] ] }
+// var obj = { dictionary: [ ["propertyname1", null], ["propertyname2", null], ["propertyname3", null] ], converter: [ [ "layerProperty", "docArrayItemQualifier"] ] }
 // var dictionary = Pslib.getXmpDictionary( layer, { assetID: null, source: null, hierarchy: null, specs: null, custom: null }, false, false, false, namespace ? namespace : Pslib.XMPNAMESPACE);
       
 Pslib.getAdvancedSpecs = function( specsArr, obj )
 {
-	if(Pslib.isPhotoshop)
-	{
-		if(!specsArr) specsArr = Pslib.getSpecsForSelectedArtboards();
+	// if(Pslib.isPhotoshop)
+	// {
+		if(!specsArr) specsArr = Pslib.isPhotoshop ? Pslib.getSpecsForSelectedArtboards() : Pslib.getArtboardCollectionCoordinates(); // this still needs to be finetuned for illustrator
 		if(!obj) obj = {};
-		if(!obj.dictionary) obj.dictionary = Pslib.assetKeyValuePairs;
+		if(!obj.dictionary) obj.dictionary = Pslib.arrayToObj(Pslib.assetKeyValuePairs);
 		if(!obj.namespace) obj.namespace = Pslib.XMPNAMESPACE;
+		if(!obj.converter) obj.converter = Pslib.assetKeyConversionArr; 
 
 		var updatedSpecsArr = [];
 
 		for(var i = 0; i < specsArr.length; i++)
 		{
 			var specsObj = specsArr[i];
-			var layerObj = Pslib.selectLayerByID( specsObj.id, false );
+			// var layerObj = Pslib.isPhotoshop ? Pslib.selectLayerByID( specsObj.id, false ) : ;
+			var layerObj = Pslib.selectLayerByID( specsObj.id, false ); // fix for illustrator
 
 			if(obj.dictionary)
 			{
 				// Pslib.assetKeyValuePairs = [ [ "assetID", null ], [ "index", null ] ];
+				// Pslib.isPhotoshop ? 
+				// if(Pslib.isIllustrator) Pslib.getArtboardCoordinates(originalArtboard)
+				// var keyValuePairs = Pslib.isPhotoshop ? Pslib.getXmpDictionary( layerObj, obj.dictionary, false, false, false, obj.namespace) : ( [ /* get artboard item tags */ ] );
 				var keyValuePairs = Pslib.getXmpDictionary( layerObj, obj.dictionary, false, false, false, obj.namespace);
 				// var keyValuePairs = Pslib.getXmpDictionary( layerObj, Pslib.assetKeyValuePairs, false, false, false, obj.namespace ? obj.namespace : Pslib.XMPNAMESPACE);
 				// JSUI.quickLog(keyValuePairs, layerObj.name + " keyValuePairs "+(typeof keyValuePairs)+": ");
@@ -2052,15 +2405,35 @@ Pslib.getAdvancedSpecs = function( specsArr, obj )
 					for(var j = 0; j < keyValuePairs.length; j++)
 					{
 						var pair = keyValuePairs[j];
-						if($.level) $.writeln("pair: " + pair );
+						// if($.level) $.writeln("pair: " + pair );
 						if(!pair) continue;
 
 						var property = pair[0];
 						var value = pair[1];
-						if((property != undefined) && (value != undefined))
+
+						if(property != undefined)
 						{
-							// if($.level) $.writeln(property +": " + value );
-							specsObj[property] = value;
+							if(value != undefined)
+							{
+								// convert item property name to xmp qualifier here
+								// converter: [ [ "layerProperty", "docArrayItemQualifier"] ]
+								if(obj.converter != undefined)
+								{
+									if(obj.converter instanceof Array)
+									{
+										for(var k = 0; k < obj.converter.length; k++)
+										{
+											if(obj.converter[k][0] == property)
+											{
+												property = obj.converter[k][1];
+											}
+										}
+									}
+								}
+
+								// if($.level) $.writeln(property +": " + value );
+								specsObj[property] = value;
+							}
 						}
 					}
 				}
@@ -2075,13 +2448,31 @@ Pslib.getAdvancedSpecs = function( specsArr, obj )
 						if(keyValuePairs[key] != undefined)
 						{
 							var value = keyValuePairs[key];
-
-							if(typeof value != "function")
+							if(value != undefined)
 							{
-								if(value != null && value != "null")
+								if(typeof value != "function")
 								{
-									specsObj[key] = value;
-									// if($.level) $.writeln("***"+key +": " + value );
+									if(value != null && value != "null")
+									{
+										// convert item property name to xmp qualifier here
+										// converter: [ [ "layerProperty", "docArrayItemQualifier"] ]
+										if(obj.converter != undefined)
+										{
+											if(obj.converter instanceof Array)
+											{
+												for(var k = 0; k < obj.converter.length; k++)
+												{
+													if(obj.converter[k][0] == key)
+													{
+														key = obj.converter[k][1];
+													}
+												}
+											}
+										}
+
+										specsObj[key] = value;
+										// if($.level) $.writeln("***"+key +": " + value );
+									}
 								}
 							}
 						}
@@ -2100,16 +2491,24 @@ Pslib.getAdvancedSpecs = function( specsArr, obj )
 			updatedSpecsArr.push(specsObj);
 		}
 
-		// restore selection in layers palette 
-		for(var i = 0; i < specsArr.length; i++)
+		if(Pslib.isPhotoshop)
 		{
-			if(specsArr[i])
+			// restore selection in layers palette 
+			for(var i = 0; i < specsArr.length; i++)
 			{
-				if(specsArr[i].id) Pslib.selectLayerByID( specsArr[i].id, true );
+				if(specsArr[i])
+				{
+					if(specsArr[i].id) Pslib.selectLayerByID( specsArr[i].id, true );
+				}
 			}
 		}
+
 		return updatedSpecsArr;
-	}
+	// }
+	// else if(Pslib.isIllustrator)
+	// {
+
+	// }
 }
 
 Pslib.getActiveArtboard = function()
@@ -2212,6 +2611,24 @@ Pslib.getArtboardNames = function( artboards )
 		}
 		return artboardNames;
 	}
+}
+
+// get quick artboard info (structure to match Photoshop artboard objects)
+Pslib.getArtboardCollectionCoordinates = function()
+{
+	var artboards = app.activeDocument.artboards;
+	var artboardObjArr = [ ];
+
+	app.coordinateSystem = CoordinateSystem.ARTBOARDCOORDINATESYSTEM;
+
+	for(var i = 0; i < artboards.length; i++)
+	{
+		var coords = Pslib.getArtboardCoordinates( artboards[i] );
+		var obj = { name: coords.name, id: i, width: coords.width, height: coords.height, x: coords.x, y: coords.y };
+		artboardObjArr.push(obj);
+	}
+
+	return artboardObjArr;
 }
 
 Pslib.getArtboardCoordinates = function( artboard )
@@ -2322,6 +2739,121 @@ Pslib.getArtboardSpecs = function( artboard )
 
 		return specs;
 	}
+}
+
+// Lazy filters for uniformization of artboard specs objects between Photoshop & Illustrator
+// with option to "rename" a property while retaining its value
+// usage:
+//		var obj = { name: "ExampleName", id: 10, assetID: "1234-5678-90AB", target: "Hello" };
+// 		Pslib.filterDataObject( obj, [ "target", "replaced"] );
+// yields { name: "ExampleName", assetArtboardID: 10, assetID: "1234-5678-90AB", replaced: "Hello" }
+Pslib.filterDataObject = function( obj, extraPairArr )
+{
+    var newObj = {};
+    if(obj.name) newObj.assetName = obj.name;
+    if(Pslib.isPhotoshop)
+    {
+        if(obj.id) newObj.assetArtboardID = obj.id;
+    }
+    else if(Pslib.isIllustrator)
+    {
+        if(obj.index) newObj.assetArtboardID = obj.index;
+    }
+
+    if(obj.assetID) newObj.assetID = obj.assetID;
+    if(extraPairArr)
+    {
+        if(extraPairArr.length == 2)
+        {
+			var value = obj[extraPairArr[0]];
+            if(value != undefined)
+			{
+				newObj[extraPairArr[0]] = undefined;
+				newObj[extraPairArr[1]] = value;
+			}
+        }
+    }
+    return newObj;
+}
+
+Pslib.filterDataObjectArray = function( arr, extraPairArr )
+{
+    var newArray = [];
+    for(var i = 0; i < arr.length; i++)
+    {
+        var item = Pslib.filterDataObject( arr[i], extraPairArr );
+        newArray.push(item);
+    }
+    return newArray;
+}
+
+// convert simple array pair to object
+Pslib.pairArrToObj = function( arr, extraPairArr )
+{
+    var newObj = {};
+
+	var property = arr[0];
+	var value = arr[1];
+
+	if(extraPairArr)
+	{
+		if(extraPairArr.length == 2)
+		{
+			var replaceProperty = extraPairArr[0];
+			var newPropertyName = extraPairArr[1];
+			if( property == replaceProperty)
+			{
+				property = newPropertyName;
+			}
+		}
+	}
+	newObj[property] = value;
+
+    return newObj;
+}
+
+// convert array of pairs to array of objects
+Pslib.pairArrCollectionToObjArr = function( arr, extraPairArr )
+{
+    var newArr = [];
+
+    for(var i = 0; i < arr.length; i++)
+    {
+		var obj = Pslib.pairArrToObj(arr[i], extraPairArr);
+		newArr.push(obj);
+	}
+
+    return newArr;
+}
+
+// convert set of pairs to single object
+Pslib.pairArrCollectionToObj = function( arr, extraPairArr )
+{
+	var newObj = {};
+
+    for(var i = 0; i < arr.length; i++)
+    {
+		var property = arr[i][0];
+		var value = arr[i][1];
+		if((property != undefined) && (value != undefined))
+		{
+			if(extraPairArr)
+			{
+				if(extraPairArr.length == 2)
+				{
+					var replaceProperty = extraPairArr[0];
+					var newPropertyName = extraPairArr[1];
+					if( property == replaceProperty)
+					{
+						property = newPropertyName;
+					}
+				}
+			}
+			newObj[property] = value;
+		}
+	}
+
+    return newObj;
 }
 
 // quick check for selection / collection of items intersecting with artboard geometry
@@ -3956,13 +4488,174 @@ Pslib.setLayerColor = function(id, colorStr)
 	}
 }
 
-// from JSUI if not included along with Pslib
+// hack to allow Array.sort() to sort objects based on value of .assetArtboardID
+Pslib.compareArtboardID = function( a, b )
+{
+    if ( a.assetArtboardID < b.assetArtboardID ){ return -1; }
+    if ( a.assetArtboardID > b.assetArtboardID ){ return 1; }
+    return 0;
+}
+
+// get these from JSUI if not included along with Pslib
 if(typeof JSUI !== "object")
 {
 	String.prototype.trim = function()
 	{
 		return this.replace(/^[\s]+|[\s]+$/g,'');
+	}
+
+	// Lack of support for Set()/Array.filter() calls for hacks
+	Array.prototype.indexOf = function(element)
+	{
+		for(var i = 0; i < this.length; i++)
+		{
+			if(this[i] == element) return i;
+		}
+		return -1;
 	};
+
+	// removes duplicates in array
+	Array.prototype.getUnique = function()
+	{
+		var unique = [];
+		for(var i = 0; i < this.length; i++)
+		{
+			var current = this[i];
+			if(unique.indexOf(current) < 0) unique.push(current)
+		}
+		return unique;
+	};
+
+	// sort indexes
+	Array.prototype.sortAscending = function()
+	{
+		return this.sort(function(a, b){return a - b});
+	};
+
+	Array.prototype.sortDescending = function()
+	{
+		return this.sort(function(a, b){return b - a});
+	};
+
+	// [1, 2, 3, 4, 8, 10, 11, 12, 15, 16, 17, 18, 29]
+	// becomes "1-4,8,10-12,15-18,29"
+	Array.prototype.getRanges = function()
+	{
+		var ranges = ""; // [];
+		var rstart;
+		var rend;
+		for (var i = 0; i < this.length; i++)
+		{
+			rstart = this[i];
+			rend = rstart;
+			while (this[i + 1] - this[i] == 1)
+			{
+				rend = this[i + 1]; // increment the index if the numbers sequential
+				i++;
+			}
+			ranges += ((rstart == rend ? rstart+'' : rstart + '-' + rend) + ( i+1 == this.length ? "" : "," ));
+		}
+		return ranges;
+	};
+
+	// [1, 2, 3, 4, 8, 10, 11, 12, 15, 16, 17, 18, 29]
+	// becomes "1-4,8,10-12,15-18,29"
+	Array.prototype.toSimplifiedString = function()
+	{
+		// if($.level) $.writeln(this);
+		var str = "";
+		var ranges = [];
+
+		var range = [];
+
+		for(var i = 0; i < this.length; i++)
+		{	
+			var num = this[i];
+
+			// mixed array content safeguard: if not number, try to cast, skip if fails
+			if(isNaN(num)) num = parseInt(num);
+			if(isNaN(num) || num == 0) continue;
+			
+			range.push(num);
+
+			// if next number in array is not an increment, push array and reset count
+			// if(this[i+1] != undefined)
+			// {
+				if( (num+1) != this[i+1] )
+				{
+					ranges.push(range);
+					// if(this[i+1] == this[this.length-1]) ranges.push( [this[i+1]] );
+					// avoid duplication of last item in ranges!
+					if(this[i+1] == this[this.length-1] && this[i+1] != this[i]) ranges.push( [this[i+1]] );
+					range = [];
+				}
+			// }
+		}
+
+		// reformat string
+		for(var j = 0; j < ranges.length; j++)
+		{
+			var currentRange = ranges[j];
+			var start = currentRange[0];
+			var end = currentRange[currentRange.length-1];
+
+			str += (start == end ? start : (start + "-" + end));
+
+			if(j != (ranges.length-1))
+			{
+				str += ",";
+			}
+		}
+
+		return str.length ? str : this.toString();
+	};
+
+	// "1-4,8,10-12,15-18,29"
+	// becomes [1, 2, 3, 4, 8, 10, 11, 12, 15, 16, 17, 18, 29]
+	String.prototype.toRangesArr = function()
+	{
+		var arr = [];
+		var str = this.trim();
+		str = str.replace(/\s/g, "");
+		var tmpArr = str.split(",");
+		
+		for(var i = 0; i < tmpArr.length; i++)
+		{	
+			var r = tmpArr[i];
+			if(r == "") continue;
+			if(r.match("-") != null)
+			{
+				var range = r.split("-");
+				var start = parseInt(range[0]);
+				var end = parseInt(range[1]);
+
+				if(!isNaN(start) && !isNaN(end))
+				{
+					var rLength = end - start + 1;
+					for(var r = 0; r < rLength; r++)
+					{
+						arr.push(start+r);
+					}
+				}
+			}
+			else
+			{
+				var intgr = parseInt(r);
+				var hasInt = !isNaN(intgr);
+				if(hasInt) arr.push(intgr);
+			}
+		}
+		return arr.length ? arr.getUnique().sortAscending() : [];
+	};
+
+	// "0, 1, 2-3,4,5,10-12, 8, 29,30,31, 11, 12,65, 66, 178"
+	// becomes "1-5,8,10-12,29-31,65-66,178"
+	// does not support negative numbers 
+	String.prototype.toRangesStr = function()
+	{
+		return this.toRangesArr().toSimplifiedString();
+	}
+
 }
 
 // DEBUG AREA

@@ -131,6 +131,7 @@ JSUI.XMLFILE = JSUI.USERPREFSFOLDER + "/" + JSUI.TOOLSPREFSFOLDERNAME + "/" + JS
 JSUI.XMLfileActive = false;
 
 JSUI.autoSave = false;
+JSUI.allowTimers = false;
 JSUI.PrintINIstringInfo = false;
 JSUI.CS6styling = true;
 
@@ -5301,17 +5302,22 @@ JSUI.quickLog = function(obj, arrDepthInt, msgStr)
 // high resolution timer -- used twice in a row to make sure that we are not working with a rogue / leak
 JSUI.startTimer = function()
 {
-	$.hiresTimer;
-	$.hiresTimer;
+	if(JSUI.allowTimers)
+	{
+		$.hiresTimer;
+		$.hiresTimer;
+	}
 }
 
 JSUI.stopTimer = function()
 {
-	// var durationSec = ($.hiresTimer/1000000000);
-	var durationSec = ($.hiresTimer * 0.000001);
-	var durationStr =  durationSec + " sec";
-	if($.level) $.writeln(" Duration: " + durationStr);
-	return durationSec;
+	if(JSUI.allowTimers)
+	{
+		var durationSec = ($.hiresTimer * 0.000001);
+		var durationStr =  durationSec + " sec";
+		if($.level) $.writeln(" Duration: " + durationStr);
+		return durationSec;
+	}
 }
 
 // write/modify a single property value to/from  INI file
