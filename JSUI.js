@@ -3389,6 +3389,8 @@ Object.prototype.addRectangle = function(propName, obj)
 // dropdownlist component
 // 	var ddlist = container.addDropDownList( { prefs:prefsObj, name:"ddlist", list:["Zero", "One", "Two"] , label:"Choose a number:"} );
 // (note: if prefsObj has corresponding property, it is updated on the fly by OnChange event)
+// TODO: - allow for secondary presentation-only array of strings (show one thing, store equivalent)
+// - allow storing actual string value instead of number
 Object.prototype.addDropDownList = function(propName, obj)
 {	
 	var obj = obj != undefined ? obj : {};
@@ -5261,6 +5263,11 @@ JSUI.quickLog = function(obj, arrDepthInt, msgStr)
 			arrDepthInt = 0;
 		}
 
+		if(obj == null)
+		{	
+			JSUI.quickLog("null", arrDepthInt, msgStr);
+		}
+
 		if(arrDepthInt == undefined) arrDepthInt = 0;
 		var indent = "";
 		for(var i = 1; i < arrDepthInt; i++)
@@ -5786,6 +5793,14 @@ Array.prototype.indexOf = function(element)
 		if(this[i] == element) return i;
 	}
 	return -1;
+};
+
+// prototyping Array.map() functionality
+Array.prototype.map = function(callback) {
+    var arr = [];
+    for (var i = 0; i < this.length; i++)
+        arr.push(callback(this[i], i, this));
+    return arr;
 };
 
 // removes duplicates in array

@@ -162,7 +162,7 @@ if(Pslib.isPhotoshop)
 		// return ldesc.getInteger(cTID('LyrI'));
 	};
 
-	//
+	// sub-optimal (we can actually get this info without the layer being active)
 	function getArtboardBounds( id )
 	{
 		var artboard = selectByID( id );
@@ -194,7 +194,7 @@ if(Pslib.isPhotoshop)
 
 			for(var i = 1; i <= numOfLayers; i++) {
 				var ar = new ActionReference();
-				ar.putIndex(cTID("Lyr "), i);// 1-base
+				ar.putIndex(cTID("Lyr "), i);// 1-based!
 				var dsc = executeActionGet(ar);
 				var id = dsc.getInteger(sTID('layerID'));
 				var name = dsc.getString(sTID('name'));
@@ -388,7 +388,7 @@ Pslib.assetKeyConversionArr = [ ];
 
 // #############  PER-LAYER METADATA FUNCTIONS
 
-// define default namespace
+// default namespace
 Pslib.XMPNAMESPACE = "http://www.geeklystrips.com/";
 Pslib.XMPNAMESPACEPREFIX = "gs:";
 
@@ -449,7 +449,7 @@ else if(Pslib.isPsCCandAbove)
 try
 {
 	// load library
-	 if(!ExternalObject.AdobeXMPScript)
+	 if(ExternalObject.AdobeXMPScript != undefined)
 	{
 		ExternalObject.AdobeXMPScript = new ExternalObject('lib:AdobeXMPScript');
 	}
@@ -1809,23 +1809,122 @@ Pslib.autoTypeDataValue = function( propValue, allowEmptyStringBool, allowNullBo
 
 // this returns the entire XMP structure from an offline file (prompts user if no file argument is provided)
 // important precision: XMP from a live document may be different if modified but not saved
-Pslib.getXMPfromFile = function( filepath )
+Pslib.getXMPfromFile = function( filepath, type )
 {
+	if(!type) type = XMPConst.UNKNOWN;
     try {
         if(filepath){ filepath = new File(filepath); }
-        var f = filepath ? filepath : File.openDialog('Open file');
+        var f = filepath ? filepath : File.openDialog("Choose file to get XMP data from");
         if(!f) { if($.level) $.writeln("Invalid file"); return; }
 
         if($.level) $.writeln("Getting XMP data from " + f.fsName);
 
         if (!ExternalObject.AdobeXMPScript) ExternalObject.AdobeXMPScript = new ExternalObject('lib:AdobeXMPScript')
-        // var xmpFile = new XMPFile(f.fsName, XMPConst.UNKNOWN, XMPConst.OPEN_FOR_READ),
-        var xmpFile = new XMPFile(f.fsName, XMPConst.UNKNOWN, XMPConst.XMPConst.OPEN_ONLY_XMP),
+
+		// get file type
+		var fileTypeCONST = type != undefined ? type : Pslib.getXMPConstFileType(f.fsName);
+		// if($.level) $.writeln("fileTypeCONST: "+fileTypeCONST);
+
+        // var xmpFile = new XMPFile(f.fsName, fileTypeCONST, XMPConst.OPEN_FOR_READ);
+        var xmpFile = new XMPFile(f.fsName, fileTypeCONST, XMPConst.OPEN_ONLY_XMP);
         xmp = xmpFile.getXMP();
         // if($.level) $.writeln( xmp.serialize());
 		xmpFile.closeFile(XMPConst.CLOSE_UPDATE_SAFELY);
         return xmp;
-    } catch (e) { if($.level) $.writeln( "Error: \n\n" + e);}
+    } catch (e) { if($.level) $.writeln( "Error: \n\n" + e); return false; }
+	return true;
+}
+
+
+// write xmp to media file / update media file xmp
+// Confirmed: .putXMP() does not replace the existing object (updates + adds content)
+Pslib.writeXMPtoMediaFile = function( filepath, xmp, type )
+{
+    try {
+		if(!xmp) return false;
+		if(filepath){ filepath = new File(filepath); }
+        var f = filepath ? filepath : File.openDialog("Choose file to put XMP to");
+        if(!f) { if($.level) $.writeln("Invalid file"); return; }
+
+        if($.level) $.writeln("Embedding XMP data to " + f.fsName);
+
+		if (!ExternalObject.AdobeXMPScript) ExternalObject.AdobeXMPScript = new ExternalObject('lib:AdobeXMPScript')
+
+		// get file type
+		var fileTypeCONST = type != undefined ? type : Pslib.getXMPConstFileType(f.fsName);
+		// if($.level) $.writeln("fileTypeCONST: "+fileTypeCONST);
+
+		var xmpFile = new XMPFile(f.fsName, fileTypeCONST, XMPConst.OPEN_FOR_UPDATE);
+		xmpFile.putXMP(xmp);
+		xmpFile.closeFile(XMPConst.CLOSE_UPDATE_SAFELY);
+	} catch (e) { if($.level) $.writeln( "Error: \n\n" + e); return false; }
+	return true;
+}
+
+Pslib.writeToFile = function(file, str, encoding)
+{
+	if(!file) return false;
+	file = (file instanceof String) ? File(file) : file;
+	if(!encoding) encoding = "utf8";
+
+	if(!file.parent.exists) { file.parent.create(); }
+	if(file.exists) { file.remove(); }
+
+	file.open("w");
+	file.encoding = encoding;
+	file.write(str); 
+	file.close();
+
+	return file.exists;
+}
+
+Pslib.readFromFile = function(fptr, encoding)
+{
+	if(!file) return false;
+	if(!encoding) encoding = "utf8";
+	file.open("r");
+	file.encoding = encoding;
+	var str = file.read();
+	file.close();
+	
+	return str;
+}
+
+
+// write xmp to media sidecar file (.xmp)
+Pslib.writeXMPtoSidecarFile = function( filepath, xmp )
+{
+	return Pslib.writeToFile(filepath, xmp.serialize());
+}
+
+
+// XMPFileObj.closeFile(closeFlags)
+
+Pslib.getXMPConstFileType = function(file)
+{
+	var type = XMPConst.UNKNOWN; 
+	if(!file) return type;
+	var extension = file.getFileExtension();
+
+	switch(extension)
+	{
+		case ".psd" : { type = XMPConst.FILE_PHOTOSHOP; break; }
+		case ".ai" : { type = XMPConst.FILE_ILLUSTRATOR; break; }
+		case ".pdf" : { type = XMPConst.FILE_PDF; break; }
+		case ".png" : { type = XMPConst.FILE_PNG; break; }
+		case ".jpg" : { type = XMPConst.FILE_JPEG; break; }
+		case ".jpeg" : { type = XMPConst.FILE_JPEG; break; }
+		case ".tif" : { type = XMPConst.FILE_TIFF; break; }
+		case ".tiff" : { type = XMPConst.FILE_TIFF; break; }
+		case ".indd" : { type = XMPConst.FILE_INDESIGN; break; }
+		case ".xml" : { type = XMPConst.FILE_XML; break; }
+		case ".svg" : { type = XMPConst.FILE_XML; break; }
+		case ".ps" : { type = XMPConst.FILE_POSTSCRIPT; break; }
+		case ".eps" : { type = XMPConst.FILE_EPS; break; }
+		case ".txt" : { type = XMPConst.FILE_TEXT; break; }
+		default: break;
+	}
+	return type;
 }
 
 //
@@ -2613,13 +2712,37 @@ Pslib.getArtboardNames = function( artboards )
 	}
 }
 
+// get Photoshop layer reference without selecting (can be an artlayer / group / artboard)
+Pslib.getLayerReferenceByID = function( id )
+{
+    if(Pslib.isPhotoshop)
+	{
+        var r = new ActionReference();    
+        r.putIdentifier(sTID("layer"), id);
+        return executeActionGet(r);
+    }
+}
+
+// get Photoshop artboard reference without selecting (must be an artboard)
+Pslib.getArtboardReferenceByID = function( id )
+{
+    if(Pslib.isPhotoshop)
+	{
+        var r = new ActionReference();    
+        r.putIdentifier(sTID("layer"), id);
+        var isArtboard = false;
+        try { isArtboard = executeActionGet(r).getBoolean(sTID("artboardEnabled")); }catch(e){ }
+        if(isArtboard) return executeActionGet(r);
+    }
+}
+
 // get quick artboard info (structure to match Photoshop artboard objects)
 Pslib.getArtboardCollectionCoordinates = function()
 {
 	var artboards = app.activeDocument.artboards;
 	var artboardObjArr = [ ];
 
-	app.coordinateSystem = CoordinateSystem.ARTBOARDCOORDINATESYSTEM;
+	if(Pslib.isIllustrator) app.coordinateSystem = CoordinateSystem.ARTBOARDCOORDINATESYSTEM;
 
 	for(var i = 0; i < artboards.length; i++)
 	{
@@ -2631,6 +2754,42 @@ Pslib.getArtboardCollectionCoordinates = function()
 	return artboardObjArr;
 }
 
+
+// basic get artboard bounds
+Pslib.getArtboardBounds = function( id )
+{
+    if(Pslib.isPhotoshop)
+	{
+        var r = Pslib.getArtboardReferenceByID(id);
+
+        if(r)
+        {
+            // var name = r.getString(sTID ("name"));
+            // JSUI.quickLog(name);
+
+            var d = r.getObjectValue(sTID("artboard")).getObjectValue(sTID("artboardRect"));
+            var bounds = new Array();
+            bounds[0] = d.getUnitDoubleValue(sTID("top"));
+            bounds[1] = d.getUnitDoubleValue(sTID("left"));
+            bounds[2] = d.getUnitDoubleValue(sTID("right"));
+            bounds[3] = d.getUnitDoubleValue(sTID("bottom"));
+
+            return bounds;
+        }
+    }
+    else if(Pslib.isIllustrator)
+    {
+        // assume "id" is an artboard object
+        if(!id) { var id = Pslib.getActiveArtboard(); }
+        var artboard = id;
+        var rect = artboard.artboardRect;
+        return rect;
+    }
+}
+
+// quick artboard info fetch (does not need to be active)
+// illustrator uses artboard object
+// photoshop gets integer for artboard ID
 Pslib.getArtboardCoordinates = function( artboard )
 {
 	if(Pslib.isIllustrator)
@@ -2640,7 +2799,7 @@ Pslib.getArtboardCoordinates = function( artboard )
 			var artboard = Pslib.getActiveArtboard();
 		}
 
-		// if(app.coordinateSystem != CoordinateSystem.ARTBOARDCOORDINATESYSTEM) app.coordinateSystem = CoordinateSystem.ARTBOARDCOORDINATESYSTEM;
+		if(app.coordinateSystem != CoordinateSystem.ARTBOARDCOORDINATESYSTEM) app.coordinateSystem = CoordinateSystem.ARTBOARDCOORDINATESYSTEM;
 
 		var rect = artboard.artboardRect;
 		var coords = {};
@@ -2664,6 +2823,11 @@ Pslib.getArtboardCoordinates = function( artboard )
 	}
 	else if(Pslib.isPhotoshop)
 	{
+		// for the next few steps, we need to work with layer IDs
+		var id;
+		var r;
+		var coords = {};
+
 		if(!artboard)
 		{ 
 			var layer = app.activeDocument.activeLayer;
@@ -2671,27 +2835,69 @@ Pslib.getArtboardCoordinates = function( artboard )
 			{
 				return {};
 			}
+			id = layer.id;
+		}
+		else if(typeof artboard == "number")
+		{
+			id = artboard;
+		}
+		else
+		{
+			return {};
 		}
 
-		var coords = {};
-		coords.name = layer.name.trim();
+        r = Pslib.getArtboardReferenceByID(id);
 
-		// // get info
-		// coords.x = rect[0];
-		// coords.y = (-rect[1]);
-		// coords.width = rect[2] - rect[0];
-		// coords.height = Math.abs(rect[3] - rect[1]);
-		// coords.rect = rect;
-		// coords.centerX = coords.x + coords.width/2;
-		// coords.centerY = coords.y - coords.height/2;
+        if(r)
+        {
+            var d = r.getObjectValue(sTID("artboard")).getObjectValue(sTID("artboardRect"));
+            var bounds = new Array();
+            bounds[0] = d.getUnitDoubleValue(sTID("top"));
+            bounds[1] = d.getUnitDoubleValue(sTID("left"));
+            bounds[2] = d.getUnitDoubleValue(sTID("right"));
+            bounds[3] = d.getUnitDoubleValue(sTID("bottom"));
 
-		// // advanced logic for which we don't have to make the artboard active
-		// coords.isSquare = coords.width == coords.height;
-		// coords.isPortrait = coords.width < coords.height;
-		// coords.isLandscape = coords.width > coords.height;
-		// coords.hasIntegerCoords = coords.x == Math.round(coords.x) && coords.y == Math.round(coords.y) && coords.width == Math.round(coords.width) && coords.height == Math.round(coords.height);
+            coords.name = r.getString(sTID("name")).trim();
+            coords.id = id;
+            coords.x = bounds[0];
+            coords.y = bounds[1];
+		    coords.width = bounds[2] - bounds[1];
+		    coords.height = bounds[3] - bounds[0];
 
-		return coords;
+            coords.rect = bounds;
+		    coords.centerX = coords.x + coords.width/2;
+		    coords.centerY = coords.y - coords.height/2;
+
+            // advanced logic for which we don't have to make the artboard active
+            coords.isSquare = coords.width == coords.height;
+            coords.isPortrait = coords.width < coords.height;
+            coords.isLandscape = coords.width > coords.height;
+            coords.hasIntegerCoords = coords.x == Math.round(coords.x) && coords.y == Math.round(coords.y) && coords.width == Math.round(coords.width) && coords.height == Math.round(coords.height);
+
+			// // advanced stuff, photoshop only
+			// var dt = r.getObjectValue(sTID("artboard"));
+			// coords.presetName = dt.getString(sTID('artboardPresetName'));
+			// coords.backgroundType = dt.getString(sTID('artboardBackgroundType'));
+
+			// var color = new SolidColor();
+			// if(coords.backgroundType != 3)
+			// {
+			// 	color = dt.getObjectValue(sTID('color'));
+	
+			// 	var red = color.getUnitDoubleValue(sTID("red"));
+			// 	var green = color.getUnitDoubleValue(sTID("grain")); // don't look!
+			// 	var blue = color.getUnitDoubleValue(sTID("blue"));
+	
+			// 	color = new SolidColor();
+			// 	color.rgb.red = red;
+			// 	color.rgb.green = green;
+			// 	color.rgb.blue = blue;
+
+			// 	coords.backgroundColor = color.rgb.hexValue;
+			// }
+
+            return coords;
+		}
 	}
 }
 
@@ -2707,19 +2913,6 @@ Pslib.getArtboardSpecs = function( artboard )
 		var specs = coords;
 
 		var doc = app.activeDocument;
-		// specs.name = artboard.name;
-
-		// specs.x = coords.x;
-		// specs.y = coords.y;
-		// specs.width = coords.width;
-		// specs.height = coords.height;
-		// specs.rect = coords.rect;
-
-		// advanced logic for which we don't have to make the artboard active
-		// specs.isSquare = coords.isSquare;
-		// specs.isPortrait = coords.isPortrait;
-		// specs.isLandscape = coords.isLandscape;
-		// specs.hasIntegerCoords = coords.hasIntegerCoords; 
 
 		specs.isPow2 = specs.width.isPowerOf2() && specs.height.isPowerOf2();
 		specs.isMult4 = specs.width.isMult4() && specs.width.isMult4();
@@ -2739,7 +2932,402 @@ Pslib.getArtboardSpecs = function( artboard )
 
 		return specs;
 	}
+	else if(Pslib.isPhotoshop)
+	{
+		var coords = {};
+
+		if(typeof artboard == "number")
+		{
+			coords = Pslib.getArtboardCoordinates(artboard);
+
+			var r = Pslib.getArtboardReferenceByID(artboard);
+
+			var dt = r.getObjectValue(sTID("artboard"));
+			coords.presetName = dt.getString(sTID('artboardPresetName'));
+			coords.backgroundType = dt.getString(sTID('artboardBackgroundType'));
+
+			var color = new SolidColor();
+			if(coords.backgroundType != 3)
+			{
+				color = dt.getObjectValue(sTID('color'));
+
+				var red = color.getUnitDoubleValue(sTID("red"));
+				var green = color.getUnitDoubleValue(sTID("grain")); // don't look!
+				var blue = color.getUnitDoubleValue(sTID("blue"));
+
+				color = new SolidColor();
+				color.rgb.red = red;
+				color.rgb.green = green;
+				color.rgb.blue = blue;
+				
+				coords.backgroundColor = color.rgb.hexValue;
+			}
+		}
+
+		var specs = coords;
+
+		specs.isPow2 = specs.width.isPowerOf2() && specs.height.isPowerOf2();
+		specs.isMult4 = specs.width.isMult4() && specs.width.isMult4();
+		specs.isMult8 = specs.width.isMult8() && specs.width.isMult8();
+		specs.isMult16 = specs.width.isMult16() && specs.width.isMult16();
+
+		return specs;
+	}
 }
+
+
+// Pslib.scaleArtboardArtwork(200, 200) // force w & h @ 200 pixels 
+// Pslib.scaleArtboardArtwork(2.0, 2.0, Transformation.TOPLEFT, true); // 200%
+Pslib.scaleArtboardArtwork = function (width, height, anchor, factorBool)
+{
+    if(!width) return false;
+    var success = false;
+
+    if(!height) height = width;
+    if(!anchor) anchor = Pslib.getAnchorRefFromNum(5);
+
+    if(typeof anchor == "number") anchor = Pslib.getAnchorRefFromNum(anchor);
+
+    if(Pslib.isPhotoshop)
+    {
+
+    }
+    else if(Pslib.isIllustrator)
+    {
+        var doc = app.activeDocument;
+        var originalSelection = doc.selection;
+        var artboard = Pslib.getActiveArtboard();
+
+        var coords = Pslib.getArtboardCoordinates(artboard);
+        doc.selectObjectsOnActiveArtboard();
+        var selection = doc.selection;
+
+        if(!selection.length) return;
+
+        // pixels
+        var wScale = width / coords.width;
+        var hScale = height / coords.height;
+
+        if(factorBool)
+        {
+            wScale *= coords.width; // 2.0 means 200%
+            hScale *= coords.height;
+        }
+
+        if(selection.length > 0) 
+        {
+            for (var i = 0; i < selection.length; i++) 
+            {
+                selection[i].resize (wScale*100, hScale*100, true, true, true, true, wScale*100, anchor);
+            }
+        }
+
+        // restore original selection
+        doc.selection = originalSelection;
+        success = true;
+    }
+    return success;
+}
+
+// Pslib.scaleArtboardArtwork(2.0, 2.0, Transformation.TOPLEFT, true); // 200%
+Pslib.scaleArtboardArtworkPercent = function (width, height, anchor)
+{
+    return Pslib.scaleArtboardArtwork(width, height, anchor, true);
+}
+
+// Pslib.scaleArtboardArtwork(2.0, 2.0, Transformation.TOPLEFT, true); // 200%
+Pslib.scaleArtboardArtworkPixels = function (width, height, anchor)
+{
+    return Pslib.scaleArtboardArtwork(width, height, anchor, false);
+}
+
+// returns default AnchorPosition.MIDDLECENTER for Photoshop, Transformation.CENTER for Illustrator
+Pslib.getAnchorRefEnum = function ( str, defaultValue )
+{
+	var refEnum = null;
+
+	if(typeof str == "number")
+	{
+		if((str > 0) && (str < 10))
+		{
+			// safely assume we want 1-9 grid number
+			return Pslib.getAnchorNum(str);
+		}
+	}
+
+	if(typeof str != "string")
+	{
+		if(typeof str == "object")
+		{
+			str = str.toString();
+		}
+	}
+
+	if(defaultValue != undefined) refEnum = defaultValue;
+	
+	switch(str)
+	{
+		case ('AnchorPosition.TOPLEFT' || 'Transformation.TOPLEFT') : 
+		{
+			refEnum = Pslib.isPhotoshop ? AnchorPosition.TOPLEFT : (Pslib.isIllustrator ? Transformation.TOPLEFT : 7);
+			break;
+		}
+		case ('AnchorPosition.TOPCENTER' || 'Transformation.TOP') :
+		{
+			refEnum = Pslib.isPhotoshop ? AnchorPosition.TOPCENTER : (Pslib.isIllustrator ? Transformation.TOP : 8);
+			break;
+		}
+		case ('AnchorPosition.TOPRIGHT' || 'Transformation.TOPRIGHT') : 
+		{
+			refEnum = Pslib.isPhotoshop ? AnchorPosition.TOPRIGHT : (Pslib.isIllustrator ? Transformation.TOPRIGHT : 9);
+			break;
+		}
+		case ('AnchorPosition.MIDDLELEFT' || 'Transformation.LEFT') : 
+		{
+			refEnum = Pslib.isPhotoshop ? AnchorPosition.MIDDLELEFT : (Pslib.isIllustrator ? Transformation.LEFT : 4);
+			break;
+		}
+		case ('AnchorPosition.MIDDLECENTER' || 'Transformation.CENTER') : 
+		{
+			refEnum = Pslib.isPhotoshop ? AnchorPosition.MIDDLECENTER : (Pslib.isIllustrator ? Transformation.CENTER : 5);
+			break;
+		}
+		case ('AnchorPosition.MIDDLERIGHT' || 'Transformation.RIGHT') : 
+		{
+			refEnum = Pslib.isPhotoshop ? AnchorPosition.MIDDLERIGHT : (Pslib.isIllustrator ? Transformation.RIGHT : 6);
+			break;
+		}
+		case ('AnchorPosition.BOTTOMLEFT' || 'Transformation.BOTTOMLEFT') : 
+		{
+			refEnum = Pslib.isPhotoshop ? AnchorPosition.BOTTOMLEFT : (Pslib.isIllustrator ? Transformation.BOTTOMLEFT : 1);
+			break;
+		}
+		case ('AnchorPosition.BOTTOMCENTER' || 'Transformation.BOTTOM') : 
+		{
+			refEnum = Pslib.isPhotoshop ? AnchorPosition.BOTTOMCENTER : (Pslib.isIllustrator ? Transformation.BOTTOM : 2);
+			break;
+		}
+		case ('AnchorPosition.BOTTOMRIGHT' || 'Transformation.BOTTOMRIGHT') : 
+		{
+			refEnum = Pslib.isPhotoshop ? AnchorPosition.BOTTOMRIGHT : (Pslib.isIllustrator ? Transformation.BOTTOMRIGHT : 3);
+			break;
+		}
+		case ('Transformation.DOCUMENTORIGIN') : 
+		{
+			refEnum = JSUI.isIllustrator ? Transformation.DOCUMENTORIGIN : 5;
+			break;
+		}
+		default : // center / document origin
+		{
+			refEnum = Pslib.isPhotoshop ? AnchorPosition.MIDDLECENTER : (Pslib.isIllustrator ? Transformation.CENTER : 5);
+			break;
+		}
+	}
+	return refEnum;
+};
+
+
+// easily get anchor reference number from string patterns like "TOPLEFT" 
+// or actual Photoshop AnchorPosition enum instance
+//
+//	7	8	9
+//	4	5	6
+//	1	2	3
+//
+Pslib.getAnchorNum = function ( str, defaultNum )
+{
+	var num = null;
+	if(str == undefined) return null;
+
+	if(defaultNum != undefined) num = defaultNum;
+
+	if(typeof str != "string")
+	{
+		if(typeof str == "object")
+		{
+			str = str.toString();
+			// this.alert("AnchorPosition enum! " + str);
+		}
+	}
+	
+	var lowerCstr = str.toString().toLowerCase();
+
+	if(Pslib.isPhotoshop)
+	{
+		if(lowerCstr.match("anchorposition.") != null)
+		{
+			switch(str)
+			{
+				case 'AnchorPosition.TOPLEFT' : 
+				{
+					num = 7;
+					break;
+				}
+				case 'AnchorPosition.TOPCENTER' :
+				{
+					num = 8;
+					break;
+				}
+				case 'AnchorPosition.TOPRIGHT' : 
+				{
+					num = 9;
+					break;
+				}
+				case 'AnchorPosition.MIDDLELEFT' : 
+				{
+					num = 4;
+					break;
+				}
+				case 'AnchorPosition.MIDDLECENTER' : 
+				{
+					num = 5;
+					break;
+				}
+				case 'AnchorPosition.MIDDLERIGHT' : 
+				{
+					num = 6;
+					break;
+				}
+				case 'AnchorPosition.BOTTOMLEFT' : 
+				{
+					num = 1;
+					break;
+				}
+				case 'AnchorPosition.BOTTOMCENTER' : 
+				{
+					num = 2;
+					break;
+				}
+				case 'AnchorPosition.BOTTOMRIGHT' : 
+				{
+					num = 3;
+					break;
+				}
+				default : // center
+				{
+					num = 5;
+					break;
+				}
+			}
+		}
+	}
+	else if(Pslib.isIllustrator)
+	{
+		if(lowerCstr.match("transformation.") != null)
+		{
+			switch(str)
+			{
+				case 'Transformation.TOPLEFT' : 
+				{
+					num = 7;
+					break;
+				}
+				case 'Transformation.TOP' :
+				{
+					num = 8;
+					break;
+				}
+				case 'Transformation.TOPRIGHT' : 
+				{
+					num = 9;
+					break;
+				}
+				case 'Transformation.LEFT' : 
+				{
+					num = 4;
+					break;
+				}
+				case 'Transformation.CENTER' : 
+				{
+					num = 5;
+					break;
+				}
+				case 'Transformation.RIGHT' : 
+				{
+					num = 6;
+					break;
+				}
+				case 'Transformation.BOTTOMLEFT' : 
+				{
+					num = 1;
+					break;
+				}
+				case 'Transformation.BOTTOM' : 
+				{
+					num = 2;
+					break;
+				}
+				case 'Transformation.BOTTOMRIGHT' : 
+				{
+					num = 3;
+					break;
+				}
+				case 'Transformation.DOCUMENTORIGIN' : 
+				{
+					num = 5;
+					break;
+				}
+				default : // center
+				{
+					num = 5;
+					break;
+				}
+			}
+		}
+	}
+
+	return num;
+};
+
+Pslib.getAnchorRefFromNum = function ( num, defaultNum )
+{
+	var num = 5;
+	if(defaultNum != undefined) defaultNum = 5;
+	var ref = Pslib.isPhotoshop ? AnchorPosition.MIDDLECENTER : Transformation.CENTER;
+
+	if(Pslib.isPhotoshop)
+	{
+		switch(num)
+		{
+			case 7 : { ref = AnchorPosition.TOPLEFT; break; }
+			case 8 : { ref = AnchorPosition.TOPCENTER; break; }
+			case 9 : { ref = AnchorPosition.TOPRIGHT; break; }
+
+			case 4 : { ref = AnchorPosition.MIDDLELEFT; break; }
+			case 5 : { ref = AnchorPosition.MIDDLECENTER; break; }
+			case 6 : { ref = AnchorPosition.MIDDLERIGHT; break; }
+
+			case 1 : { ref = AnchorPosition.BOTTOMLEFT; break; }
+			case 2 : { ref = AnchorPosition.BOTTOMCENTER; break; }
+			case 3 : { ref = AnchorPosition.BOTTOMRIGHT; break; }
+
+			default : { ref = AnchorPosition.MIDDLECENTER; break; }
+		}
+	}
+	else if(Pslib.isIllustrator)
+	{
+		switch(num)
+		{
+			case 7 : { ref = Transformation.TOPLEFT; break; }
+			case 8 : { ref = Transformation.TOP; break; }
+			case 9 : { ref = Transformation.TOPRIGHT; break; }
+
+			case 4 : { ref = Transformation.LEFT; break; }
+			case 5 : { ref = Transformation.CENTER; break; }
+			case 6 : { ref = Transformation.RIGHT; break; }
+
+			case 1 : { ref = Transformation.BOTTOMLEFT; break; }
+			case 2 : { ref = Transformation.BOTTOM; break; }
+			case 3 : { ref = Transformation.BOTTOMRIGHT; break; }
+
+			case 0 : { ref = Transformation.DOCUMENTORIGIN; break; }
+
+			default : { ref = Transformation.CENTER; break; }
+		}
+	}
+
+	return ref;
+};
 
 // Lazy filters for uniformization of artboard specs objects between Photoshop & Illustrator
 // with option to "rename" a property while retaining its value
@@ -4443,9 +5031,7 @@ Pslib.getLayerColor = function(id)
 		var layer = id;
 		var color = new RGBColor();
 		color = layer.color;
-		// var hexStr = Pslib.RGBtoHex(color.red, color.green, color.blue);
-	
-		// return hexStr;
+
 		return color;
 	}
 }
@@ -4504,6 +5090,20 @@ if(typeof JSUI !== "object")
 		return this.replace(/^[\s]+|[\s]+$/g,'');
 	}
 
+	// get extension pattern ".ext"
+	String.prototype.getFileExtension = function()
+	{
+		var match = this.trim().match(/\.[^\\.]+$/);
+		return match != null ? match[0].toLowerCase() : null; // null if no match
+	};
+
+	// boolean indicating if string contains a ".ext" pattern
+	String.prototype.hasFileExtension = function()
+	{
+		return this.getFileExtension() != null;
+	};
+
+
 	// Lack of support for Set()/Array.filter() calls for hacks
 	Array.prototype.indexOf = function(element)
 	{
@@ -4512,6 +5112,14 @@ if(typeof JSUI !== "object")
 			if(this[i] == element) return i;
 		}
 		return -1;
+	};
+	
+	// prototyping Array.map() functionality
+	Array.prototype.map = function(callback) {
+		var arr = [];
+		for (var i = 0; i < this.length; i++)
+			arr.push(callback(this[i], i, this));
+		return arr;
 	};
 
 	// removes duplicates in array
