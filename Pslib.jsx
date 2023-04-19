@@ -256,12 +256,10 @@ if(Pslib.isPhotoshop)
         {        
             var bounds = getArtboardBounds(layer.id);
 
-            //.as('px') doesn't work...?
-            obj.x = bounds[0];
-            obj.y = bounds[1];
+            obj.x = bounds[1];
+            obj.y = bounds[0];
             obj.width = bounds[2] - bounds[1];
             obj.height = bounds[3] - bounds[0];
-            // obj.artboardRect = [ bounds[0], bounds[1], bounds[2], bounds[3]];
         }
         catch(e)
         {
@@ -272,19 +270,14 @@ if(Pslib.isPhotoshop)
             obj.y = 0;
             obj.width = doc.width.as("px");
             obj.height = doc.height.as("px");
-            // obj.artboardRect = [ 0, 0, obj.width, obj.height];
         }
             
         obj.parent = doc.name;
-        // obj.parentFullName = doc.fullName.toString();
         obj.parentFullName = parentFullName.toString();
 
-        // if you need placeholder specs, get them here
-        // 9SS status
+    	// get object-level XMP
 
-        // get object-level XMP
-
-       var dictionary = Pslib.getXmpDictionary( layer, { assetID: null, source: null, hierarchy: null, specs: null, custom: null }, false, false, false, namespace ? namespace : Pslib.XMPNAMESPACE);
+        var dictionary = Pslib.getXmpDictionary( layer, { assetID: null, source: null, hierarchy: null, specs: null, custom: null }, false, false, false, namespace ? namespace : Pslib.XMPNAMESPACE);
       
        // no empty strings allowed and no null values
         // var dictionary = Pslib.getXmpDictionary( layer, ["assetID", "source", "hierarchy", "specs", "custom" ], false, false, false);
@@ -2754,7 +2747,6 @@ Pslib.getArtboardCollectionCoordinates = function()
 	return artboardObjArr;
 }
 
-
 // basic get artboard bounds
 Pslib.getArtboardBounds = function( id )
 {
@@ -2854,13 +2846,15 @@ Pslib.getArtboardCoordinates = function( artboard )
             var bounds = new Array();
             bounds[0] = d.getUnitDoubleValue(sTID("top"));
             bounds[1] = d.getUnitDoubleValue(sTID("left"));
+			// bounds[0] = d.getUnitDoubleValue(sTID("left"));
+            // bounds[1] = d.getUnitDoubleValue(sTID("top"));
             bounds[2] = d.getUnitDoubleValue(sTID("right"));
             bounds[3] = d.getUnitDoubleValue(sTID("bottom"));
 
             coords.name = r.getString(sTID("name")).trim();
             coords.id = id;
-            coords.x = bounds[0];
-            coords.y = bounds[1];
+            coords.x = bounds[1];
+            coords.y = bounds[0];
 		    coords.width = bounds[2] - bounds[1];
 		    coords.height = bounds[3] - bounds[0];
 
@@ -2938,9 +2932,10 @@ Pslib.getArtboardSpecs = function( artboard )
 
 		if(typeof artboard == "number")
 		{
-			coords = Pslib.getArtboardCoordinates(artboard);
+			var id = artboard;
+			coords = Pslib.getArtboardCoordinates(id);
 
-			var r = Pslib.getArtboardReferenceByID(artboard);
+			var r = Pslib.getArtboardReferenceByID(id);
 
 			var dt = r.getObjectValue(sTID("artboard"));
 			coords.presetName = dt.getString(sTID('artboardPresetName'));
@@ -2962,20 +2957,179 @@ Pslib.getArtboardSpecs = function( artboard )
 				
 				coords.backgroundColor = color.rgb.hexValue;
 			}
+
+			var specs = coords;
+
+			specs.isPow2 = specs.width.isPowerOf2() && specs.height.isPowerOf2();
+			specs.isMult4 = specs.width.isMult4() && specs.width.isMult4();
+			specs.isMult8 = specs.width.isMult8() && specs.width.isMult8();
+			specs.isMult16 = specs.width.isMult16() && specs.width.isMult16();
+
+			return specs;
 		}
-
-		var specs = coords;
-
-		specs.isPow2 = specs.width.isPowerOf2() && specs.height.isPowerOf2();
-		specs.isMult4 = specs.width.isMult4() && specs.width.isMult4();
-		specs.isMult8 = specs.width.isMult8() && specs.width.isMult8();
-		specs.isMult16 = specs.width.isMult16() && specs.width.isMult16();
-
-		return specs;
 	}
 }
 
 
+// minimum info needed: { width: 100, height 100 }
+// var obj = { id: 14, x: 100, y: 200, width: 256, height: 128, anchor: 5 }; // photoshop
+// var obj = { index: 14, x: 100, y: 200, width: 256, height: 128, anchor: 5, scaleArtwork: true }; // illustrator
+Pslib.resizeArtboard = function( obj )
+{
+    if(!obj) return false;
+    if(!app.documents.length) return false;
+    if(!(obj.width || obj.height)) return false;
+
+	var doc = app.activeDocument;
+
+    if(Pslib.isPhotoshop)
+    {
+        if(!obj.id) obj.id = doc.activeLayer.id;
+    
+        var specs = Pslib.getArtboardSpecs(obj.id);
+    
+        if(!obj.x) obj.x = specs.x;
+        if(!obj.y) obj.y = specs.y;
+        if(!obj.width) obj.width = specs.width;
+        if(!obj.height) obj.height = specs.height;
+        if(!obj.anchor) obj.anchor = 7; // top left
+
+        // deltas 
+        var wDelta = obj.width - specs.width;
+        var hDelta = obj.height - specs.height;
+
+        // delta offsets: extra pixel goes at the bottom and on the right if odd delta is divided in two
+        var wDelta1stHalf = (wDelta % 2 == 0) ? wDelta/2 : Math.floor(wDelta/2);
+        // var wDelta2ndHalf = (wDelta % 2 == 0) ? wDelta/2 : Math.ceil(wDelta/2);
+
+        var hDelta1stHalf = (wDelta % 2 == 0) ? hDelta/2 : Math.floor(hDelta/2);
+        // var hDelta2ndHalf = (wDelta % 2 == 0) ? hDelta/2 : Math.ceil(hDelta/2);
+
+        // anchor
+        //	7	8	9
+        //	4	5	6
+        //	1	2	3
+
+        switch(obj.anchor)
+		{
+            case 7 : { break; }
+			case 8 : { obj.x -= wDelta1stHalf; break; }
+			case 9 : { obj.x -= wDelta; break; }
+
+			case 4 : { obj.y -= hDelta1stHalf; break; }
+			case 5 : { obj.x -= wDelta1stHalf; obj.y -= hDelta1stHalf; break; }
+			case 6 : { obj.x -= wDelta; obj.y -= hDelta1stHalf; break; }
+
+			case 1 : { obj.y -= hDelta; break; }
+			case 2 : { obj.x -= wDelta1stHalf; obj.y -= hDelta; break; }
+			case 3 : { obj.x -= wDelta; obj.y -= hDelta; break; }
+
+			default : { break; }
+		}
+
+        var descriptor = new ActionDescriptor();
+        var descriptor2 = new ActionDescriptor();
+        var descriptor3 = new ActionDescriptor();
+        var descriptor4 = new ActionDescriptor();
+        var list = new ActionList();
+        var reference = new ActionReference();
+        reference.putEnumerated( sTID( "layer" ), sTID( "ordinal" ), sTID( "targetEnum" ));
+        descriptor.putReference( sTID( "null" ), reference );
+
+        descriptor3.putDouble( sTID( "top" ), obj.y );
+        descriptor3.putDouble( sTID( "left" ), obj.x );
+        descriptor3.putDouble( sTID( "right" ), obj.x + obj.width );
+        descriptor3.putDouble( sTID( "bottom" ), obj.y + obj.height );
+    
+        descriptor2.putObject( sTID( "artboardRect" ), sTID( "classFloatRect" ), descriptor3 );
+        descriptor2.putList( sTID( "guideIDs" ), list );
+    
+        descriptor2.putString( sTID( "artboardPresetName" ), specs.presetName );
+    
+        // only handle color object if backgroundType is 4!
+        if(specs.backgroundType == 4)
+        {
+            var red, green, blue = 0;
+         
+            // get color details from existing color object
+            var rgbColorObj = Pslib.hexToRGBobj(specs.backgroundColor);
+            red = rgbColorObj.rgb.red;
+            green = rgbColorObj.rgb.green;
+            blue = rgbColorObj.rgb.blue;
+    
+            descriptor4.putDouble( sTID( "red" ), red );
+            descriptor4.putDouble( sTID( "grain" ), green ); // don't ask!
+            descriptor4.putDouble( sTID( "blue" ), blue );
+            descriptor2.putObject( sTID( "color" ), sTID( "RGBColor" ), descriptor4 );
+        }
+    
+        descriptor2.putInteger( sTID( "artboardBackgroundType" ), specs.backgroundType ); // 3 == transparent, 4 == custom RGB
+        descriptor.putObject( sTID( "artboard" ), sTID( "artboard" ), descriptor2 );
+        executeAction( sTID( "editArtboardEvent" ), descriptor, DialogModes.NO );
+        return true;
+    }
+    else if(Pslib.isIllustrator)
+    {   
+		if(obj.index == undefined) obj.index = doc.artboards.getActiveArtboardIndex();
+		var artboard = doc.artboards[obj.index];
+        var specs = Pslib.getArtboardSpecs(artboard);
+    
+        if(!obj.x) obj.x = specs.x;
+        if(!obj.y) obj.y = specs.y;
+        if(!obj.width) obj.width = specs.width;
+        if(!obj.height) obj.height = specs.height;
+        if(!obj.anchor) obj.anchor = 7; // top left
+
+        // deltas 
+        var wDelta = obj.width - specs.width;
+        var hDelta = obj.height - specs.height;
+
+        // delta offsets: extra pixel goes at the bottom and on the right if odd delta is divided by two
+        var wDelta1stHalf = (wDelta % 2 == 0) ? wDelta/2 : Math.floor(wDelta/2);
+        // var wDelta2ndHalf = (wDelta % 2 == 0) ? wDelta/2 : Math.ceil(wDelta/2);
+
+        var hDelta1stHalf = (wDelta % 2 == 0) ? hDelta/2 : Math.floor(hDelta/2);
+        // var hDelta2ndHalf = (wDelta % 2 == 0) ? hDelta/2 : Math.ceil(hDelta/2);
+
+        // anchor
+        //	7	8	9
+        //	4	5	6
+        //	1	2	3
+
+        switch(obj.anchor)
+		{
+            case 7 : { break; }
+			case 8 : { obj.x -= wDelta1stHalf; break; }
+			case 9 : { obj.x -= wDelta; break; }
+
+			case 4 : { obj.y += hDelta1stHalf; break; }
+			case 5 : { obj.x -= wDelta1stHalf; obj.y += hDelta1stHalf; break; }
+			case 6 : { obj.x -= wDelta; obj.y += hDelta1stHalf; break; }
+
+			case 1 : { obj.y += hDelta; break; }
+			case 2 : { obj.x -= wDelta1stHalf; obj.y += hDelta; break; }
+			case 3 : { obj.x -= wDelta; obj.y += hDelta; break; }
+
+			default : { break; }
+		}
+
+		artboard.artboardRect = [ obj.x, obj.y, obj.x + obj.width, obj.y - obj.height ];
+
+		if(obj.scaleArtwork)
+		{
+			var xScaleFactor = obj.width / specs.width;
+			var yScaleFactor = obj.height / specs.height;
+
+			// if(doc.artboards.getActiveArtboardIndex() != obj.index) doc.artboards.setActiveArtboardIndex(obj.index);
+			doc.selectObjectsOnActiveArtboard();
+			Pslib.scaleArtboardArtwork(xScaleFactor, yScaleFactor, obj.anchor, true);
+		}
+
+		return true;
+    }
+}
+
+// illustrator only
 // Pslib.scaleArtboardArtwork(200, 200) // force w & h @ 200 pixels 
 // Pslib.scaleArtboardArtwork(2.0, 2.0, Transformation.TOPLEFT, true); // 200%
 Pslib.scaleArtboardArtwork = function (width, height, anchor, factorBool)

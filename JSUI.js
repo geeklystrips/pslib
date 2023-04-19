@@ -6071,6 +6071,18 @@ Number.prototype.getNextMult16 = function()
 	return n.getNextMultOf(16);
 };
 
+Number.prototype.getPreviousMult32 = function()
+{
+	var n = this.valueOf();
+	return n.getPreviousMultOf(32);
+};
+
+Number.prototype.getNextMult32 = function()
+{
+	var n = this.valueOf();
+	return n.getNextMultOf(32);
+};
+
 // to be deprecated
 JSUI.isPower2 = function(n){ return n.isPowerOf2(); };
 JSUI.getNextPow2 = function(n){ return n.getNextPow2(); };
