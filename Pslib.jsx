@@ -2779,7 +2779,7 @@ Pslib.getArtboardBounds = function( id )
     }
 }
 
-// quick artboard info fetch (does not need to be active)
+// quick artboard info fetch (important: artboard does not need to be active)
 // illustrator uses artboard object
 // photoshop gets integer for artboard ID
 Pslib.getArtboardCoordinates = function( artboard )
@@ -2988,11 +2988,11 @@ Pslib.resizeArtboard = function( obj )
     
         var specs = Pslib.getArtboardSpecs(obj.id);
     
-        if(!obj.x) obj.x = specs.x;
-        if(!obj.y) obj.y = specs.y;
+        if(obj.x == undefined) obj.x = specs.x;
+        if(obj.y == undefined) obj.y = specs.y;
         if(!obj.width) obj.width = specs.width;
         if(!obj.height) obj.height = specs.height;
-        if(!obj.anchor) obj.anchor = 7; // top left
+        if(obj.anchor == undefined) obj.anchor = 7; // top left
 
         // deltas 
         var wDelta = obj.width - specs.width;
@@ -3074,11 +3074,11 @@ Pslib.resizeArtboard = function( obj )
 		var artboard = doc.artboards[obj.index];
         var specs = Pslib.getArtboardSpecs(artboard);
     
-        if(!obj.x) obj.x = specs.x;
-        if(!obj.y) obj.y = specs.y;
+        if(obj.x == undefined) obj.x = specs.x;
+        if(obj.y == undefined) obj.y = specs.y;
         if(!obj.width) obj.width = specs.width;
         if(!obj.height) obj.height = specs.height;
-        if(!obj.anchor) obj.anchor = 7; // top left
+        if(obj.anchor == undefined) obj.anchor = 7; // top left
 
         // deltas 
         var wDelta = obj.width - specs.width;
@@ -3129,6 +3129,32 @@ Pslib.resizeArtboard = function( obj )
     }
 }
 
+// scale artboard by factor (2.0 == 200%)
+Pslib.scaleArtboard = function( num, obj )
+{
+	var scale = 1.0;
+	if(!obj) obj = {};
+
+	if(typeof num == "object")
+	{
+		obj = num;
+	}
+	else if(typeof num == "number")
+	{
+		scale = num;
+	}
+
+	var coords = Pslib.getArtboardCoordinates();
+	obj.width = Math.round(coords.width * scale);
+	obj.height = Math.round(coords.height * scale);
+
+	if(obj.x == undefined) obj.x = coords.x;
+	if(obj.y == undefined) obj.y = coords.y;
+	if(!obj.anchor) obj.anchor = Pslib.getAnchorRefFromNum(5);
+
+	return Pslib.resizeArtboard( obj );
+}
+
 // illustrator only
 // Pslib.scaleArtboardArtwork(200, 200) // force w & h @ 200 pixels 
 // Pslib.scaleArtboardArtwork(2.0, 2.0, Transformation.TOPLEFT, true); // 200%
@@ -3172,6 +3198,25 @@ Pslib.scaleArtboardArtwork = function (width, height, anchor, factorBool)
         {
             for (var i = 0; i < selection.length; i++) 
             {
+				// changePositions
+				// 	Boolean, optional
+				// 	Whether to effect art object positions and orientations
+				// changeFillPatterns
+				// 	Boolean, optional
+				// 	Whether to transform fill patterns
+				// changeFillGradients
+				// 	Boolean, optional
+				// 	Whether to transform fill gradients
+				// changeStrokePattern
+				// 	Boolean, optional
+				// 	Whether to transform stroke patterns
+				// changeLineWidths
+				// 	Number (double), optional
+				// 	The amount to scale line widths
+				// scaleAbout
+				// 	Transformation, optional
+				// 	The point to use as anchor, to transform about
+				// pageItem.resize(scaleX_DOUBLE, scaleY_DOUBLE, changePositions_BOOL, changeFillPatterns_BOOL, changeFillGradients_BOOL, changeStrokePattern_BOOL, changeLineWidths_BOOL, scaleAbout_Transformation )
                 selection[i].resize (wScale*100, hScale*100, true, true, true, true, wScale*100, anchor);
             }
         }
@@ -3184,9 +3229,15 @@ Pslib.scaleArtboardArtwork = function (width, height, anchor, factorBool)
 }
 
 // Pslib.scaleArtboardArtwork(2.0, 2.0, Transformation.TOPLEFT, true); // 200%
-Pslib.scaleArtboardArtworkPercent = function (width, height, anchor)
+Pslib.scaleArtboardArtworkPercent = function (scaleX, scaleY, anchor)
 {
-    return Pslib.scaleArtboardArtwork(width, height, anchor, true);
+	if(!scaleX && !scaleY) return false;
+	if(!scaleY) scaleY = scaleX;
+	scaleX = scaleX / 100;
+	scaleY = scaleY / 100;
+	if(anchor == undefined) anchor = Pslib.getAnchorRefFromNum(5);
+
+    return Pslib.scaleArtboardArtwork(scaleX, scaleY, anchor, true);
 }
 
 // Pslib.scaleArtboardArtwork(2.0, 2.0, Transformation.TOPLEFT, true); // 200%
@@ -3194,6 +3245,94 @@ Pslib.scaleArtboardArtworkPixels = function (width, height, anchor)
 {
     return Pslib.scaleArtboardArtwork(width, height, anchor, false);
 }
+
+// get projected mips count
+Pslib.getMipsCount = function(coords)
+{
+	if(!coords) coords = Pslib.getArtboardCoordinates();
+	var maxV = Math.max(coords.width, coords.height);
+
+	var mCount = 1;
+	var minV = maxV;
+	while(minV > 1)
+	{
+		minV /= 2;
+		mCount++;
+	}
+
+	return mCount;
+}
+
+// duplicate artboard artwork, prepare for manually optimized pixel art
+Pslib.createMipsLayout = function(scaleStylesBool, resizeArtboardBool)
+{
+	if(!app.documents.length) return false;
+	if(!resizeArtboardBool) resizeArtboardBool = false;
+
+	var doc = app.activeDocument;
+
+	var coords = Pslib.getArtboardCoordinates();
+	var mips = Pslib.getMipsCount(coords);
+
+	if(Pslib.isIllustrator)
+	{
+		doc.selectObjectsOnActiveArtboard();
+		var selection = doc.selection;
+
+		for(var i = 0; i < selection.length; i++)
+		{
+			var itemTop = selection[i].top;
+			var itemLeft = selection[i].left;
+
+			var wScale = ((coords.width/2) / coords.width) * 100;
+			var hScale = ((coords.height/2) / coords.height) * 100;
+
+			var referenceLeft = coords.x;
+
+			var divisionValue = 2;
+			var offsetX = (coords.width / divisionValue);
+			var cumulativeArtboardWidths = coords.width;
+
+			for(var j = 0; j < mips; j++)
+			{
+				var duplicate = selection[i].duplicate();
+
+				offsetX = (itemLeft / divisionValue);
+
+				// pageItem.resize(scaleX_DOUBLE, scaleY_DOUBLE, changePositions_BOOL, changeFillPatterns_BOOL, changeFillGradients_BOOL, changeStrokePattern_BOOL, changeLineWidths_BOOL, scaleAbout_Transformation); // Transformation.DOCUMENTORIGIN
+				// duplicate.resize (wScale, hScale, true, true, true, scaleStylesBool, wScale, Pslib.getAnchorRefFromNum(7));
+				duplicate.resize (wScale, hScale, scaleStylesBool, scaleStylesBool, scaleStylesBool, scaleStylesBool, wScale, Transformation.TOPLEFT);
+
+				referenceLeft = (cumulativeArtboardWidths + offsetX);
+				duplicate.left = referenceLeft;
+				duplicate.top = (itemTop / divisionValue);
+
+				// for next loop
+				cumulativeArtboardWidths += (coords.width / divisionValue);
+				wScale /= 2; 
+				hScale /= 2; 
+				divisionValue *= 2;
+			}
+		}
+
+		if(resizeArtboardBool)
+		{
+			// var obj = { width: 128, height: 128, anchor: 5, scaleArtwork: true };
+			// Pslib.resizeArtboard( obj );
+
+			var resizeObj = { width: coords.width * 2, anchor: 7, scaleArtwork: false };
+			Pslib.resizeArtboard( resizeObj );
+		}
+
+
+		return true;
+	}
+	else if(Pslib.isPhotoshop)
+	{
+		return false;
+	}
+}
+
 
 // returns default AnchorPosition.MIDDLECENTER for Photoshop, Transformation.CENTER for Illustrator
 Pslib.getAnchorRefEnum = function ( str, defaultValue )
