@@ -127,7 +127,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version, used in tool window titles. Maybe.
-Pslib.version = 0.66;
+Pslib.version = 0.67;
 Pslib.isPs64bits = BridgeTalk.appVersion.match(/\d\d$/) == '64';
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
@@ -359,7 +359,7 @@ Pslib.isPsCCandAbove = Pslib.isPhotoshop && parseInt(app.version.match(/^\d.\./)
 Pslib.isPsCS6 = (Pslib.isPhotoshop && app.version.match(/^13\./) != null);
 Pslib.isPsCS5 = (Pslib.isPhotoshop && app.version.match(/^12\./) != null);
 Pslib.isPsCS4 = (Pslib.isPhotoshop && app.version.match(/^11\./) != null);
-Pslib.isPsCS3 = (Pslib.isPhotoshop  && app.version.match(/^10\./) != null);
+Pslib.isPsCS3 = (Pslib.isPhotoshop && app.version.match(/^10\./) != null);
 
 // Ps & Ai 2020+
 Pslib.is2020andAbove = Pslib.isPhotoshop ? (parseInt(app.version.match(/^\d.\./)) >= 21) : (parseInt(app.version.match(/^\d.\./)) >= 24); 
@@ -375,8 +375,8 @@ Pslib.docKeyValuePairs = [ [ "source", null ], [ "range", null ], [ "destination
 
 // default key-value pairs for individual assets (either XMP or custom tags)
 // Pslib.assetKeyValuePairs = [ [ "assetID", null ], [ "index", null ] ];
-Pslib.assetKeyValuePairs = [ [ "assetID", null ] ];
-Pslib.storedAssetPropertyNamesArr = [ "assetName", "assetArtboardID", "assetID"];
+Pslib.assetKeyValuePairs = [ [ "assetID", null ], [ "customMips", null ] ];
+Pslib.storedAssetPropertyNamesArr = [ "assetName", "assetArtboardID", "assetID", "customMips" ];
 Pslib.assetKeyConversionArr = [ ];
 
 // #############  PER-LAYER METADATA FUNCTIONS
@@ -2391,7 +2391,7 @@ Pslib.getSpecsForSelectedArtboards = function()
 			var specsObj = { name: artboard.name.toFileSystemSafeName(), id: (artboardIndex+1) };
 			if(placeholder)
 			{
-				var tags = Pslib.getTags(placeholder, [ ["assetID", null] ]);
+				var tags = Pslib.getTags(placeholder, [ ["assetID", null], ["customMips", null] ]);
 				if(tags.length)
 				{
 					specsObj = Pslib.arrayToObj( tags, specsObj );
@@ -3198,24 +3198,13 @@ Pslib.scaleArtboardArtwork = function (width, height, anchor, factorBool)
         {
             for (var i = 0; i < selection.length; i++) 
             {
-				// changePositions
-				// 	Boolean, optional
-				// 	Whether to effect art object positions and orientations
-				// changeFillPatterns
-				// 	Boolean, optional
-				// 	Whether to transform fill patterns
-				// changeFillGradients
-				// 	Boolean, optional
-				// 	Whether to transform fill gradients
-				// changeStrokePattern
-				// 	Boolean, optional
-				// 	Whether to transform stroke patterns
-				// changeLineWidths
-				// 	Number (double), optional
-				// 	The amount to scale line widths
-				// scaleAbout
-				// 	Transformation, optional
-				// 	The point to use as anchor, to transform about
+				// changePositions: Boolean, optional (Whether to effect art object positions and orientations)
+				// changeFillPatterns: Boolean, optional (Whether to transform fill patterns)
+				// changeFillGradients: Boolean, optional (Whether to transform fill gradients)
+				// changeStrokePattern: Boolean, optional (Whether to transform stroke patterns)
+				// changeLineWidths: Number (double), optional (The amount to scale line widths)
+				// scaleAbout: Transformation, optional (The point to use as anchor, to transform about)
+
 				// pageItem.resize(scaleX_DOUBLE, scaleY_DOUBLE, changePositions_BOOL, changeFillPatterns_BOOL, changeFillGradients_BOOL, changeStrokePattern_BOOL, changeLineWidths_BOOL, scaleAbout_Transformation )
                 selection[i].resize (wScale*100, hScale*100, true, true, true, true, wScale*100, anchor);
             }
@@ -3295,6 +3284,9 @@ Pslib.createMipsLayout = function(scaleStylesBool, resizeArtboardBool)
 
 			for(var j = 0; j < mips; j++)
 			{
+				// ignore placeholder, teehee
+				if(selection[i].name == "#") continue;
+
 				var duplicate = selection[i].duplicate();
 
 				offsetX = (itemLeft / divisionValue);
@@ -3322,8 +3314,18 @@ Pslib.createMipsLayout = function(scaleStylesBool, resizeArtboardBool)
 
 			var resizeObj = { width: coords.width * 2, anchor: 7, scaleArtwork: false };
 			Pslib.resizeArtboard( resizeObj );
+
+			// also take care of resizing placeholder
+			var placeholder = Pslib.getArtboardItem();
+			if(placeholder)
+			{
+				Pslib.resizeSelectedItemToArtboardBounds();
+				Pslib.setTags( placeholder, [ ["customMips", true] ]);
+			}
 		}
 
+		// restore initial selection
+		doc.selection = selection;
 
 		return true;
 	}
@@ -3333,6 +3335,77 @@ Pslib.createMipsLayout = function(scaleStylesBool, resizeArtboardBool)
 	}
 }
 
+// quick wrappers for halfing/doubling artboard widths (with option to resize placeholder if found)
+Pslib.resizeArtboardHalfWidth = function( coords, resizePlaceholderBool )
+{
+	if(Pslib.isIllustrator)
+	{
+		if(!app.documents.length) return false;
+
+		if(!coords) coords = Pslib.getArtboardCoordinates();
+
+		var resizeObj = { width: coords.width * 0.5, anchor: 7, scaleArtwork: false };
+		Pslib.resizeArtboard( resizeObj );
+
+		if(resizePlaceholderBool)
+		{
+			var placeholder = Pslib.getArtboardItem();
+			if(placeholder)
+			{
+				Pslib.resizeSelectedItemToArtboardBounds();
+			}
+		}
+
+		return true;
+	}
+}
+
+Pslib.resizeArtboardDoubleWidth = function( coords, resizePlaceholderBool )
+{
+	if(Pslib.isIllustrator)
+	{
+		if(!app.documents.length) return false;
+
+		if(!coords) coords = Pslib.getArtboardCoordinates();
+		
+		var resizeObj = { width: coords.width * 2.0, anchor: 7, scaleArtwork: false };
+		Pslib.resizeArtboard( resizeObj );
+
+		if(resizePlaceholderBool)
+		{
+			var placeholder = Pslib.getArtboardItem();
+			if(placeholder)
+			{
+				Pslib.resizeSelectedItemToArtboardBounds();
+			}
+		}
+
+		return true;
+	}
+}
+
+Pslib.resizeSelectedItemToArtboardBounds = function( coords )
+{
+	if(Pslib.isIllustrator)
+	{
+		if(!app.documents.length) return false;
+		var doc = app.activeDocument;
+
+		var selection = doc.selection;
+		if(!selection.length) return false;
+		var item = selection[0];
+
+		if(app.coordinateSystem != CoordinateSystem.ARTBOARDCOORDINATESYSTEM) app.coordinateSystem = CoordinateSystem.ARTBOARDCOORDINATESYSTEM;
+		if(!coords) coords = Pslib.getArtboardCoordinates();
+
+		item.width = coords.width;
+		item.height = coords.height;
+		item.left = coords.x;
+		item.top = coords.y;
+
+		return true;
+	}
+}
 
 // returns default AnchorPosition.MIDDLECENTER for Photoshop, Transformation.CENTER for Illustrator
 Pslib.getAnchorRefEnum = function ( str, defaultValue )
