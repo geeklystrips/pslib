@@ -3253,20 +3253,47 @@ Pslib.getMipsCount = function(coords)
 }
 
 // duplicate artboard artwork, prepare for manually optimized pixel art
-Pslib.createMipsLayout = function(scaleStylesBool, resizeArtboardBool)
+Pslib.createMipsLayout = function(scaleStylesBool, resizeArtboardBool, silentBool)
 {
 	if(!app.documents.length) return false;
-	if(!resizeArtboardBool) resizeArtboardBool = false;
+	if(resizeArtboardBool == undefined) resizeArtboardBool = false;
+	if(silentBool == undefined) silentBool = false;
 
 	var doc = app.activeDocument;
+	var artboard = Pslib.getActiveArtboard(); 
+	var coords = Pslib.getArtboardSpecs();
+	// var indexNum =
 
-	var coords = Pslib.getArtboardCoordinates();
 	var mips = Pslib.getMipsCount(coords);
 
 	if(Pslib.isIllustrator)
 	{
 		doc.selectObjectsOnActiveArtboard();
 		var selection = doc.selection;
+		var placeholder = Pslib.getArtboardItem();
+
+		if(placeholder)
+		{
+			// check for existing tag, abort if present
+			if(Pslib.getTags(placeholder, [ ["customMips", null] ]).length)
+			{
+				if(!silentBool) alert("Custom mips tag already present!");
+				return false;
+			}
+		}
+		else
+		{
+			// placeholder = Pslib.addArtboardRectangle( { artboard: artboard, tags: [ ["name", artboard.name], ["index", coords.index], ["page", coords.page], ["assetID", ""] ] }); // , layer: doc.layers.getByName("Placeholders") } );
+			// , sendToBack: true
+
+			var artboard = Pslib.getActiveArtboard();
+            var indexNum = doc.artboards.getActiveArtboardIndex();
+            var pageNum = indexNum+1;
+            var rectObj = { artboard: artboard, name: "#", tags: [ ["name", artboard.name], ["index", indexNum], ["page", pageNum], ["assetID", ""] ], hex: undefined, opacity: undefined, layer: doc.layers.getByName("Placeholders"), sendToBack: true };
+            var placeholder = Pslib.addArtboardRectangle( rectObj );
+ 
+            doc.selection = placeholder;
+		}
 
 		for(var i = 0; i < selection.length; i++)
 		{
@@ -3316,7 +3343,6 @@ Pslib.createMipsLayout = function(scaleStylesBool, resizeArtboardBool)
 			Pslib.resizeArtboard( resizeObj );
 
 			// also take care of resizing placeholder
-			var placeholder = Pslib.getArtboardItem();
 			if(placeholder)
 			{
 				Pslib.resizeSelectedItemToArtboardBounds();
@@ -5265,7 +5291,15 @@ Pslib.addArtboardRectangle = function ( obj )
 		// make object the last in selection
 		if(obj.sendToBack)
 		{
-			rect.zOrder(ZOrderMethod.SENDTOBACK);
+			// this seems to fail if layer does not have have any items (?)
+			try
+			{
+				rect.zOrder(ZOrderMethod.SENDTOBACK);
+			}
+			catch(e)
+			{
+
+			}
 		}
 	
 		return rect;
