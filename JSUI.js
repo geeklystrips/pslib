@@ -765,11 +765,11 @@ JSUI.message = function( messageStr) //, urlStr)
 };
 
 // informative message + button to launch URL
-JSUI.showInfo = function( messageStr, urlStr )
+JSUI.showInfo = function( messageStr, urlStr, imgFile )
 {
 	var obj = {};
 	obj.message = messageStr;
-	obj.imgFile = "/img/Info_48px.png";
+	obj.imgFile = imgFile ? imgFile : "/img/Info_48px.png";
 
 	obj.url = urlStr;
 
@@ -1156,7 +1156,10 @@ Object.prototype.Components = new Array();
 Object.prototype.addCloseButton = function( labelStr )
 {
 	var labelStr = labelStr != undefined ? labelStr : "";
-	var closeButton = this.addButton( { label: labelStr ? labelStr : "Close", name: "ok", width: 150, height: 32, alignment: "center" });
+	// var closeButton = this.addButton( { label: labelStr ? labelStr : "Close", name: "ok", width: 150, height: 32, alignment: "center" });
+	var closeButton = this.addCustomButton( { label: labelStr ? labelStr : "Close", name: "ok", width: 150, height: 32, alignment: "center" });
+	// var closeButton = this.addCustomButton( { label: "Close Dialog", name: "ok", height: 32, width: 150 } );
+
 	return closeButton;
 };
 
@@ -3335,42 +3338,27 @@ Object.prototype.addRectangle = function(propName, obj)
 {	
     var obj = obj != undefined ? obj : {};
     obj.hexValue = obj.hexValue != undefined ? obj.hexValue : "FFFFFF";
+	if( obj.strokeWidth != undefined)
+	{
+		obj.strokeHexValue = obj.strokeHexValue != undefined ? obj.strokeHexValue : "000000";
+		obj.strokeWidth = obj.strokeWidth != undefined ? obj.strokeWidth : 0;
+		obj.strokeHexValue = obj.strokeHexValue.trim().replace('#', '');
+	}
+	else obj.strokeWidth = 0;
+
     obj.textHexValue = obj.textHexValue != undefined ? obj.textHexValue : "000000";
+
+	obj.hexValue = obj.hexValue.trim().replace('#', '');
+
+	obj.textHexValue = obj.textHexValue.trim().replace('#', '');
 
 	var c = this.add('iconbutton', undefined, undefined, {name: propName.toLowerCase(), style: 'toolbutton'});
 	this.Components[propName] = c;
 	c.size = [ !isNaN(obj.width) ? obj.width : 50, !isNaN(obj.height) ? obj.height : 50 ];
 
-    if(JSUI.isPhotoshop)
-    {
-        var rectCol = new SolidColor();
-        rectCol.rgb.hexValue = obj.hexValue;
-    
-        var textCol = new SolidColor();
-        textCol.rgb.hexValue = obj.textHexValue;
-
-        var rectRed = rectCol.rgb.red/255;
-        var rectGreen = rectCol.rgb.green/255; 
-        var rectBlue = rectCol.rgb.blue/255; 
-
-        var textRed = textCol.rgb.red/255;
-        var textGreen = textCol.rgb.green/255; 
-        var textBlue = textCol.rgb.blue/255; 
-    }
-    else if(JSUI.isIllustrator)
-    {
-        var rectRed = JSUI.HexToR(obj.hexValue)/255;
-        var rectGreen = JSUI.HexToG(obj.hexValue)/255;
-        var rectBlue = JSUI.HexToB(obj.hexValue)/255;
-
-        var textRed = JSUI.HexToR(obj.textHexValue)/255;
-        var textGreen = JSUI.HexToG(obj.textHexValue)/255;
-        var textBlue = JSUI.HexToB(obj.textHexValue)/255;
-    }
-
-	c.fillBrush = c.graphics.newBrush( c.graphics.BrushType.SOLID_COLOR, [ rectRed, rectGreen, rectBlue, 1] );
+	c.fillBrush = c.graphics.newBrush( c.graphics.BrushType.SOLID_COLOR, JSUI.hexToRGB(obj.hexValue) );
 	c.text = obj.text != undefined ? obj.text : "";
-	if(c.text) c.textPen = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR,[ textRed, textGreen, textBlue ], 1);
+	if(c.text) c.textPen = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR, JSUI.hexToRGB(obj.textHexValue), 1);
 	c.onDraw = customDraw;
 
 	function customDraw()
@@ -3378,25 +3366,230 @@ Object.prototype.addRectangle = function(propName, obj)
 		with( this )
 		{
 			graphics.drawOSControl();
-			graphics.rectPath( 0, 0, size[0], size[1]);
+			graphics.rectPath( 0+obj.strokeWidth, 0+obj.strokeWidth, size[0]-(obj.strokeWidth*2), size[1]-(obj.strokeWidth*2)); // offset values to include stroke width as part of geometry
+			if(obj.strokeHexValue != undefined) graphics.strokePath(graphics.newPen(graphics.PenType.SOLID_COLOR, JSUI.hexToRGB(obj.strokeHexValue), obj.strokeWidth));
 			graphics.fillPath( fillBrush );
+
+			if(c.text)
+            {
+				var strSize = graphics.measureString(text, graphics.font, size[0]);
+				var strW = strSize[0]; 
+				var strH = strSize[1]; 
+                graphics.drawString(
+                    text,
+                    textPen,
+                    (size[0] - strW) / 2,
+                    // (size[1] - strH) / 1.75,
+                    (size[1] - strH) / 2,
+                    graphics.font);
+            }
 		}
 	}
 
 	return c;
 };
 
+
+// var customEllipseBtn2 = container.addEllipse( { width: 100, height: 100, text: "string" });
+
+Object.prototype.addEllipse = function(obj)
+{	
+    var obj = obj != undefined ? obj : {};
+    obj.hexValue = obj.hexValue != undefined ? obj.hexValue : "FFFFFF";
+	if( obj.strokeWidth != undefined)
+	{
+		obj.strokeHexValue = obj.strokeHexValue != undefined ? obj.strokeHexValue : "000000";
+		obj.strokeWidth = obj.strokeWidth != undefined ? obj.strokeWidth : 0;
+		obj.strokeHexValue = obj.strokeHexValue.trim().replace('#', '');
+	}	
+	else obj.strokeWidth = 0;
+
+    obj.textHexValue = obj.textHexValue != undefined ? obj.textHexValue : "000000";
+	obj.hexValue = obj.hexValue.trim().replace('#', '');
+	obj.textHexValue = obj.textHexValue.trim().replace('#', '');
+
+	// var c = this.add('iconbutton', undefined, undefined, {name: propName.toLowerCase(), style: 'toolbutton'});
+	var c = this.add('iconbutton', undefined, undefined, { style: 'toolbutton' });
+	// this.Components[propName] = c;
+	c.size = [ !isNaN(obj.width) ? obj.width : 50, !isNaN(obj.height) ? obj.height : 50 ];
+
+	c.fillBrush = c.graphics.newBrush( c.graphics.BrushType.SOLID_COLOR, JSUI.hexToRGB(obj.hexValue) );
+	c.text = obj.text != undefined ? obj.text : "";
+    //  JSUI.hexToRGB() returns array with length of 4, but only first three values are used
+	if(c.text) c.textPen = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR, JSUI.hexToRGB(obj.textHexValue), 1); 
+	c.onDraw = customDraw;
+
+	function customDraw()
+	{ 
+		with( this )
+		{
+			graphics.drawOSControl();
+			// graphics.ellipsePath(0, 0, size[0], size[1]); // offset values to include stroke width as part of geometry
+            graphics.ellipsePath(0+obj.strokeWidth, 0+obj.strokeWidth, size[0]-(obj.strokeWidth*2), size[1]-(obj.strokeWidth*2)); // offset values to include stroke width as part of geometry
+			if(obj.strokeHexValue != undefined) graphics.strokePath(graphics.newPen(graphics.PenType.SOLID_COLOR, JSUI.hexToRGB(obj.strokeHexValue), obj.strokeWidth));
+			graphics.fillPath( fillBrush );
+
+            if(c.text)
+            {
+                var strSize = graphics.measureString(text, graphics.font, size[0]);
+				var strW = strSize[0]; 
+				var strH = strSize[1]; 
+                graphics.drawString(
+                    text,
+                    textPen,
+                    (size[0] - strW) / 2,
+                    // (size[1] - strH) / 1.75,
+                    (size[1] - strH) / 2,
+                    graphics.font);
+            }
+
+			// graphics.preferredSize=[200,200];
+			// graphics.ellipsePath(2, 80, 100, 100);
+			// graphics.strokePath(g.newPen(g.PenType.SOLID_COLOR, [0, 0, 0], 2));
+			// graphics.newPath();
+		}
+	}
+
+	return c;
+};
+
+
+
+// "Call to action" button with custom colors
+// var obj = { label: "Close", name: "ok", width: 125, height: 35 };
+Object.prototype.addCustomButton = function( obj )
+{
+	if(!obj) var obj = {};
+
+	if(typeof obj == "string")
+	{
+		var obj = { label: obj };
+	}
+
+	if(!obj.width) obj.width = 150;
+	if(!obj.height) obj.height = 32;
+	if(!obj.label) obj.label = "Close";
+
+	function _drawTextString()
+	{
+		this.graphics.drawOSControl();
+		this.graphics.rectPath(0, 0, this.size[0], this.size[1]);
+	// this.graphics.strokePath(this.graphics.newPen(this.graphics.PenType.SOLID_COLOR, [0, 0, 0], 2)); // experimental
+	
+		this.graphics.fillPath(this.fillBrush);
+		if (this.text) {
+	
+			var strSize = this.graphics.measureString(this.text, this.graphics.font, this.size[0]);
+			var strW = strSize[0]; 
+			var strH = strSize[1]; 
+	
+			this.graphics.drawString(
+				this.text,
+				this.textPen,
+				(this.size[0] - strW) / 2,
+				(this.size[1] - strH) / 1.75,
+				this.graphics.font);
+		}
+	}
+	
+	function _updateTextButtonOnHover(btn, buttonText, backgroundColor, textColor)
+	{
+		btn.fillBrush = btn.graphics.newBrush(btn.graphics.BrushType.SOLID_COLOR, JSUI.hexToRGB(backgroundColor));
+		btn.text = buttonText;
+		btn.textPen = btn.graphics.newPen(btn.graphics.PenType.SOLID_COLOR, JSUI.hexToRGB(textColor), 1);
+		btn.onDraw = _drawTextString;
+		return btn;
+	}
+
+	var c = this.add('button', undefined, obj.label ? obj.label : "Close", {name: obj.name ? obj.name : "ok"});
+	
+	c.preferredSize.width = obj.width ? obj.width : 150;
+	c.preferredSize.height = obj.height ? obj.height : 32;
+	if(obj.alignment) c.alignment = obj.alignment;
+	if(obj.helpTip) c.helpTip = obj.helpTip;
+	if(obj.disabled) c.enabled = !obj.disabled;
+
+
+    if(obj.width) c.preferredSize.width = obj.width;
+    if(obj.height) c.preferredSize.height = obj.height;
+
+    // if(!obj.label) obj.label = "Close";
+    if(obj.hexValue == undefined) obj.hexValue = "#1473e6"; // static
+    if(obj.hoverValue == undefined) obj.hoverValue = "#0d66d0";
+    if(obj.downValue == undefined) obj.downValue = "#000000";
+
+    if(obj.textHexValue == undefined) obj.textHexValue = "#ffffff";
+
+    c.fillBrush = c.graphics.newBrush(c.graphics.BrushType.SOLID_COLOR, JSUI.hexToRGB(obj.hexValue));
+    c.text = obj.label;
+    c.textPen = c.graphics.newPen(c.graphics.PenType.SOLID_COLOR, JSUI.hexToRGB(obj.textHexValue), 1);
+    c.onDraw = _drawTextString;
+
+
+	// if (obj.hoverValue) {
+		try {
+			c.addEventListener("mouseover", function(){ _updateTextButtonOnHover(this, obj.label, obj.hoverValue, obj.textHexValue); });
+			c.addEventListener("mouseout", function(){ _updateTextButtonOnHover(this, obj.label, obj.hexValue, obj.textHexValue); });
+            c.addEventListener("mousedown", function(){ _updateTextButtonOnHover(this, obj.label, obj.downValue, obj.textHexValue); });
+		} catch (e) {
+		}
+	// }
+
+	// manually assign new component to dialog's variable list
+	// if(obj.name != undefined) this.Components[obj.name] = c;
+
+	if(obj.onClickFunction != undefined)
+	{
+		c.onClick = function()
+		{
+			obj.onClickFunction();
+		}
+	}
+	else if( obj.url != undefined)
+	{
+		if(typeof obj.url == "string" )
+		{
+			c.onClick = function ()
+			{
+				JSUI.launchURL( obj.url );
+			}
+		}
+
+		// c.updateURL = function( urlStr )
+		// {
+		// 	c.onClick = function ()
+		// 	{
+		// 		JSUI.launchURL( urlStr );
+		// 	}
+		// }
+	}
+
+	return c;
+}
+
 // dropdownlist component
-// 	var ddlist = container.addDropDownList( { prefs:prefsObj, name:"ddlist", list:["Zero", "One", "Two"] , label:"Choose a number:"} );
-// (note: if prefsObj has corresponding property, it is updated on the fly by OnChange event)
-// TODO: - allow for secondary presentation-only array of strings (show one thing, store equivalent)
-// - allow storing actual string value instead of number
+// 	var ddlist = container.addDropDownList( "ddlist", { name:"ddlist", list:["Zero", "One", "Two"], label:"Choose a number:"} );
+// 
+// TODO: - allow for secondary presentation-only array of strings (show value from obj.list, store value from obj.storedList)
+// 	var ddlist = container.addDropDownList( "ddlist", { name:"ddlist", list:["Zero", "One", "Two"], label:"Choose a number:"} );
 Object.prototype.addDropDownList = function(propName, obj)
 {	
 	var obj = obj != undefined ? obj : {};
 	
 	var useGroup = false;
 	
+	// if dealing with for stored values that are different than the ones shown in UI
+	// determine whether to show
+	var hasStoredValuesList = false;
+	if(obj.storedList)
+	{
+		if(obj.storedList.length)
+		{
+			// safeguard: if arrays don't have the same length, just ignore
+			hasStoredValuesList = (obj.list.length == obj.storedList.length);
+		}
+	}
+
 	if(obj.specs)
 	{
 		//if(obj.specs.useGroup)
@@ -3446,15 +3639,38 @@ Object.prototype.addDropDownList = function(propName, obj)
 	if(obj.helpTip) c.helpTip = obj.helpTip;
 	if(obj.disabled) c.enabled = !obj.disabled;
 	
-	
+	if(hasStoredValuesList)
+	{
+		// how to get a valid selection index if storing a string to settings instead of a number
+		c.getIndex = function(str)
+		{
+			var index;
+			if(!str) str = JSUI.PREFS[propName];
+			for(var i = 0; i < obj.storedList.length; i++)
+			{
+				if(str == obj.storedList[i]) { index = i; break;}
+			}
+			return index;
+		}
+	}
+
 	if(obj.list)
 	{ 
 		for(var i = 0; i < obj.list.length; i++)
 		{
+			// c.add("item", hasStoredValuesList ? obj.storedList[i] : obj.list[i] );
 			c.add("item", obj.list[i]);
 		}
-		
-		c.selection = obj.selection != undefined ? obj.selection : JSUI.PREFS[propName];
+
+		if(hasStoredValuesList)
+		{
+			c.selection = c.getIndex(JSUI.PREFS[propName]);
+		}
+		else
+		{
+			c.selection = obj.selection != undefined ? obj.selection : JSUI.PREFS[propName];
+		}
+
 	}
 	
 	if(obj.label2)	
@@ -3467,17 +3683,15 @@ Object.prototype.addDropDownList = function(propName, obj)
 	// callbacks
 	c.onChange = function()
 	{
-		var currentValue = JSUI.PREFS[propName];
+		var currentValue = hasStoredValuesList ? c.getIndex(JSUI.PREFS[propName]) : JSUI.PREFS[propName];
 		var changed = false;
 		for(var i = 0; i < obj.list.length; i++)
 		{
 			if(i == parseInt(c.selection))
 			{ 
-				JSUI.PREFS[propName] = i;
-
+				JSUI.PREFS[propName] = hasStoredValuesList ? obj.storedList[i] : i;
 				changed = (currentValue != JSUI.PREFS[propName])
-
-				JSUI.debug(propName + ": [" + c.selection + "]  " + obj.list[i]); 
+				JSUI.debug(propName + ": [" + c.selection + "]  " + (hasStoredValuesList ? obj.storedList[i] : obj.list[i])); 
 				break;
 			}
 		}
@@ -3490,11 +3704,8 @@ Object.prototype.addDropDownList = function(propName, obj)
 
 	c.update = function()
 	{
-		c.selection = JSUI.PREFS[propName];
-		//c.onChange();
+		c.selection = hasStoredValuesList ? c.getIndex(JSUI.PREFS[propName]) : JSUI.PREFS[propName];
 	}
-
-	
 
 	return c;
 };
@@ -5561,6 +5772,12 @@ JSUI.resetPreferences = function( obj, saveOnReset )
 	if(saveOnReset) JSUI.saveConfigFile();
 };
 
+// test for empty object 
+Object.prototype.isEmpty = function()
+{
+	return JSON.stringify(this) === '{\n\n}';
+}
+
 // XBytor's string trim
 String.prototype.trim = function()
 {
@@ -5598,7 +5815,7 @@ String.prototype.getAssetsFolderLocation = function( folderUri, allowNonExistant
 	var name = this.getAssetsFolderName();
 
 	var currentDocument = false;
-	var hasDocuments = app.activeDocument.length;
+	var hasDocuments = app.documents.length;
 	var matchesSystem = false;
 	var targetFolder;
 
@@ -6071,6 +6288,14 @@ Number.prototype.getNextMult16 = function()
 	return n.getNextMultOf(16);
 };
 
+// multiples of 32
+
+Number.prototype.isMult32 = function()
+{
+	var n = this.valueOf();
+	return n.isMultOf(32);
+};
+
 Number.prototype.getPreviousMult32 = function()
 {
 	var n = this.valueOf();
@@ -6427,36 +6652,34 @@ JSUI.setLayerObjectColor = function( color )
 	}
 };
 
-/* randomize solidcolor object */
+// randomize solidcolor object 
 JSUI.randomizeRGBColor = function( hexStr, rangeFloat )
 {
+	if(hexStr == "transparent") return hexStr;
+
+	function _randomize( num, max )
+	{
+		var random = Math.random();
+		var flux = rangeFloat * ( num * random );
+	
+		flux = ( random < 0.5 ? (-flux) : flux);
+		flux = parseInt( num + flux);
+		return flux < 0 ? 0 : flux > max ? max : flux;
+	}
+
+	var hexStr = hexStr == undefined ? "000000" : typeof hexStr == "object" ? hexStr.rgb.hexValue : hexStr;
+	var rangeFloat = rangeFloat == undefined ? 0.0 : rangeFloat;
+
 	if(JSUI.isPhotoshop)
 	{		
-		var hexStr = hexStr == undefined ? "000000" : typeof hexStr == "object" ? hexStr.rgb.hexValue : hexStr;
-		var rangeFloat = rangeFloat == undefined ? 0.0 : rangeFloat;
-	
 		var c = new SolidColor();
 		c.rgb.hexValue = hexStr;
-	
-		function _randomize( num, max )
-		{
-			var random = Math.random();
-			var flux = rangeFloat * ( num * random );
-		
-			flux = ( random < 0.5 ? (-flux) : flux);
-			flux = parseInt( num + flux);
-			return flux < 0 ? 0 : flux > max ? max : flux;
-		}
 	
 		if(rangeFloat > 0)
 		{
 			c.rgb.red = _randomize(c.rgb.red, 255);
 			c.rgb.green = _randomize(c.rgb.green, 255);		
 			c.rgb.blue = _randomize(c.rgb.blue, 255);
-	
-			// c.hsb.hue = _randomize(colorObj.hsb.hue, 360);
-			// c.hsb.saturation = _randomize(c.hsb.saturation, 100);
-			// c.hsb.brightness = _randomize(c.hsb.brightness, 100);
 		} 
 		else
 		{
@@ -6464,11 +6687,29 @@ JSUI.randomizeRGBColor = function( hexStr, rangeFloat )
 			c.rgb.red = Math.round(Math.random()*255);
 			c.rgb.green = Math.round(Math.random()*255);
 			c.rgb.blue = Math.round(Math.random()*255);
+		}
+		return c;
+	}
+	else if	(JSUI.isIllustrator)
+	{
+		var c = JSUI.hexToRGBobj(hexStr)
+
+		var r = c.red;
+		var g = c.green;
+		var b = c.blue;
 	
-			// fully random HSB
-			// c.hsb.hue = Math.round(Math.random()*360);
-			// c.hsb.saturation = Math.round(Math.random()*100);
-			// c.hsb.brightness = Math.round(Math.random()*100);
+		if(rangeFloat > 0)
+		{
+			c.red = _randomize(r, 255);
+			c.green = _randomize(g, 255);		
+			c.blue = _randomize(b, 255);
+		} 
+		else
+		{
+			// fully random RGB
+			c.red = Math.round(Math.random()*255);
+			c.green = Math.round(Math.random()*255);
+			c.blue = Math.round(Math.random()*255);
 		}
 		return c;
 	}
@@ -6495,6 +6736,7 @@ JSUI.hexToRGB = function (hex)
 JSUI.hexToRGBobj = function ( hexStr )
 {
     var hex = hexStr != undefined ? hexStr : "000000";
+	hex = hex.trim().replace('#', '');
 
 	// illustrator does not have a direct hexValue property
 	if(JSUI.isIllustrator)
