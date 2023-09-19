@@ -127,7 +127,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version, used in tool window titles. Maybe.
-Pslib.version = 0.67;
+Pslib.version = 0.68;
 Pslib.isPs64bits = BridgeTalk.appVersion.match(/\d\d$/) == '64';
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
@@ -180,14 +180,14 @@ if(Pslib.isPhotoshop)
 		else       r.putEnumerated(sTID("layer"), sTID("ordinal"), sTID("targetEnum"));
 		var d = executeActionGet(r).getObjectValue(sTID("artboard")).getObjectValue(sTID("artboardRect"));
 		var bounds = new Array();
-		// bounds[0] = d.getUnitDoubleValue(sTID("top"));
-		// bounds[1] = d.getUnitDoubleValue(sTID("left"));
-		// bounds[2] = d.getUnitDoubleValue(sTID("right"));
-		// bounds[3] = d.getUnitDoubleValue(sTID("bottom"));
-		bounds[0] = d.getUnitDoubleValue(sTID("top")).as('px');
-		bounds[1] = d.getUnitDoubleValue(sTID("left")).as('px');
-		bounds[2] = d.getUnitDoubleValue(sTID("right")).as('px');
-		bounds[3] = d.getUnitDoubleValue(sTID("bottom")).as('px');
+		bounds[0] = d.getUnitDoubleValue(sTID("top"));
+		bounds[1] = d.getUnitDoubleValue(sTID("left"));
+		bounds[2] = d.getUnitDoubleValue(sTID("right"));
+		bounds[3] = d.getUnitDoubleValue(sTID("bottom"));
+		// bounds[0] = d.getUnitDoubleValue(sTID("top")).as('px');
+		// bounds[1] = d.getUnitDoubleValue(sTID("left")).as('px');
+		// bounds[2] = d.getUnitDoubleValue(sTID("right")).as('px');
+		// bounds[3] = d.getUnitDoubleValue(sTID("bottom")).as('px');
 		return bounds;
 	}
 
@@ -2678,7 +2678,7 @@ Pslib.getAllArtboards = function()
 	{
 		// get artboard IDs only
 		// var specs = Pslib.getSpecsForAllArtboards();
-		var specs = Pslib.getSpecsForAllArtboards(true);
+		var specs = Pslib.getSpecsForAllArtboards(true); // faster
 		
 		for(var i = 0; i < specs.length; i++)
 		{
@@ -2860,8 +2860,6 @@ Pslib.getActiveArtboard = function()
 	{
 		var i = doc.artboards.getActiveArtboardIndex();
 		artboard = doc.artboards[i];
-	
-		// return artboard;
 	}
 	else if(Pslib.isPhotoshop)
 	{
@@ -3071,6 +3069,7 @@ Pslib.artboardCollectionCoordsToJsonFile = function( file, obj )
 }
 
 // get document bounds for artboard geometry offset calculations
+// along with some other configuration specs if needed
 Pslib.getDocumentSpecs = function( advanced )
 {
 	if(!app.documents.length) return;
@@ -3267,14 +3266,14 @@ Pslib.getArtboardCoordinates = function( artboard )
 
             coords.name = r.getString(sTID("name")).trim();
             coords.id = id;
-            // coords.x = bounds[1];
-            // coords.y = bounds[0];
-		    // coords.width = bounds[2] - bounds[1];
-		    // coords.height = bounds[3] - bounds[0];
-            coords.x = bounds[1].as('px');
-            coords.y = bounds[0].as('px');
-		    coords.width = bounds[2].as('px') - bounds[1].as('px');
-		    coords.height = bounds[3].as('px') - bounds[0].as('px');
+            coords.x = bounds[1];
+            coords.y = bounds[0];
+		    coords.width = bounds[2] - bounds[1];
+		    coords.height = bounds[3] - bounds[0];
+            // coords.x = bounds[1].as('px');
+            // coords.y = bounds[0].as('px');
+		    // coords.width = bounds[2].as('px') - bounds[1].as('px');
+		    // coords.height = bounds[3].as('px') - bounds[0].as('px');
 
             coords.rect = bounds;
 		    coords.centerX = coords.x + coords.width/2;
@@ -3428,6 +3427,7 @@ Pslib.updateArtboardBackgroundTransparent = function()
 	return true;
 }
 
+// color rectangle placeholder 
 Pslib.updateArtboardBackgroundColor = function( hexStr, create )
 {
 	if(hexStr == undefined) return false;
@@ -5651,14 +5651,91 @@ Pslib.artboardsToFiles = function( obj )
 	}
 }
 
-// wrapper used to quickly export current artboard
+// wrapper used to quickly output current artboard to 
+// default: PSD
 Pslib.artboardToFile = function( obj )
 {
+	if(!app.documents.length) return;
+	var doc = app.activeDocument;
+
 	if(Pslib.isIllustrator)
 	{
 		if(!obj) obj = {};
-		obj.pagesArr = undefined;
+		if(!obj.extension) obj.extension = ".psd";
+
 		obj.bypassXmpRange = true;
+		var placeholderCreated = false;
+		var selection = app.selection[0];
+
+		// obj.pagesArr = undefined; // active artboard
+		// if .psd, include a placeholder rectangle to force canvas dimensions
+
+		// 
+		if(obj.extension == ".psd")
+		{
+			var activeIndex = doc.artboards.getActiveArtboardIndex();
+			var artboard = Pslib.getActiveArtboard();
+
+			if(obj.pagesArr == undefined)
+			{
+				// activeIndex = doc.artboards.getActiveArtboardIndex();
+				artboard = doc.artboards[activeIndex];			
+				obj.pagesArr = [activeIndex+1];
+			}
+
+			// if target index does not match active artboard, make sure it does
+			if(obj.pagesArr.toString() != (activeIndex+1).toString())
+			{
+				doc.selection = null;
+				var index = parseInt(obj.pagesArr.toString());
+				// var index = obj.pagesArr[0]-1;
+				if(!isNaN(index))
+				{
+					index -= 1;
+					doc.artboards.setActiveArtboardIndex(index);
+					artboard = doc.artboards[index];
+				}
+			}
+
+			var placeholder;
+			// placeholder = Pslib.getArtboardItem(artboard, "#");
+
+			placeholder = Pslib.addArtboardRectangle( { hex: "FF1080", name: "OHHAI" } ); // specs ignored
+			placeholderCreated = true;
+	
+			// if(!placeholder)
+			// {
+			// 	// cannot assume placeholder has same bounds as artboard
+			// 		// get placeholder, compare bounds
+			// 	// placeholder = Pslib.addArtboardRectangle( { hex: "FF1080", name: "OHHAI", opacity: 100} ); // specs ignored
+			// 	placeholder = Pslib.addArtboardRectangle( "FF1080" ); // specs ignored
+			// 	placeholderCreated = true;
+			// 	// should also check for any visible geometry outside of artboard bounds
+			// 		//
+			// 	// check for locked items?
+			// }
+			// else
+			// {
+			// 	// validate existing 
+			// 	var bounds = placeholder.visibleBounds;
+			// 	var artboardBounds = artboard.artboardRect;
+			// 	JSUI.quickLog(bounds, "\nplaceholder bounds:");
+			// 	JSUI.quickLog(artboardBounds, "\nartboard bounds:");
+			// }	
+
+			// validate actual content bounds
+			// add temporary clippling path if necessary
+
+		}
+
+		// remove placeholder if created
+		// if(placeholderCreated) placeholder.remove();
+
+		if(selection != null)
+		{
+			app.selection = selection;
+		}
+
 		return Pslib.artboardsToFiles( obj );
 	}
 	else if(Pslib.isPhotoshop)
@@ -5708,7 +5785,7 @@ Pslib.createNewDocument = function( templateUri )
 			dp.previewMode = DocumentPreviewMode.PixelPreview;
 			dp.rasterResolution = DocumentRasterResolution.ScreenResolution; // .HighResolution, .MediumResolution
 			dp.units = RulerUnits.Pixels;
-			dp.transparencyGrid = DocumentTransparencyGrid.TransparencyGridMedium; // .TransparencyGridDark
+			dp.transparencyGrid = DocumentTransparencyGrid.TransparencyGridMedium; // .TransparencyGridDark // this seems ignored
 
 			// newDoc = app.documents.add( app.activeDocument.documentColorSpace);
 			newDoc = app.documents.addDocument("Web", dp);
@@ -5885,18 +5962,21 @@ Pslib.getArtboardItem = function( artboard, nameStr )
 		// }
 
 		var artboardLayers = artboard.layers;
-		for(var i = 0; i < artboardLayers.length; i++)
+		if(artboardLayers)
 		{
-			artboardLayer = artboardLayers[i];
-			if(artboardLayer.typename == "ArtLayer")
+			for(var i = 0; i < artboardLayers.length; i++)
 			{
-				// if shape layer
-				if(artboardLayer.kind == LayerKind.SOLIDFILL)
+				artboardLayer = artboardLayers[i];
+				if(artboardLayer.typename == "ArtLayer")
 				{
-					if(artboardLayer.name == nameStr)
+					// if shape layer
+					if(artboardLayer.kind == LayerKind.SOLIDFILL)
 					{
-						targetItem = artboardLayer;
-						break;
+						if(artboardLayer.name == nameStr)
+						{
+							targetItem = artboardLayer;
+							break;
+						}
 					}
 				}
 			}
@@ -6040,14 +6120,34 @@ Pslib.addArtboardRectangle = function ( obj )
 	if(!app.documents.length) return;
 	var doc = app.activeDocument;
 	
-	// assume Hexadecimal value if string passed as first argument
+	if(!obj)
+	{
+		obj = { hex: "transparent" };
+	}
+
+	// if(typeof obj.hex == "object")
+	// {
+	// 	// assume color object
+	// 	// obj = { hex: JSUI.colorFillToHex(obj.hex) };
+	// 	obj = { hex: obj.hex };
+	// }
+
+	// if string, assume Hexadecimal value if string passed as first argument
 	if(typeof obj == "string")
 	{
 		obj = { hex: obj };
 	}
-	else if(!obj)
+
+	// then validate that hex string has six digits, override if needed
+	if(typeof obj.hex == "string")
 	{
-		obj = {};
+		if(obj.hex != "transparent")
+		{
+			if(obj.hex.length != 6)
+			{
+				obj.hex = "000000";
+			}
+		}
 	}
 
 	var rectangle;
@@ -6060,16 +6160,46 @@ Pslib.addArtboardRectangle = function ( obj )
 		app.coordinateSystem = CoordinateSystem.ARTBOARDCOORDINATESYSTEM;
 
 		var coords = Pslib.getArtboardCoordinates(obj.artboard);
-		rectangle = doc.pathItems.rectangle( coords.x, -coords.y, coords.x+coords.width, coords.y+coords.height );
+
+		if(obj.mustBeUnique)
+		{
+			rectangle = Pslib.getArtboardItem();
+		}
+		else
+		{
+			rectangle = doc.pathItems.rectangle( coords.x, -coords.y, coords.x+coords.width, coords.y+coords.height );
+		}
+
+		if(!rectangle) return
 		doc.selection = rectangle;
 	
 		var transp = new NoColor();
 		rectangle.strokeColor = transp;
-		
-		var colorObj = typeof obj.hex == "string" ? Pslib.hexToRGBobj(obj.hex) : obj.hex; // assume already color object if not string
+		var colorObj = transp;
 
-		rectangle.fillColor = obj.hex != undefined ? colorObj : transp;
-		rectangle.opacity = obj.opacity != undefined ? obj.opacity : 0.65;
+		if(typeof obj.hex == "string")
+		{
+			// JSUI.quickLog(obj.hex, "hex is string! ");
+
+			if(obj.hex == "transparent")
+			{
+				rectangle.fillColor = transp;
+			}
+			else
+			{
+				colorObj = Pslib.hexToRGBobj(obj.hex);
+				// JSUI.quickLog(colorObj, "illustrator color fill " + obj.hex + " " + typeof obj.hex );
+			}
+
+		}
+		else if(typeof obj.hex == "object")
+		{
+			colorObj = obj.hex; // assume color object
+		}
+
+		rectangle.fillColor = colorObj;
+
+		// rectangle.opacity = obj.opacity != undefined ? obj.opacity : 66;
 
 		rectangle.name = obj.name ? obj.name : "#";
 	
@@ -6346,31 +6476,169 @@ Pslib.addArtboardRectangle = function ( obj )
 
 // add rectangles to all artboards
 // hexStr = "transparent"
-Pslib.addArtboardRectangles = function ( arr, hexStr, randomize )
+Pslib.addArtboardRectangles = function ( arr, hexStr, randomize, unique )
 {
 	if(!app.documents.length) return;
-	if(!obj) obj = {};
-	if(hexStr == undefined) hexStr = "ff00ff";
+	if(randomize == undefined) randomize = 0;
+	// if(!obj) obj = {};
+	// if(hexStr == undefined) hexStr = "ff00ff";
+
+	if((typeof arr == "string") && (hexStr == undefined))
+	{
+		hexStr = arr;
+		arr = Pslib.getSpecsForAllArtboards();
+	}
+
+	if(hexStr == undefined) hexStr = "transparent";
 	if(!arr)
 	{
 		// arr = Pslib.getSpecsForAllArtboards(true);
 		arr = Pslib.getSpecsForAllArtboards();
 	}
 
+	var doc = app.activeDocument;
 	var rectArr = [];
-    for(var i = 0; i < arr.length; i++)
-    {
-		rgbObj = randomize ? JSUI.randomizeRGBColor(hexStr, 0.75) : JSUI.hexToRGBobj(hexStr); // "transparent" just returns "transparent"
-		var obj = { artboard: arr[i], mustBeUnique: true, hex: rgbObj, sendToBack: true };
+	var initialArtboard;
 
-        var rect = Pslib.addArtboardRectangle( obj );
-        rectArr.push(rect);
-    }
+	if(Pslib.isIllustrator)
+	{
+		// initialArtboard = Pslib.getArtboardIndex( Pslib.getActiveArtboard() );
+		initialArtboard = doc.artboards.getActiveArtboardIndex();
+
+		for(var i = 0; i < arr.length; i++)
+		{
+			var artboardIndex = arr[i].id;
+			if(artboardIndex == undefined) continue;
+
+			var artboard = doc.artboards[artboardIndex];
+			doc.artboards.setActiveArtboardIndex(artboardIndex);
+
+			// var rgbObj = randomize ? JSUI.randomizeRGBColor(hexStr, randomize) : JSUI.hexToRGBobj(hexStr);
+
+			var rgbObj = JSUI.randomizeRGBColor(hexStr, randomize);
+
+			// //
+			// // fails with "transparent"
+			// //
+			// // convert HSB to better control RGB variations
+			// // if(hexStr == "transparent") hexStr = [1, 1, 1]
+			// var hsbArr = Pslib.RGBtoHSB( Pslib.hexToRGB(hexStr) );
+			// JSUI.quickLog(hsbArr, "hsbArr:");
+
+			// var hue = hsbArr[0];
+			// var sat = hsbArr[1];
+			// var bri = hsbArr[2];
+
+			// hue = JSUI.randomizeFloat( hue, 360, randomize );
+			// bri = JSUI.randomizeFloat( bri, 100, randomize );
+			// // var hue = Math.max(randomize * ( hue * Math.random() ), 360);
+
+			// // sat = JSUI.randomizeFloat( sat, 100, randomize );
+			// // bri = JSUI.randomizeFloat( bri, 100, randomize );
+
+			// var modifiedRgbArr = Pslib.HSBtoRGB( [ hue, sat, bri ] );
+			// var rgbObj = Pslib.RGBToColorObj(modifiedRgbArr);
+
+			// JSUI.quickLog("\thue: " + hue);
+			// JSUI.quickLog("\tbri: " + bri);
+
+
+			// var hex = JSUI.HexToR(hexStr)+JSUI.HexToG(hexStr)+JSUI.HexToB(hexStr);			
+			// var hex = JSUI.colorFillToHex(rgbObj);
+			var obj = { artboard: artboard, mustBeUnique: unique, hex: rgbObj, sendToBack: true };
+			var rect = Pslib.addArtboardRectangle( obj );
+			rectArr.push(rect);
+		}
+
+		doc.artboards.setActiveArtboardIndex(initialArtboard);
+	}
+	else if(Pslib.isPhotoshop)
+	{
+		initialArtboard = doc.activeLayer;
+
+		for(var i = 0; i < arr.length; i++)
+		{
+			var artboard = arr[i].id;
+			// var rgbObj = randomize ? JSUI.randomizeRGBColor(hexStr, randomize) : JSUI.hexToRGBobj(hexStr);
+			var rgbObj = JSUI.randomizeRGBColor(hexStr, randomize);
+			var obj = { artboard: artboard, mustBeUnique: unique, hex: rgbObj, sendToBack: true };
+			var rect = Pslib.addArtboardRectangle( obj );
+			if(unique)
+			{
+				// Pslib.updateArtboardBackgroundColor(hexStr, create) // for setting artboard background itself
+				Pslib.updateFillColor( rect, rgbObj ); // reference ectangle
+			}
+			rectArr.push(rect);
+		}
+
+		if(initialArtboard) doc.activeLayer = initialArtboard;
+	}
+
     return rectArr;
 }
 
-// get RGB value of active object as hex string
+Pslib.removeArtboardRectangles = function ( arr, nameStr )
+{
+	if(!app.documents.length) return;
 
+	var doc = activeDocument;
+
+	if(!arr)
+	{
+		arr = Pslib.getSpecsForAllArtboards( true );
+	}
+
+	// if(nameStr)
+	// {
+	// 	nameStr = "#";
+	// }
+
+	// var items = Pslib.getArtboardItems( arr, nameStr );
+
+	// JSUI.quickLog(items);
+
+	if(Pslib.isPhotoshop)
+	{
+		for(var i = 0; i < arr.length; i++)
+		{
+			// var arr = arr[i];
+			Pslib.selectLayerByID(arr[i]);
+			var rectangle = Pslib.getArtboardItem( doc.activeLayer, nameStr);
+			if(rectangle)
+			{
+				// JSUI.quickLog("Removing " + item.name);
+
+				try
+				{
+					JSUI.quickLog(arr[i]+" removing " + rectangle.name);
+					doc.activeLayer = rectangle;
+					rectangle.remove();
+				}
+				catch(e)
+				{
+					// if layer object is the last one left, this won't work 
+					// just set its opacity to zero
+					// rectangle.opacity = 0;
+					rectangle.visible = false;
+					JSUI.quickLog(arr[i] + "\n\n"+e);
+
+				}
+			}
+			else
+			{
+				JSUI.quickLog(arr[i]+" No rectangle found.");
+			}
+
+		}
+		return;
+	}
+	else if(Pslib.isIllustrator)
+	{
+
+	}
+}
+
+// get RGB value of active object as hex string
 Pslib.getFillColor = function ( asColorObj )
 {
 	if(!app.documents.length) return;
@@ -6465,6 +6733,12 @@ Pslib.updateFillColor = function( item, hexStr )
 					}
 				}
 
+				// if hexStr is already SolidColor, get hex value 
+				if(typeof hexStr == "object")
+				{
+					hexStr = hexStr.rgb.hexValue;
+				}
+
 				var sColor =  new SolidColor;
 				sColor.rgb.hexValue = hexStr;
 
@@ -6490,6 +6764,11 @@ Pslib.updateFillColor = function( item, hexStr )
 		}
 		else if(Pslib.isArtboard(layer))
 		{
+			if(typeof hexStr == "object")
+			{
+				hexStr = hexStr.rgb.hexValue;
+			}
+			
 			Pslib.updateArtboardBackgroundColor( hexStr );
 		}
 		return true;
@@ -6502,32 +6781,40 @@ Pslib.updateFillColor = function( item, hexStr )
 			item = doc.selection[0];
 		}
 		if(!item) return;
+
 		// doc.selection = item;
+
+		var transp = new NoColor();
 
 		if(doc.selection != item) 
 		{
 			initialSelection = doc.selection[0];
 			doc.selection = item;
+			item = doc.selection[0];
 		}
 
 		if(hexStr == "transparent")
 		{
-			var transp = new NoColor();
 			item.strokeColor = transp;
 			item.fillColor = transp;
 		}
 		else 
 		{
-			// if fully transparent, assume we want it opaque
+			colorObj = Pslib.hexToRGBobj(hexStr);
+			item.fillColor = colorObj;
+
+			// if fully transparent, assume we want it opaque at this point
 			if(item.fillOpacity == 0)
 			{
 				item.fillOpacity = 100;
 			}
 		}
-		//item.fillColor = obj.hex != undefined ? colorObj : transp;
+
+
 
 		// var artboard = arr[i];
 		// var obj = { artboard: artboard, mustBeUnique: true, hex: rgbObj, sendToBack: true };
+		// return asColorObj ? Pslib.hexToRGBobj(hexStr) : hexStr;
 		return true;
 	}
 
@@ -6538,25 +6825,155 @@ Pslib.updateFillColor = function( item, hexStr )
 	// 		{
 }
 
-// this will make a Photooshop shape layer or artboard background fully transparent
+// this will make a Photoshop shape layer or artboard background fully transparent
 // illustrator artwork item fillColor strokeColor
 Pslib.makeFillTransparent = function( item )
 {
 	return Pslib.updateFillColor(item, "transparent");
 }
 
+Pslib.makeAllArtboardBackgroundsTransparent = function( artboards )
+{
+	if(!app.documents.length) return;
+	// if(!hexStr) return;
+
+	var doc = app.activeDocument;
+
+	var coords = Pslib.getArtboardCollectionCoordinates();
+	// var rectangles = Pslib.addArtboardRectangles(coords, "transparent", 0, add); // overrides existing backgrounds
+
+	if(Pslib.isPhotoshop)
+	{
+		var activeLayer = doc.activeLayer;
+		for(var i = 0; i < coords.length; i++)
+		{
+			var artboard = Pslib.selectLayerByID(coords[i].id);
+			if(artboard)
+			{
+				Pslib.makeFillTransparent(artboard);
+			}
+		}
+		if(activeLayer == doc.activeLayer) doc.activeLayer = activeLayer;
+	}
+	else if(Pslib.isIllustrator)
+	{
+		var selection = doc.selection;
+
+		for(var i = 0; i < doc.artboards.length; i++)
+		{
+			var artboard = doc.artboards[i];
+			if(artboard)
+			{
+				doc.artboards.setActiveArtboardIndex(i);
+				doc.selectObjectsOnActiveArtboard();
+				var placeholder = Pslib.getArtboardItem();
+
+				Pslib.updateFillColor(placeholder, "transparent");
+			}
+		}
+
+		if(selection) doc.selection = selection;
+
+		// return Pslib.updateFillColor(item, "transparent");
+	}
+
+
+	// return rectangles;
+	return;
+}
+
+
+Pslib.colorAllArtboardBackgrounds = function( hexStr )
+{
+	if(!app.documents.length) return;
+	if(!hexStr) return;
+
+	var doc = app.activeDocument;
+
+	if(Pslib.isPhotoshop)
+	{
+		var activeLayer = doc.activeLayer;
+		var coords = Pslib.getArtboardCollectionCoordinates();
+		for(var i = 0; i < coords.length; i++)
+		{
+			var artboard = Pslib.selectLayerByID(coords[i].id);
+			// Pslib.makeFillTransparent(artboard);
+			Pslib.updateFillColor(artboard, hexStr);
+		}
+		if(activeLayer == doc.activeLayer) doc.activeLayer = activeLayer;
+	}
+	else if(Pslib.isIllustrator)
+	{
+		// var placeholders = Pslib.getArtboardItems( doc.artboards );
+		// // // alert(placeholders.length);
+		// for(var i = 0; i < placeholders.length; i++)
+		// {
+		// 	var item = placeholders[i];
+
+		// 	JSUI.quickLog(i+" bounds: " + item.visibleBounds);
+		// 	doc.selection = item;
+		// 	item = doc.selection[0];
+
+		// 	Pslib.updateFillColor(item, hexStr);
+		// 	JSUI.quickLog(i+" placeholder color updated");
+			
+		// }
+		// return true;
+		
+		// var artboards = Pslib.getAllArtboards();
+
+		// for(var i = 0; i < placeholders.length; i++)
+		// {
+		// 	var artboard = artboards[i];
+		// 	// app.activeDocument.selection = item;
+
+		// 	Pslib.updateFillColor(item, hexStr);
+
+		// 	JSUI.quickLog(i+" placeholder color updated");
+		// }
+
+		// var coords = Pslib.getArtboardCollectionCoordinates();
+		// for(var i = 0; i < coords.length; i++)
+		// {
+		// 	var artboard = app.activeDocument.artboards[coords[i].index];
+		// 	if(artboard)
+		// 	{
+		// 		// Pslib.makeFillTransparent(artboard);
+		// 		Pslib.updateFillColor(artboard, hexStr);
+		// 	}
+
+		// }
+		var selection = doc.selection;
+		for(var i = 0; i < doc.artboards.length; i++)
+		{
+			var artboard = doc.artboards[i];
+			if(artboard)
+			{
+				doc.artboards.setActiveArtboardIndex(i);
+				doc.selectObjectsOnActiveArtboard();
+				var placeholder = Pslib.getArtboardItem();
+
+				Pslib.updateFillColor(placeholder, hexStr);
+			}
+		}
+		if(selection) doc.selection = selection;
+	}
+	return;
+}
+
+
 // get items with specific name from provided artboards collection
 Pslib.getArtboardItems = function( artboardsArr, nameStr )
 {
 	if(!app.documents.length) return;
-	if(!nameStr) { var nameStr = "#"; }
+	if(!nameStr) { nameStr = "#"; }
 	var doc = app.activeDocument;
 
 	var artboardItems = [];
 
 	if(Pslib.isPhotoshop)
 	{
-		if(!artboardsArr) { var artboardsArr = doc.artboards; }
+		if(!artboardsArr) { artboardsArr = Pslib.getAllArtboards(); }
 
 		for(var j = 0; j < artboardsArr.length; j++)
 		{
@@ -6567,7 +6984,7 @@ Pslib.getArtboardItems = function( artboardsArr, nameStr )
 	}
 	else if(Pslib.isIllustrator)
 	{
-		if(!artboardsArr) { var artboardsArr = doc.artboards; }
+		if(!artboardsArr) { artboardsArr = doc.artboards; }
 
 		for (var i = 0; i < artboardsArr.length; i++)
 		{
@@ -6648,6 +7065,7 @@ Pslib.selectionBoundsMatchesLayer = function ()
 // "#f760e3" becomes [0.96862745098039,0.37647058823529,0.89019607843137,1];
 Pslib.hexToRGB = function (hex)
 {
+	if(hex == "transparent") hex = "000000"
 	var color = hex.trim().replace('#', '');
 	var r = parseInt(color.slice(0, 2), 16) / 255;
 	var g = parseInt(color.slice(2, 4), 16) / 255;
@@ -6656,6 +7074,7 @@ Pslib.hexToRGB = function (hex)
 }
 
 // hex string to Photoshop/Illustrator color object
+// "#f760e3" becomes SolidColor/RGBColor{ red:,green:, blue:  }
 Pslib.hexToRGBobj = function ( hexStr )
 {
     var hex = hexStr != undefined ? hexStr : "000000";
@@ -6663,7 +7082,9 @@ Pslib.hexToRGBobj = function ( hexStr )
 	// illustrator does not have a direct hexValue property
 	if(Pslib.isIllustrator)
 	{
+		if(hexStr == "transparent") return new NoColor();
 		var color = new RGBColor();
+
 		color.red = Pslib.HexToR(hex);
 		color.green = Pslib.HexToG(hex);
 		color.blue = Pslib.HexToB(hex);
@@ -6672,7 +7093,31 @@ Pslib.hexToRGBobj = function ( hexStr )
 	else if(Pslib.isPhotoshop)
 	{
 		var color = new SolidColor();
+		if(hexStr == "transparent") return color;
 		color.rgb.hexValue = hex;
+		return color;
+	}
+
+    return;
+}
+
+// array to color object
+Pslib.RGBToColorObj = function ( rgb )
+{
+	if(Pslib.isIllustrator)
+	{
+		var color = new RGBColor();
+		color.red = rgb[0];
+		color.green = rgb[1];
+		color.blue = rgb[2];
+		return color;
+	}
+	else if(Pslib.isPhotoshop)
+	{
+		var color = new SolidColor();
+		color.rgb.red = rgb[0];
+		color.rgb.green = rgb[1];
+		color.rgb.blue = rgb[2];
 		return color;
 	}
 
@@ -6719,6 +7164,158 @@ Pslib.HexToA = function(h)
 {
 	return parseInt((Pslib.cutHex(h)).substring(6,8), 16);
 }
+
+
+//
+// standalone color conversion snippets
+// RGB << >> HSL << >> HSB 
+//
+
+Pslib.RGBtoHSB = function( rgbArr )
+{
+    var arr = Pslib.RGBtoHSL(rgbArr); 
+    arr = Pslib.HSLtoHSB(arr);
+
+    return arr;
+}
+
+Pslib.RGBtoHSL = function( rgbArr )
+{
+    if(!rgbArr) return;
+    if(!rgbArr.length) return;
+
+    var r = rgbArr[0];
+    var g = rgbArr[1];
+    var b = rgbArr[2];
+
+    var cmin = Math.min(r,g,b);
+    var cmax = Math.max(r,g,b);
+    var delta = cmax - cmin;
+
+    var h = 0;
+    var s = 0;
+    var l = 0;
+
+    if (delta == 0) h = 0;
+    else if (cmax == r) h = ((g - b) / delta) % 6;
+    else if (cmax == g) h = (b - r) / delta + 2;
+    else h = (r - g) / delta + 4;
+    
+    h = Math.round(h * 60);
+        
+    if (h < 0) h += 360;
+
+    l = (cmax + cmin) / 2;
+    s = delta == 0 ? 0 : delta / (1 - Math.abs(2 * l - 1));
+    s = +(s * 100).toFixed(1);
+    l = +(l * 100).toFixed(1);
+
+    return [ h, s, l ];
+}
+
+Pslib.HSLtoHSB = function( hslArr )
+{
+    if(!hslArr) return;
+    if(!hslArr.length) return;
+
+    var h = hslArr[0];
+    var s = hslArr[1] / 100;
+    var l = hslArr[2] / 100;
+
+    var nV = l + s * Math.min(l, (1-l));
+    var sV = (nV == 0) ? nV : (2 * (1 - (l/nV))); 
+
+    return [ h, sV*100, nV*100 ];
+}
+
+Pslib.HSBtoRGB = function( hsbArr )
+{
+    var hslArr = Pslib.HSBtoHSL(hsbArr);
+    return Pslib.HSLtoRGB(hslArr);
+}
+
+Pslib.HSBtoHSL = function( hsbArr, convert )
+{
+    if(!hsbArr) return;
+    if(!hsbArr.length) return;
+
+    var h = hsbArr[0];
+    var s = hsbArr[1] / 100;
+    var b = hsbArr[2] / 100;
+
+    var l = b * (1 - s/2);
+    var nS = (l == 0 || l == 1) ? 0 : ((b - l) / Math.min(l, 1-l));
+
+    return [ h, nS*100, l*100 ];
+}
+
+Pslib.HSLtoRGB = function( hslArr )
+{
+    if(!hslArr) return;
+    if(!hslArr.length) return;
+
+    var h = hslArr[0];
+    var s = hslArr[1];
+    var l = hslArr[2];
+
+    s /= 100;
+    l /= 100;
+    
+    var c = (1 - Math.abs(2 * l - 1)) * s;
+    var x = c * (1 - Math.abs((h / 60) % 2 - 1));
+    var m = l - c/2;
+    var r = 0;
+    var g = 0;
+    var b = 0;
+
+    if (0 <= h && h < 60)
+    {
+        r = c; 
+        g = x; 
+        b = 0;  
+    } 
+    else if (60 <= h && h < 120)
+    {
+        r = x; 
+        g = c; 
+        b = 0;
+    }
+    else if (120 <= h && h < 180)
+    {
+        r = 0; 
+        g = c; 
+        b = x;
+    } 
+    else if (180 <= h && h < 240)
+    {
+        r = 0; 
+        g = x; 
+        b = c;
+    } 
+    else if (240 <= h && h < 300)
+    {
+        r = x; 
+        g = 0; 
+        b = c;
+    }
+    else if (300 <= h && h < 360)
+    {
+        r = c; 
+        g = 0; 
+        b = x;
+    }
+
+    r = Math.round((r + m) * 255);
+    g = Math.round((g + m) * 255);
+    b = Math.round((b + m) * 255);
+    
+    return [ r, g, b ];
+}
+
+//
+//
+//
+
 
 // layer palette item color 
 Pslib.getLayerColor = function(id)

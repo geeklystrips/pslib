@@ -65,7 +65,7 @@ if(typeof JSUI !== "object")
 }
 
 /* version	*/
-JSUI.version = "0.981";
+JSUI.version = "0.982";
 
 // do some of the stuff differently depending on $.level and software version
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -6627,14 +6627,16 @@ JSUI.setLayerObjectColor = function( color )
 {
 	if(JSUI.isPhotoshop)
 	{		
+		if(!color) color = "None";
+
 		if(color == "red") color = "Rd  "; 
-		if(color == "blue") color = "Bl  "; 
-		if(color == "orange") color = "Orng"; 
-		if(color == "yellow") color = "Ylw "; 
-		if(color == "green") color = "Grn "; 
-		if(color == "violet") color = "Vlt "; 
-		if(color == "gray") color = "Gry "; 
-		if(color == "none") color = "None";
+		else if(color == "blue") color = "Bl  "; 
+		else if(color == "orange") color = "Orng"; 
+		else if(color == "yellow") color = "Ylw "; 
+		else if(color == "green") color = "Grn "; 
+		else if(color == "violet") color = "Vlt "; 
+		else if(color == "gray") color = "Gry "; 
+		else if(color == "none") color = "None";
 	
 		var desc27 = new ActionDescriptor();
 		var ref3 = new ActionReference();
@@ -6644,7 +6646,7 @@ JSUI.setLayerObjectColor = function( color )
 		desc28.putEnumerated( charIDToTypeID('Clr '), charIDToTypeID('Clr '), charIDToTypeID(color) );
 		desc27.putObject( charIDToTypeID('T   '), charIDToTypeID('Lyr '), desc28 );
 		executeAction( charIDToTypeID('setd'), desc27, DialogModes.NO );
-
+		return true;
 	}
 	else
 	{
@@ -6652,65 +6654,104 @@ JSUI.setLayerObjectColor = function( color )
 	}
 };
 
-// randomize solidcolor object 
+// "controlled" randomization, float sticks around a specified threshold
+JSUI.randomizeFloat = function( num, max, range )
+{
+	if(range == 0) return num; 
+	if(range > 1) range = 1;
+	var random = Math.random();
+	var flux = range * ( num * random );
+
+	flux = ( random < 0.5 ? (-flux) : flux);
+	flux = parseInt( num + flux);
+	flux = flux < 0 ? 0 : flux > max ? max : flux;
+	// JSUI.quickLog(flux, "randomised: ");
+	return flux;
+}
+
+//
+// misguided attempt at randomizing r, g, b values of color object 
+// while remaining within a specific hue range
+// achieving this with HSL/HSB would be a lot easier
+//
+// rangeFloat default is 0, full randomization across a range of 0-255 for each r, g, b component
+// 0.04 yields difficult to see but different variations in color
+// a value of 0.75 means
+//
 JSUI.randomizeRGBColor = function( hexStr, rangeFloat )
 {
 	if(hexStr == "transparent") return hexStr;
+	if(hexStr == undefined) hexStr = "000000";
+	if(rangeFloat == undefined) rangeFloat = 0;
+	if(rangeFloat > 1) rangeFloat = 1;
 
-	function _randomize( num, max )
+	// if object, assume color fill
+	if(typeof hexStr == "object")
 	{
-		var random = Math.random();
-		var flux = rangeFloat * ( num * random );
-	
-		flux = ( random < 0.5 ? (-flux) : flux);
-		flux = parseInt( num + flux);
-		return flux < 0 ? 0 : flux > max ? max : flux;
+		if(JSUI.isPhotoshop)
+		{	
+			hexStr = hexStr.rgb.hexValue;
+		}
+		else if(JSUI.isIllustrator)
+		{
+			hexStr = JSUI.HexToR(hexStr)+JSUI.HexToG(hexStr)+JSUI.HexToB(hexStr);			
+			// JSUI.quickLog( "illustrator hexStr: "+hexStr );
+		}
 	}
 
-	var hexStr = hexStr == undefined ? "000000" : typeof hexStr == "object" ? hexStr.rgb.hexValue : hexStr;
-	var rangeFloat = rangeFloat == undefined ? 0.0 : rangeFloat;
+	var r,g,b = 0;
 
 	if(JSUI.isPhotoshop)
 	{		
 		var c = new SolidColor();
 		c.rgb.hexValue = hexStr;
-	
-		if(rangeFloat > 0)
-		{
-			c.rgb.red = _randomize(c.rgb.red, 255);
-			c.rgb.green = _randomize(c.rgb.green, 255);		
-			c.rgb.blue = _randomize(c.rgb.blue, 255);
-		} 
-		else
-		{
-			// fully random RGB
-			c.rgb.red = Math.round(Math.random()*255);
-			c.rgb.green = Math.round(Math.random()*255);
-			c.rgb.blue = Math.round(Math.random()*255);
-		}
+
+		r = c.rgb.red;
+		g = c.rgb.green;
+		b = c.rgb.blue;
+	}
+	else if(JSUI.isIllustrator)
+	{
+		var c = JSUI.hexToRGBobj(hexStr)
+
+		r = c.red;
+		g = c.green;
+		b = c.blue;
+	}
+
+	// JSUI.quickLog([ r, g, b ], "\n"+hexStr.toUpperCase());
+
+	// proceed with randomization
+	if(rangeFloat > 0)
+	{
+		r = JSUI.randomizeFloat(r, 255, rangeFloat);
+		g = JSUI.randomizeFloat(g, 255, rangeFloat);
+		b = JSUI.randomizeFloat(b, 255, rangeFloat);
+		// JSUI.quickLog([ r, g, b ], " randomized @ " + rangeFloat);
+	} 
+	else
+	{
+		// fully random RGB
+		r = Math.round(Math.random()*255);
+		g = Math.round(Math.random()*255);
+		b = Math.round(Math.random()*255);
+		// JSUI.quickLog([ r, g, b ], " full randomized: " + rangeFloat);
+	}
+
+	if(JSUI.isPhotoshop)
+	{
+		c.rgb.red = r;
+		c.rgb.green = g;		
+		c.rgb.blue = b;
+
 		return c;
 	}
 	else if	(JSUI.isIllustrator)
 	{
-		var c = JSUI.hexToRGBobj(hexStr)
-
-		var r = c.red;
-		var g = c.green;
-		var b = c.blue;
-	
-		if(rangeFloat > 0)
-		{
-			c.red = _randomize(r, 255);
-			c.green = _randomize(g, 255);		
-			c.blue = _randomize(b, 255);
-		} 
-		else
-		{
-			// fully random RGB
-			c.red = Math.round(Math.random()*255);
-			c.green = Math.round(Math.random()*255);
-			c.blue = Math.round(Math.random()*255);
-		}
+		c.red = r;
+		c.green = g;
+		c.blue = b;
+		// JSUI.quickLog(c);
 		return c;
 	}
 	else
@@ -6787,6 +6828,23 @@ JSUI.toHex = function(n)
 
 	return ((1<<8)+n).toString(16).toUpperCase().slice(1);
 };
+
+// convert color object to usable hex string 
+// compensates for Illustrator's lack of .hexValue property
+JSUI.colorFillToHex = function(color)
+{
+	if(color == undefined) return "000000";
+	if(typeof color != "object") return "000000";
+
+	if(JSUI.isIllustrator)
+	{
+		return JSUI.toHex(color.red) + JSUI.toHex(color.green) + JSUI.toHex(color.blue);
+	}
+	else if(JSUI.isPhotoshop)
+	{
+		return color.rgb.hexValue;
+	}
+}
 
 JSUI.cutHex = function(h)
 {
