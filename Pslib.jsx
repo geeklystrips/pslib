@@ -387,7 +387,7 @@ Pslib.docKeyValuePairs = [ [ "source", null ], [ "range", null ], [ "destination
 // Pslib.assetKeyValuePairs = [ [ "assetID", null ], [ "index", null ] ];
 Pslib.assetKeyValuePairs = [ [ "assetID", null ], [ "customMips", null ] ];
 Pslib.storedAssetPropertyNamesArr = [ "assetName", "assetArtboardID", "assetID", "customMips" ];
-Pslib.assetKeyConversionArr = [ ];
+Pslib.assetKeyConversionArr = [ [ "assetID", "id" ], [ "assetName", "name" ], [ "index", "page" ] ];
 
 // #############  PER-LAYER METADATA FUNCTIONS
 
@@ -1453,7 +1453,7 @@ Pslib.pushDataCollectionToOrderedArray = function( obj )
         {
             itemCount = obj.xmp.countArrayItems(obj.namespace, obj.arrNameStr);
             obj.xmp.deleteProperty(obj.namespace, obj.arrNameStr);
-            JSUI.quickLog("deleted " + itemCount+ " array items");
+            // JSUI.quickLog("deleted " + itemCount+ " array items");
         }
         else
         {
@@ -1661,22 +1661,91 @@ Pslib.getOrderedArrayItems = function ( obj )
 	return resultsArr;
 }
 
+// "Fonts" bag
 Pslib.getDocFonts = function( xmp )
+{
+	if(Pslib.isIllustrator)
+	{
+		if(!xmp) xmp = Pslib.getXmp(app.activeDocument);
+
+		var property = "Fonts";
+		var property_NS = "http://ns.adobe.com/xap/1.0/t/pg/"; // "xmpTpg:"
+		var qualifier_NS = "http://ns.adobe.com/xap/1.0/sType/Font#"; // "stFnt:"
+		var qualifiers = [ "fontName", "fontFamily", "fontFace", "fontType", "versionString", "composite", "fontFileName" ];
+
+		var arr = Pslib.getLeafNodesObj(xmp, property_NS, property, qualifier_NS, qualifiers);
+
+		return arr;
+	}
+}
+
+// get linked/placed items
+Pslib.getDocPlacedItems = function( xmp )
 {
 	if(!xmp) xmp = Pslib.getXmp(app.activeDocument);
 
-	var property = "Fonts";
-	var xmpTpg_NS = "http://ns.adobe.com/xap/1.0/t/pg/";
-	var stFnt_NS = "http://ns.adobe.com/xap/1.0/sType/Font#";
-	var qualifiers = [ "fontName", "fontFamily", "fontFace", "fontType", "versionString", "composite", "fontFileName" ];
+	// "Ingredients" bag: placed items
+	if(Pslib.isPhotoshop)
+	{
+		var property = "Ingredients"; 
+		var property_NS = "http://ns.adobe.com/xap/1.0/mm/"; // "xmpMM:"
+		var qualifier_NS = "http://ns.adobe.com/xap/1.0/sType/ResourceRef#"; // "stRef:"
+		var qualifiers = [ "linkForm", "filePath", "DocumentID" ];
 
-	// var registered_xmpTpgFontsPrefix = XMPMeta.registerNamespace(xmpTpg_NS, xmpTpg_Fonts_prefix);
-    // var registered_stFntPrefix = XMPMeta.registerNamespace(stFnt_NS, stFnt_Reference_prefix);
+		var arr = Pslib.getLeafNodesObj(xmp, property_NS, property, qualifier_NS, qualifiers);
 
-	var arr = Pslib.getLeafNodesObj(xmp, xmpTpg_NS, property, stFnt_NS, qualifiers);
+		return arr;
+	}
+	// incomplete for now!
+	// // <xmpMM:Manifest>
+	// // <rdf:Seq>
+	// // 		<rdf:li rdf:parseType="Resource">
+	// // 		<stMfs:linkForm>EmbedByReference</stMfs:linkForm>
+	// //		 	<stMfs:reference rdf:parseType="Resource">
+	// //		 	   <stRef:filePath>/full/path/to/image.png</stRef:filePath>
+	// //		 	   <stRef:documentID>0</stRef:documentID>
+	// //		 	   <stRef:instanceID>0</stRef:instanceID>
+	// //		 	</stMfs:reference>
+	// //  	</rdf:li>
+	// else if(Pslib.isIllustrator)
+	// {
+	// 	// xmpMM:Manifest
+	// 		// stMfs:linkForm>
+	// 			// stMfs:reference
 
-	return arr;
+	// 	var property = "Manifest"; 
+
+	// 	var property_NS = "http://ns.adobe.com/xap/1.0/mm/"; // "xmpMM:"
+	// 	var qualifier_NS = "http://ns.adobe.com/xap/1.0/sType/ManifestItem#"; // "stMfs:"
+
+	// 	var qualifiers = [ "filePath", "documentID", "instanceID" ]; // if documentID and instanceID are both 0, file is fully embedded (?)
+
+	//  this will need to be adapted for custom structs
+	// 	var arr = Pslib.getLeafNodesObj(xmp, property_NS, property, qualifier_NS, qualifiers);
+
+	// 	return arr;
+	// }
 }
+
+// "TextLayers" bag (Photoshop only)
+Pslib.getDocTextLayers = function( xmp )
+{
+	if(Pslib.isPhotoshop)
+	{
+		if(!xmp) xmp = Pslib.getXmp(app.activeDocument);
+
+		var property = "TextLayers"; 
+		var property_NS = "http://ns.adobe.com/photoshop/1.0/"; // "photoshop:"
+		var qualifier_NS = property_NS; // "photoshop:"
+		var qualifiers = [ "LayerName", "LayerText" ];
+	
+		var arr = Pslib.getLeafNodesObj(xmp, property_NS, property, qualifier_NS, qualifiers);
+	
+		return arr;
+	}
+}
+
+
 
 // convert list of bidimensional qualifiers-value arrays to individual objects from XMP
 // getting fonts listed in illustrator document XMP
@@ -2594,7 +2663,7 @@ Pslib.getSpecsForSelectedArtboards = function(onlyIDs)
 
 		if(initialSelection) doc.selection = initialSelection;
 
-		JSUI.quickLog(artboardsCoords);
+		// JSUI.quickLog(artboardsCoords);
 		return artboardsCoords;
 	}
 }
@@ -2697,6 +2766,17 @@ Pslib.getAllArtboards = function()
 		}
 	}
 	return artboards;
+}
+
+// wrappers for quick photoshop artboard IDs
+Pslib.getSelectedArtboardIDs = function()
+{
+	return Pslib.getSpecsForSelectedArtboards(true);
+}
+
+Pslib.getAllArtboardIDs = function()
+{
+	return Pslib.getSpecsForAllArtboards(true);
 }
 
 // get more complete data set for artboards collection 
@@ -5651,7 +5731,7 @@ Pslib.artboardsToFiles = function( obj )
 	}
 }
 
-// wrapper used to quickly output current artboard to 
+// wrapper used to quickly output current artboard to file
 // default: PSD
 Pslib.artboardToFile = function( obj )
 {
@@ -5700,7 +5780,7 @@ Pslib.artboardToFile = function( obj )
 			var placeholder;
 			// placeholder = Pslib.getArtboardItem(artboard, "#");
 
-			placeholder = Pslib.addArtboardRectangle( { hex: "FF1080", name: "OHHAI" } ); // specs ignored
+			placeholder = Pslib.addArtboardRectangle( { hex: "transparent", name: "#" } ); // specs ignored
 			placeholderCreated = true;
 	
 			// if(!placeholder)
@@ -6610,7 +6690,7 @@ Pslib.removeArtboardRectangles = function ( arr, nameStr )
 
 				try
 				{
-					JSUI.quickLog(arr[i]+" removing " + rectangle.name);
+					// JSUI.quickLog(arr[i]+" removing " + rectangle.name);
 					doc.activeLayer = rectangle;
 					rectangle.remove();
 				}
@@ -6620,13 +6700,13 @@ Pslib.removeArtboardRectangles = function ( arr, nameStr )
 					// just set its opacity to zero
 					// rectangle.opacity = 0;
 					rectangle.visible = false;
-					JSUI.quickLog(arr[i] + "\n\n"+e);
+					// JSUI.quickLog(arr[i] + "\n\n"+e);
 
 				}
 			}
 			else
 			{
-				JSUI.quickLog(arr[i]+" No rectangle found.");
+				// JSUI.quickLog(arr[i]+" No rectangle found.");
 			}
 
 		}
@@ -7521,32 +7601,32 @@ Pslib.writeActionFileFromString = function( actionSetContentStr, actionSetName, 
 
 			return;
 
-			Pslib.playAction( actionSetName, actionName);
-			f.remove();
-			app.unloadAction(actionSetName);
+			// Pslib.playAction( actionSetName, actionName);
+			// f.remove();
+			// app.unloadAction(actionSetName);
 		}
 		return true
 	}
 }
 
 
-// some edge cases require you to install an action from file and remove it
-Pslib.runTempActionFromFile = function(  )
-{
-	if(Pslib.isPhotoshop)
-	{
-		// .atn
+// // some edge cases require you to install an action from file and remove it
+// Pslib.runTempActionFromFile = function(  )
+// {
+// 	if(Pslib.isPhotoshop)
+// 	{
+// 		// .atn
 
-	}
-	else if(Pslib.isIllustrator)
-	{
-		// .aia
-	}
-}
+// 	}
+// 	else if(Pslib.isIllustrator)
+// 	{
+// 		// .aia
+// 	}
+// }
 
 
 // // set up document for ui dev
-// // executeMenuCommand is not very robust, it's best to use an action instead.
+// // executeMenuCommand can hang illustrator! it's best to use an action instead.
 // Pslib.setupDocumentForRGBartboards = function( setupDocument )
 // {
 // 	if(!app.documents.length) return;
@@ -7702,6 +7782,43 @@ Object.prototype.convertToArray = function( allowNullOrUndef )
 	return arr;
 }
 
+// swap property names when found in bidimensional/tridimensional array
+// affects first item for each set, a third item is allowed, may be useful for presentation purposes
+//
+// var originalArr = [ [ "source", "~/file.psd"], [ "range", "1-8"], [ "destination", "./images"] ];
+// var converterArr = [ [ "source", "gitUrl" ], [ "destination", "relativeExportLocation" ] ]; 
+// var newArr =  originalArr.convertTags(converterArr); // yields [ [ "gitUrl", "~/file.psd"], [ "range", "1-8"], [ "relativeExportLocation", "./images"] ];
+//
+// then convert back with reversed flag, and content should match precisely
+// var reconvertedArr = newArr.convertTags(converterArr, true); // yields [ [ "source", "~/file.psd"], [ "range", "1-8"], [ "destination", "./images"] ]
+Array.prototype.convertTags = function( converter, reversed )
+{
+	if(!this) return [];
+	var newArr = [];
+
+	for(var i = 0; i < this.length; i++)
+	{
+		var item = this[i];
+		var matched = false;
+
+		for(var j = 0; j < converter.length; j++)
+		{
+			var convItem = converter[j];
+			if(item[0] == (reversed ? convItem[1] : convItem[0]))
+			{
+				var newItem = reversed ? [ convItem[0], item[1] ] : [ convItem[1], item[1] ];
+				if(item.length == 3) newItem.push( item[2] );
+				newArr.push( newItem );
+
+				matched = true;
+				break;
+			}
+		}
+		if(!matched) newArr.push( item );
+	}
+
+	return newArr;
+}
 
 
 
