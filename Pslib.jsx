@@ -127,7 +127,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version, used in tool window titles. Maybe.
-Pslib.version = 0.68;
+Pslib.version = 0.681;
 Pslib.isPs64bits = BridgeTalk.appVersion.match(/\d\d$/) == '64';
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
@@ -699,6 +699,9 @@ Pslib.setXmpProperties = function (target, propertiesArray, namespace)
 
 		if(Pslib.isIllustrator || Pslib.isPhotoshop )
 		{
+			// alert("target instanceof Object:" + (target instanceof Object));
+
+
 			xmp = Pslib.getXmp(target);
 		}
 		else if(Pslib.isInDesign)
@@ -762,6 +765,7 @@ Pslib.setXmpProperties = function (target, propertiesArray, namespace)
 				var msg = "Could not place metadata property on provided target.\n[" + prop + ": " + val +  +"]  " + typeof val + "\n" + e;
 			   if($.level) $.writeln( msg );
 			//    else alert(msg);
+			// alert(msg);
 			   return false;
 			}
 		}
@@ -917,6 +921,176 @@ Pslib.getPropertiesArray = function (target, namespace, nsprefix)
 		return null;
 	}
 };
+
+// "lighter" version of Pslib.getPropertiesArray()
+// 	can deal with existing xmp object instead of getting it from a target
+// 		- assumes simple strings, numbers or booleans (return array of formatted objects)
+// 		- TODO: support strings with limited special characters, AKA instance of stFnt:versionString, with ";" as delimiter
+// 		<stFnt:versionString>Version 2.106;PS 2.000;hotconv 1.0.70;makeotf.lib2.5.58329</stFnt:versionString>
+Pslib.getAllNsPropertiesArray = function (xmp, namespace, asObj, sortByPropertyName)
+{
+	if(!xmp) xmp = Pslib.getXmp(app.activeDocument, false);
+	if(!xmp) return;
+	if(!namespace) namespace = Pslib.SECONDARYXMPNAMESPACE;
+	var nsprefix = XMPMeta.getNamespacePrefix(namespace);
+	if(!nsprefix) return;
+
+	// get existing array from dedicated namespace
+	var existingProperties = [];
+
+	var xmpIter = xmp.iterator(XMPConst.ITERATOR_JUST_CHILDREN, namespace, "");
+	var next = xmpIter.next();
+
+	while (next)
+	{
+		var propName = next.path.replace( nsprefix, "" ); 
+		var propValue = decodeURI(next);
+
+		// if properties were added by a visual editor, 
+		// it's likely we have %20 and %2520 weirdness in the mix
+		var hasEncodedSpace = propValue.match("%20");
+		var hasEncodedDblQuote = propValue.match("%22");
+		var hasEncodedPercent = propValue.match("%25");
+
+		// var hasDoubleEncodedSpace = propValue.match("%2520");
+		// var hasDoubleEncodedDblQuote = propValue.match("%2522");
+		// var hasDoubleEncodedPercent = propValue.match("%2520");
+
+		// alert(hasEncodedSpace || hasEncodedDblQuote || hasEncodedPercent) // || hasDoubleEncodedSpace || hasDoubleEncodedDblQuote || hasDoubleEncodedPercent)
+
+		if(hasEncodedSpace || hasEncodedDblQuote || hasEncodedPercent) // || hasDoubleEncodedSpace || hasDoubleEncodedDblQuote || hasDoubleEncodedPercent)
+		{
+			var doubleDecoded = decodeURI(propValue);
+			// JSUI.quickLog(propName+": "+doubleDecoded);
+			// if(hasDoubleEncodedSpace || hasDoubleEncodedDblQuote || hasDoubleEncodedPercent)
+			// {
+			// 	doubleDecoded = decodeURI(propValue);
+			// 	alert(doubleDecoded);
+			// }
+
+			propValue = doubleDecoded;
+		}
+
+		var obj = {};
+		if(asObj)
+		{
+			// try
+			// {
+				JSUI.quickLog(propName, "\n");
+
+				// sanitize property names for JSON format
+				var linePropertiesArr = propValue.split(",");
+				var semiColumn = false;
+				// alert(linePropertiesArr.length)
+				// JSUI.quickLog(linePropertiesArr);
+
+				// at this point if linePropertiesArr is empty, try with ";" delimiter
+				if(!linePropertiesArr.length)
+				{
+					linePropertiesArr = propValue.split(";");
+					semiColumn = linePropertiesArr.length > 0;
+				}
+
+
+				if(semiColumn && asObj)
+				{
+					obj[propName] = linePropertiesArr;
+				}
+
+				for(var i = 0; i < linePropertiesArr.length; i++)
+				{
+
+					if(semiColumn && asObj)
+					{
+						continue;
+					}
+
+					var propItem = linePropertiesArr[i];
+					JSUI.quickLog(i+": " + propItem);
+					var itemArr = semiColumn ? propItem.split(" ") : propItem.split(":");
+
+					if(itemArr.length == 1 && !asObj)
+					{
+						obj[propName] = propValue;
+						continue;
+					}
+
+					var hasItemArrInd0 = (itemArr.length > 0) ? (itemArr[0] != undefined) : false;
+					var itemProp = hasItemArrInd0 ? itemArr[0].trim() : propName;
+					
+					var hasItemArrInd1 = (itemArr.length > 1) ? (itemArr[1] != undefined) : false;
+					var itemValue = propValue;
+					try
+					{
+						var itemValue = semiColumn ? (hasItemArrInd1 ? itemArr[1].trim() : itemProp) : itemArr[1].trim();
+					}
+					catch(e)
+					{
+						var itemValue = propValue;
+					}
+	
+					if(itemProp != undefined && itemValue != undefined)
+					{
+						// silently add quotes for JSON formatting
+						// supports strings, numbers and booleans (no arrays at this level)
+						itemProp = "\""+itemProp+"\"";
+						var valAsNum = Number(itemValue);
+
+						// safeguard for actual value of zero stored as string!
+						if(itemValue === "0")
+						{
+							itemValue = 0;
+						}
+						else
+						{
+							var valIsNum = itemValue != 0 ? !isNaN(valAsNum) : false;
+							var valLower = (typeof itemValue == "string") ? itemValue.toLowerCase() : "";
+							var valIsBool = valLower == "true" || valLower == "false";
+							itemValue = valIsNum ? valAsNum : (valIsBool ? valLower == "true" : itemValue);
+						}
+	
+						// force fix specific forms of double quotes left in there
+						itemProp = itemProp.replace(/\"\"/g, "\"");
+						itemProp = itemProp.replace(/\\\""/g, "\"");
+						itemProp = itemProp.replace(/\"/g, "");
+						if(!valIsNum && !valIsBool)
+						{
+							itemValue = itemValue.replace(/\"\"\"/g, "\"");
+							itemValue = itemValue.replace(/\"\"/g, "\"");
+							itemValue = itemValue.replace(/\\\""/g, "\"");
+
+							if(asObj)
+							{
+								itemValue = itemValue.replace(/\"\\\""/g, "");
+								itemValue = itemValue.replace(/\\\"\""/g, "");
+							}
+						}
+	
+						if(asObj) obj[itemProp] = itemValue;
+					}
+					else
+					{
+						if(asObj) obj[itemProp] = itemValue;
+					}
+				}
+
+			// }
+			// catch(e)
+			// {
+			// 	JSUI.quickLog("\n\nERROR WITH " +nsprefix+propName + "\n"+ e);
+			// }
+		}
+		
+		// JSUI.quickLog("\nObj " +obj.length+"\n");
+		existingProperties.push( asObj ? obj : [propName, propValue]);
+
+		next = xmpIter.next();
+	}
+
+	// option for sorting?
+    if(sortByPropertyName) existingProperties = existingProperties.sort( sortByPropertyName );
+	return existingProperties;
+}
 
 
 // returns dictionary object with XMP property values if found (each is null if not found, unless allowEmptyString = true)
@@ -1306,36 +1480,49 @@ Pslib.propertiesFromCSV = function(target, namespace, uri)
 	return success;
 };
 
-// this returns the full active document path without building a histogram in CS2 (also bypasses the 'document not saved' exception)
+
 Pslib.getDocumentPath = function(doc)
 {
+	if(!app.documents.length) return;
+	if(!doc) doc = app.activeDocument;
+	if(app.activeDocument != doc) app.activeDocument = doc;
+
+	var docFullPath;
+	var matchesSystem = false;
+
 	if(Pslib.isPhotoshop)
 	{
-		var doc = doc != undefined ? doc : app.activeDocument;
-		if(app.activeDocument != doc) app.activeDocument = doc;
-	
-		var ref = new ActionReference();
-		ref.putProperty(cTID('Prpr'), cTID('FilR'));
-		ref.putEnumerated(cTID('Dcmn'), cTID('Ordn'), cTID('Trgt'));
-		var desc = executeActionGet(ref);
-		return desc.hasKey(cTID('FilR')) ? desc.getPath(cTID('FilR')) : undefined;
+		try
+		{
+			// this returns the full active document path without building a histogram 
+			// (also bypasses 'document not saved' exception)
+
+			var r = new ActionReference();
+			r.putProperty(cTID('Prpr'), cTID('FilR'));
+			r.putEnumerated(cTID('Dcmn'), cTID('Ordn'), cTID('Trgt'));
+			var d = executeActionGet(r);
+
+			docFullPath = d.hasKey(cTID('FilR')) ? d.getPath(cTID('FilR')) : undefined;
+		}
+		catch(e)
+		{
+
+		}
 	}
 	else if(Pslib.isIllustrator)
 	{
-		var doc = doc != undefined ? doc : app.activeDocument;
-		if(app.activeDocument != doc) app.activeDocument = doc;
+		// var doc = doc != undefined ? doc : app.activeDocument;
+		// if(app.activeDocument != doc) app.activeDocument = doc;
 
-		var docFullPath = doc.fullName;
-		var matchesSystem = docFullPath.toString().match( app.path) != null;
+		docFullPath = doc.fullName;
+		matchesSystem = docFullPath.toString().match( app.path) != null;
 
 		return matchesSystem ? undefined : docFullPath;
 	}
 	else if(Pslib.isInDesign)
 	{
-		var docFullPath;
-		var matchesSystem = true;
-		
-		try{
+		try
+		{
 			docFullPath = doc.fullName;
 			matchesSystem = docFullPath.toString().match( app.path ) != null;
 		}
@@ -1343,7 +1530,8 @@ Pslib.getDocumentPath = function(doc)
 
 		return matchesSystem ? undefined : docFullPath;
 	}
-};
+	return docFullPath;
+}
 
 //////
 
@@ -1562,7 +1750,7 @@ Pslib.pushDataCollectionToOrderedArray = function( obj )
         // JSUI.quickLog(obj.existingArrayItems[i]);
     }
 
-    // reorder array based on 
+    // reorder array based on value of property "assetArtboardID"
     seqArrayItems = seqArrayItems.sort( Pslib.compareArtboardID );
 
     if(seqArrayItems.length)
@@ -1661,7 +1849,7 @@ Pslib.getOrderedArrayItems = function ( obj )
 	return resultsArr;
 }
 
-// "Fonts" bag
+// get <xmpTPg:Fonts> bag as array of objects
 Pslib.getDocFonts = function( xmp )
 {
 	if(Pslib.isIllustrator)
@@ -1679,7 +1867,26 @@ Pslib.getDocFonts = function( xmp )
 	}
 }
 
-// get linked/placed items
+// get <xmpTPg:SwatchGroups> seq of nested structs as array of objects
+Pslib.getDocSwatches = function( xmp )
+{
+	if(Pslib.isIllustrator)
+	{
+		if(!xmp) xmp = Pslib.getXmp(app.activeDocument);
+
+		var property = "SwatchGroups";
+		var property_NS = "http://ns.adobe.com/xap/1.0/t/pg/"; // "xmpTpg:"
+		var qualifier_NS = "http://ns.adobe.com/xap/1.0/g/"; // "xmpG:"
+		
+		//  should account for "cyan", "magenta", "yellow", "black"
+		var qualifiers = [ "groupName", "groupType", ["Colorants", ["swatchName", "mode", "type", "tint", "red", "green", "blue" ]] ]; 
+		var arr = Pslib.getLeafNodesObj(xmp, property_NS, property, qualifier_NS, qualifiers);
+
+		return arr;
+	}
+}
+
+// get <xmpMM:Manifest> linked/placed items as array of objects
 Pslib.getDocPlacedItems = function( xmp )
 {
 	if(!xmp) xmp = Pslib.getXmp(app.activeDocument);
@@ -1707,27 +1914,27 @@ Pslib.getDocPlacedItems = function( xmp )
 	// //		 	   <stRef:instanceID>0</stRef:instanceID>
 	// //		 	</stMfs:reference>
 	// //  	</rdf:li>
-	// else if(Pslib.isIllustrator)
-	// {
-	// 	// xmpMM:Manifest
-	// 		// stMfs:linkForm>
-	// 			// stMfs:reference
+	else if(Pslib.isIllustrator)
+	{
+		// xmpMM:Manifest
+			// stMfs:linkForm>
+				// stMfs:reference
 
-	// 	var property = "Manifest"; 
+		var property = "Manifest"; 
 
-	// 	var property_NS = "http://ns.adobe.com/xap/1.0/mm/"; // "xmpMM:"
-	// 	var qualifier_NS = "http://ns.adobe.com/xap/1.0/sType/ManifestItem#"; // "stMfs:"
+		var property_NS = "http://ns.adobe.com/xap/1.0/mm/"; // "xmpMM:"
+		var qualifier_NS = "http://ns.adobe.com/xap/1.0/sType/ManifestItem#"; // "stMfs:"
 
-	// 	var qualifiers = [ "filePath", "documentID", "instanceID" ]; // if documentID and instanceID are both 0, file is fully embedded (?)
+		var qualifiers = [ "filePath", "documentID", "instanceID" ]; // if documentID and instanceID are both 0, file is fully embedded (?)
 
-	//  this will need to be adapted for custom structs
-	// 	var arr = Pslib.getLeafNodesObj(xmp, property_NS, property, qualifier_NS, qualifiers);
+		//  this will need to be adapted for custom structs
+		var arr = Pslib.getLeafNodesObj(xmp, property_NS, property, qualifier_NS, qualifiers);
 
-	// 	return arr;
-	// }
+		return arr;
+	}
 }
 
-// "TextLayers" bag (Photoshop only)
+// get <photoshop:TextLayers> bag as array of objects
 Pslib.getDocTextLayers = function( xmp )
 {
 	if(Pslib.isPhotoshop)
@@ -1745,7 +1952,197 @@ Pslib.getDocTextLayers = function( xmp )
 	}
 }
 
+// // convert list of bidimensional qualifiers-value arrays to individual objects from XMP
+// // getting fonts listed in illustrator document XMP
+// // var xmp = Pslib.getXmp(app.activeDocument);
+// // var property = "Fonts";
+// // var xmpTpg_NS = "http://ns.adobe.com/xap/1.0/t/pg/";
+// // var stFnt_NS = "http://ns.adobe.com/xap/1.0/sType/Font#";
+// // var qualifiers = [ "fontName", "fontFamily", "fontFace", "fontType", "versionString", "composite", "fontFileName" ]; // if you don't HAVE the structure definition, forget it!
 
+// // var fontsObj = Pslib.getLeafNodesObj(xmp, xmpTpg_NS, property, stFnt_NS, qualifiers);
+
+// Pslib.getLeafNodesObj = function(xmp, ns, property, leafNs, qualifiersArr)
+// {
+// 	if(!xmp) return;
+// 	if(!ns) return;
+// 	if(!property) return;
+// 	if(!leafNs) return;
+// 	if(!qualifiersArr) return;
+
+// 	var arr = Pslib.getLeafNodesArr(xmp, ns, property, leafNs, qualifiersArr);
+// 	var objArr = [];
+// 	// JSUI.quickLog(arr);
+
+// 	for(var i = 0; i < arr.length; i++ )
+// 	{
+// 		// var obj = {};
+// 		var item = arr[i];
+		
+// 		if(item instanceof Array)
+// 		{
+// 			var obj = {};    
+
+// 			// // prepare extra array for structs list
+// 			// var structsArr = [];
+
+// 			// JSUI.quickLog(i);
+
+// 			for(var a = 0; a < item.length; a++ )
+// 			{           
+// 				// var obj = {};     
+// 				var it = item[a];
+// 				if(item instanceof Array)
+// 				{
+// 					var itHasLength = it.length > 0;
+// 					var firstItIsStr = itHasLength ? typeof it[0] == "string" : false;
+// 					var secondItIsStr = itHasLength ? typeof it[1] == "string" : false;
+// 					var secondItIsArr = itHasLength ? it[1] instanceof Array : false;
+
+// 					// JSUI.quickLog("firstItIsStr: " + firstItIsStr + " secondItIsStr: " + secondItIsStr, i+" "+a);
+
+// 					if(firstItIsStr && secondItIsArr)
+// 					{
+// 						// prepare extra array for structs list
+// 						var structsArr = [];
+// 						// var struct = {};
+// 						for(var b = 0; b < it[1].length; b++ )
+// 						{
+// 							var nested = it[1][b];
+// 							JSUI.quickLog(nested);
+
+// 							// convert to nested struct
+// 							// var objFromArr = nested.convertToObject( true, false );
+
+// 							// // obj[it[0]] = objFromArr; 
+// 							// structsArr.push(objFromArr);
+// 							// JSUI.quickLog(objFromArr, i+" "+a + " pushing object");
+// 						}
+// 						// var objFromArr = nested.convertToObject( true, false );
+
+// 						// obj[it[0]] = objFromArr; 
+// 						structsArr.push(objFromArr);
+
+// 						if(structsArr.length) obj[it[0]] = structsArr;
+
+// 						// // convert to nested struct
+// 						// var objFromArr = it[1].convertToObject( true, false );
+
+// 						// // obj[it[0]] = objFromArr; 
+// 						// structsArr.push(objFromArr);
+// 						// JSUI.quickLog(objFromArr, i+" "+a + " pushing object");
+// 					}
+// 					else //if(firstItIsStr && secondItIsStr)
+// 					{
+// 						// convert to simple object
+// 						obj = item.convertToObject( true, false );
+// 					}
+
+// 					// objArr.push(obj);
+// 					// JSUI.quickLog(obj);
+// 				}
+// 				// if(structsArr.length) obj[it[0]] = structsArr;
+// 				// objArr.push(obj);
+// 				// JSUI.quickLog(obj);
+// 			}
+// 			// if(structsArr.length) obj[it[0]] = structsArr;
+
+
+// 			objArr.push(obj);
+// 			// JSUI.quickLog(obj);
+// 		} 
+// 		// objArr.push(obj);
+// 		// JSUI.quickLog(obj);
+// 	}
+// 	// JSUI.quickLog(objArr);
+// 	return objArr;
+// }
+
+// Pslib.getLeafNodesArr = function(xmp, ns, property, leafNs, qualifiersArr)
+// {
+// 	if(!xmp) return;
+// 	if(!ns) return;
+// 	if(!property) return;
+// 	if(!leafNs) return;
+// 	if(!qualifiersArr) return;
+
+// 	var biDimArr = [];
+// 	var propertyExists = xmp.doesPropertyExist(ns, property);
+
+// 	if(propertyExists)
+// 	{
+// 		var leafNsPrefix = XMPMeta.getNamespacePrefix(leafNs);
+// 		if(!leafNsPrefix)
+// 		{
+// 			return;
+// 		}
+
+// 		var itemsCount = xmp.countArrayItems(ns, property);
+// 		for(var i = 1; i <= itemsCount; i++)
+// 		{
+// 			var itemArr = [];
+
+// 			for(var q = 0; q < qualifiersArr.length; q++)
+// 			{
+// 				var qualifier = qualifiersArr[q];
+// 				var qualifierPath;
+// 				var leafNodeStr;
+
+// 				if(qualifier instanceof Array)
+// 				{
+// 					if(typeof qualifier[0] == "string" && qualifier[1] instanceof Array)
+// 					{
+// 						var arrQualifierPath = (property+"["+i+"]/"+leafNsPrefix+qualifier[0]);
+// 						var qualifiersItemsCount = xmp.countArrayItems(ns, arrQualifierPath);
+// 						var structContainer = [ qualifier[0] ];
+// 						for(var s = 1; s <= qualifiersItemsCount; s++)
+// 						{
+// 							if($.level) $.writeln("");
+// 							var qualifiersItemsArr = qualifier[1];
+// 							var subItemArr = [];
+
+// 							for(var sq = 0; sq < qualifiersItemsArr.length; sq++)
+// 							{
+// 								var subQualifier = qualifiersItemsArr[sq];
+// 								var subArrQualifierPath = arrQualifierPath+"["+s+"]/"+leafNsPrefix+subQualifier;
+// 								var subPropertyExists = xmp.doesPropertyExist(ns, subArrQualifierPath);
+// 								if(subPropertyExists)
+// 								{
+// 									var subLeafNodeStr = xmp.getProperty(ns, subArrQualifierPath).toString();
+
+// 									if(subLeafNodeStr != undefined)
+// 									{
+// 										subItemArr.push([ subQualifier, subLeafNodeStr ]);
+// 									}
+// 								}
+// 							}
+// 							if(subItemArr.length) structContainer.push( subItemArr );
+// 						}
+// 						if(structContainer.length) itemArr.push(structContainer);
+// 					}
+// 				}
+// 				else
+// 				{
+// 					// default for getting items
+// 					qualifierPath = (property+"["+i+"]/"+leafNsPrefix+qualifier);
+// 					var subPropertyExists = xmp.doesPropertyExist(ns, qualifierPath);
+// 					if(subPropertyExists)
+// 					{
+// 						leafNodeStr = xmp.getProperty(ns, qualifierPath).toString();
+
+// 						if(leafNodeStr != undefined)
+// 						{
+// 							itemArr.push([qualifier, leafNodeStr]);
+// 						}
+// 					}
+// 				}
+// 			}
+// 			if(itemArr.length) biDimArr.push(itemArr);
+// 		}    
+// 	}
+// 	return biDimArr;
+// }
+    
 
 // convert list of bidimensional qualifiers-value arrays to individual objects from XMP
 // getting fonts listed in illustrator document XMP
@@ -1757,136 +2154,169 @@ Pslib.getDocTextLayers = function( xmp )
 
 	// var fontsObj = Pslib.getLeafNodesObj(xmp, xmpTpg_NS, property, stFnt_NS, qualifiers);
 
-Pslib.getLeafNodesObj = function(xmp, ns, property, leafNs, qualifiersArr)
-{
-	if(!xmp) return;
-	if(!ns) return;
-	if(!property) return;
-	if(!leafNs) return;
-	if(!qualifiersArr) return;
-
-    var arr = Pslib.getLeafNodesArr(xmp, ns, property, leafNs, qualifiersArr);
-    var objArr = [];
-
-    for(var i = 0; i < arr.length; i++ )
+    Pslib.getLeafNodesObj = function(xmp, ns, property, leafNs, qualifiersArr)
     {
-		var obj = {};
-        var item = arr[i];
+        if(!xmp) return;
+        if(!ns) return;
+        if(!property) return;
+        if(!leafNs) return;
+        if(!qualifiersArr) return;
+    
+        var arr = Pslib.getLeafNodesArr(xmp, ns, property, leafNs, qualifiersArr);
+		JSUI.quickLog(arr, "getLeafNodesArr");
+		return;
 
-        if(item instanceof Array)
+        var objArr = [];
+    
+        for(var i = 0; i < arr.length; i++ )
         {
-			// a string first AND an array next usually means Struct
-			if(typeof item[0] == "string" && item[1] instanceof Array)
-			{
-
-				var objFromArr = item[1].convertToObject( true, false );
-				obj[item[0]] = objFromArr;
-			}
-			else
-			{
-				// convert to set of key-value pairs
-				obj = item.convertToObject( true, false );
-				// obj[item[0]] = objFromArr;
-			}
-
-        } 
-		objArr.push(obj);
-    }
-
-    return objArr;
-}
-
-Pslib.getLeafNodesArr = function(xmp, ns, property, leafNs, qualifiersArr) //, subQualifiersArr)
-{
-	if(!xmp) return;
-	if(!ns) return;
-	if(!property) return;
-	if(!leafNs) return;
-	if(!qualifiersArr) return;
-
-    var biDimArr = [];
-    var propertyExists = xmp.doesPropertyExist(ns, property);
-
-    if(propertyExists)
-    {
-        var leafNsPrefix = XMPMeta.getNamespacePrefix(leafNs);
-        if(!leafNsPrefix)
-        {
-            return;
-        }
-
-		// var itemArr = [];
-        var itemsCount = xmp.countArrayItems(ns, property);
-        for(var i = 1; i <= itemsCount; i++)
-        {
-			var itemArr = [];
-
-            for(var q = 0; q < qualifiersArr.length; q++)
+            var obj = {};
+            var item = arr[i];
+			var structArr = [];
+            if(item instanceof Array)
             {
-                var qualifier = qualifiersArr[q];
-				var qualifierPath;
-				var leafNodeStr;
+                for(var a = 0; a < item.length; a++ )
+                {                
+                    var it = item[a];
+                    var itHasLength = it.length > 0;
 
-				if(qualifier instanceof Array)
-				{
-					// var itemArr = [];
-					if(typeof qualifier[0] == "string" && qualifier[1] instanceof Array)
-					{
-						var arrQualifierPath = (property+"["+i+"]/"+leafNsPrefix+qualifier[0]);
-						var qualifiersItemsCount = xmp.countArrayItems(ns, arrQualifierPath);
+					if(!itHasLength) continue;
+					
+					var prop = it[0];
+					var val = it[1];
+					// JSUI.quickLog(prop+": "+val);
 
-						for(var s = 1; s <= qualifiersItemsCount; s++)
+                    var firstItIsStr = itHasLength ? typeof prop == "string" : false;
+                    var secondItIsStr = itHasLength ? typeof val == "string" : false;
+                    var secondItIsArr = itHasLength ? val instanceof Array : false;
+
+                    if(firstItIsStr && secondItIsArr)
+                    {
+						var qualObjArr = []; 
+						for(var b = 1; b < it.length; b++ )
 						{
-							if($.level) $.writeln("");
-							var qualifiersItemsArr = qualifier[1];
-            				var subItemArr = [];
-
-							for(var sq = 0; sq < qualifiersItemsArr.length; sq++)
+							var qualArr = it[b];
+							var qualObj = {};
+							// JSUI.quickLog("\t"+b+": ");
+							for(var c = 0; c < qualArr.length; c++ )
 							{
-								var subQualifier = qualifiersItemsArr[sq];
-								var subArrQualifierPath = arrQualifierPath+"["+s+"]/"+leafNsPrefix+subQualifier;
-
-								var subPropertyExists = xmp.doesPropertyExist(ns, subArrQualifierPath);
-								if(subPropertyExists)
-								{
-									var subLeafNodeStr = xmp.getProperty(ns, subArrQualifierPath).toString();
-									if(subLeafNodeStr != undefined)
-									{
-										subItemArr.push([subQualifier, subLeafNodeStr]);
-									}
-								}
-								else 
-								{
-									// if($.level) $.writeln("Property not found:\tsubArrQualifierPath: " + subArrQualifierPath);
-								}
+								var qual = qualArr[c];
+								// JSUI.quickLog("\t\t"+c+": "+qual);
+								qualObj[it[0]] = qual;
 							}
-							itemArr.push(subItemArr);
+							qualObjArr.push(qualObj);
 						}
-					}
-				}
-				else
-				{
-					// default for getting items Bag 
-					qualifierPath = (property+"["+i+"]/"+leafNsPrefix+qualifier);
+						// continue;
 
-					var subPropertyExists = xmp.doesPropertyExist(ns, qualifierPath);
-					if(subPropertyExists)
-					{
-						leafNodeStr = xmp.getProperty(ns, qualifierPath).toString();
+                        // convert to nested struct
+                        var objFromArr = qualObjArr.convertToObject( true, false );
+                        obj[it[0]] = objFromArr;      
+                        // obj[it[0]] = qualObjArr;     
+						structArr.push(objFromArr);
+                    }
+                    else if(firstItIsStr && secondItIsStr)
+                    {
+						// JSUI.quickLog(prop);
+						// JSUI.quickLog(val);
+                        // convert to simple object
+                        obj = item.convertToObject( true, false );
+                    }
 
-						if(leafNodeStr != undefined)
-						{
-							itemArr.push([qualifier, leafNodeStr]);
-						}
-					}
-				}
-				// biDimArr.push(itemArr);
-            }
-			biDimArr.push(itemArr);
-        }    
+                }
+				if(structArr.length) obj[item[i][0]] = structArr;  
+            } 
+
+            objArr.push(obj);
+        }
+    
+        return objArr;
     }
-	return biDimArr;
-}
+    
+    Pslib.getLeafNodesArr = function(xmp, ns, property, leafNs, qualifiersArr)
+    {
+        if(!xmp) return;
+        if(!ns) return;
+        if(!property) return;
+        if(!leafNs) return;
+        if(!qualifiersArr) return;
+    
+        var biDimArr = [];
+        var propertyExists = xmp.doesPropertyExist(ns, property);
+    
+        if(propertyExists)
+        {
+            var leafNsPrefix = XMPMeta.getNamespacePrefix(leafNs);
+            if(!leafNsPrefix)
+            {
+                return;
+            }
+
+            var itemsCount = xmp.countArrayItems(ns, property);
+            for(var i = 1; i <= itemsCount; i++)
+            {
+                var itemArr = [];
+    
+                for(var q = 0; q < qualifiersArr.length; q++)
+                {
+                    var qualifier = qualifiersArr[q];
+                    var qualifierPath;
+                    var leafNodeStr;
+    
+                    if(qualifier instanceof Array)
+                    {
+                        if(typeof qualifier[0] == "string" && qualifier[1] instanceof Array)
+                        {
+                            var arrQualifierPath = (property+"["+i+"]/"+leafNsPrefix+qualifier[0]);
+                            var qualifiersItemsCount = xmp.countArrayItems(ns, arrQualifierPath);
+                            var structContainer = [ qualifier[0] ];
+                            for(var s = 1; s <= qualifiersItemsCount; s++)
+                            {
+                                if($.level) $.writeln("");
+                                var qualifiersItemsArr = qualifier[1];
+                                var subItemArr = [];
+    
+                                for(var sq = 0; sq < qualifiersItemsArr.length; sq++)
+                                {
+                                    var subQualifier = qualifiersItemsArr[sq];
+                                    var subArrQualifierPath = arrQualifierPath+"["+s+"]/"+leafNsPrefix+subQualifier;
+                                    var subPropertyExists = xmp.doesPropertyExist(ns, subArrQualifierPath);
+                                    if(subPropertyExists)
+                                    {
+                                        var subLeafNodeStr = xmp.getProperty(ns, subArrQualifierPath).toString();
+
+                                        if(subLeafNodeStr != undefined)
+                                        {
+                                            subItemArr.push([ subQualifier, subLeafNodeStr ]);
+                                        }
+                                    }
+                                }
+                                if(subItemArr.length) structContainer.push( subItemArr );
+                            }
+                            if(structContainer.length) itemArr.push(structContainer);
+                        }
+                    }
+                    else
+                    {
+                        // default for getting items
+                        qualifierPath = (property+"["+i+"]/"+leafNsPrefix+qualifier);
+                        var subPropertyExists = xmp.doesPropertyExist(ns, qualifierPath);
+                        if(subPropertyExists)
+                        {
+                            leafNodeStr = xmp.getProperty(ns, qualifierPath).toString();
+    
+                            if(leafNodeStr != undefined)
+                            {
+                                itemArr.push([qualifier, leafNodeStr]);
+                            }
+                        }
+                    }
+                }
+                if(itemArr.length) biDimArr.push(itemArr);
+            }    
+        }
+        return biDimArr;
+    }
+    
 
 // target one specific artboard in ordered array
 // Pslib.getSingleArtboardDataArrayItem( 2, obj )
@@ -2059,11 +2489,22 @@ Pslib.autoTypeDataValue = function( propValue, allowEmptyStringBool, allowNullBo
 // important precision: XMP from a live document may be different if modified but not saved
 Pslib.getXMPfromFile = function( filepath, type )
 {
+	var xmp;
+
 	if(!type) type = XMPConst.UNKNOWN;
-    try {
-        if(filepath){ filepath = new File(filepath); }
+
+    try 
+	{
+        if(filepath)
+		{ 
+			filepath = new File(filepath); 
+		}
         var f = filepath ? filepath : File.openDialog("Choose file to get XMP data from");
-        if(!f) { if($.level) $.writeln("Invalid file"); return; }
+        if(!f)
+		{ 
+			// if($.level) $.writeln("Invalid file"); 
+			return; 
+		}
 
         if($.level) $.writeln("Getting XMP data from " + f.fsName);
 
@@ -2071,83 +2512,91 @@ Pslib.getXMPfromFile = function( filepath, type )
 
 		// get file type
 		var fileTypeCONST = type != undefined ? type : Pslib.getXMPConstFileType(f.fsName);
-		// if($.level) $.writeln("fileTypeCONST: "+fileTypeCONST);
 
-        // var xmpFile = new XMPFile(f.fsName, fileTypeCONST, XMPConst.OPEN_FOR_READ);
         var xmpFile = new XMPFile(f.fsName, fileTypeCONST, XMPConst.OPEN_ONLY_XMP);
         xmp = xmpFile.getXMP();
-        // if($.level) $.writeln( xmp.serialize());
 		xmpFile.closeFile(XMPConst.CLOSE_UPDATE_SAFELY);
-        return xmp;
-    } catch (e) { if($.level) $.writeln( "Error: \n\n" + e); return false; }
-	return true;
+    }
+	catch (e)
+	{ 
+		// if($.level) $.writeln( "Error: \n\n" + e); return false; 	
+	}
+	return xmp;
 }
 
+// standalone property write to offline file
+Pslib.addXmpPropertiesToFile = function(file, xmp, namespace, arr)
+{
+	if(!file) return false;
+	if(!xmp) xmp = Pslib.getXMPfromFile(file);
+	if(!namespace) namespace = Pslib.XMPNAMESPACE;
+
+	var updated = 0;
+	for(var i = 0; i < arr.length; i++)
+	{
+		var name = arr[i][0];
+		var value = arr[i][1];
+		xmp.setProperty(namespace, name, encodeURI(value), 0, XMPConst.STRING);
+		updated++;
+	}
+	if(updated)
+	{
+		return Pslib.writeXMPtoMediaFile(file, xmp);
+	}
+}
 
 // write xmp to media file / update media file xmp
 // Confirmed: .putXMP() does not replace the existing object (updates + adds content)
 Pslib.writeXMPtoMediaFile = function( filepath, xmp, type )
 {
-    try {
+    try
+	{
 		if(!xmp) return false;
 		if(filepath){ filepath = new File(filepath); }
         var f = filepath ? filepath : File.openDialog("Choose file to put XMP string to");
         if(!f) { if($.level) $.writeln("Invalid file"); return; }
 
-        if($.level) $.writeln("Embedding XMP data to " + f.fsName);
-
+        // if($.level) $.writeln("Embedding XMP data to " + f.fsName);
 		if (!ExternalObject.AdobeXMPScript) ExternalObject.AdobeXMPScript = new ExternalObject('lib:AdobeXMPScript')
-
-		// get file type
 		var fileTypeCONST = type != undefined ? type : Pslib.getXMPConstFileType(f.fsName);
-		// if($.level) $.writeln("fileTypeCONST: "+fileTypeCONST);
 
 		var xmpFile = new XMPFile(f.fsName, fileTypeCONST, XMPConst.OPEN_FOR_UPDATE);
 		xmpFile.putXMP(xmp);
 		xmpFile.closeFile(XMPConst.CLOSE_UPDATE_SAFELY);
-	} catch (e) { if($.level) $.writeln( "Error: \n\n" + e); return false; }
+	} catch (e)
+	{ 
+		// if($.level) $.writeln( "Error: \n\n" + e); 
+		return false; 
+	}
 	return true;
 }
-
-Pslib.writeToFile = function(file, str, encoding)
-{
-	if(!file) return false;
-	file = (file instanceof String) ? File(file) : file;
-	if(!encoding) encoding = "utf8";
-
-	if(!file.parent.exists) { file.parent.create(); }
-	if(file.exists) { file.remove(); }
-
-	file.open("w");
-	file.encoding = encoding;
-	file.write(str); 
-	file.close();
-
-	return file.exists;
-}
-
-Pslib.readFromFile = function(file, encoding)
-{
-	if(!file) return false;
-	if(!encoding) encoding = "utf8";
-	file.open("r");
-	file.encoding = encoding;
-	var str = file.read();
-	file.close();
-	
-	return str;
-}
-
 
 // write xmp to media sidecar file (.xmp)
 Pslib.writeXMPtoSidecarFile = function( filepath, xmp )
 {
+	if(!filepath) 
+	{
+		var doc = app.activeDocument;
+		var docNameNoExt = doc.name.getFileNameWithoutExtension();
+		var documentPath = Pslib.getDocumentPath(doc);
+		if(documentPath)
+		{
+			var location = documentPath.parent;
+			filepath = new File( location +"/"+ docNameNoExt + ".xmp" );
+		}
+		else return false;
+	}
+	if(!xmp)
+	{
+		if(!app.documents.length) return false;
+		var doc = app.activeDocument;
+		xmp = Pslib.getXmp( app.activeDocument );
+	}
+
 	return Pslib.writeToFile(filepath, xmp.serialize());
 }
 
-
 // XMPFileObj.closeFile(closeFlags)
-
 Pslib.getXMPConstFileType = function(file)
 {
 	var type = XMPConst.UNKNOWN; 
@@ -2174,6 +2623,37 @@ Pslib.getXMPConstFileType = function(file)
 	}
 	return type;
 }
+
+Pslib.writeToFile = function(file, str, encoding)
+{
+	if(!file) return false;
+	file = (file instanceof String) ? File(file) : file;
+	if(!encoding) encoding = "utf8";
+
+	if(!file.parent.exists) { file.parent.create(); }
+	if(file.exists) { file.remove(); }
+
+	file.open("w");
+	file.encoding = encoding;
+	file.write(str); 
+	file.close();
+
+	return file.exists;
+}
+
+Pslib.readFromFile = function(file, encoding)
+{
+	if(!file) return false;
+	if(!encoding) encoding = "utf8";
+
+	file.open("r");
+	file.encoding = encoding;
+	var str = file.read();
+	file.close();
+	
+	return str;
+}
+
 
 //
 //
@@ -2497,15 +2977,74 @@ Pslib.getActiveLayerID = function ()
 // this cannot be fixed through scripting, but a CTRL+click while collapsing one of the groups fixes all of them
 Pslib.selectLayerByID = function ( idInt, addToSelectionBool )
 {
+	var doc = app.activeDocument;
 	if(Pslib.isPhotoshop)
 	{
+		var currentLayer = doc.activeLayer;
 		var desc1 = new ActionDescriptor();
 		var ref1 = new ActionReference();
 		ref1.putIdentifier(cTID('Lyr '), idInt);
 		desc1.putReference(cTID('null'), ref1);
 		if (addToSelectionBool) desc1.putEnumerated(sTID("selectionModifier"), sTID("selectionModifierType"), sTID("addToSelection"));
 		executeAction(cTID('slct'), desc1, DialogModes.NO);
-		return app.activeDocument.activeLayer;
+		var selectedLayer = doc.activeLayer;
+
+		return ( selectedLayer != currentLayer ? selectedLayer : currentLayer);
+	}
+	// we assume this is for artboards!
+	else if(Pslib.isIllustrator)
+	{
+
+	}
+}
+
+// useful for restoring layer selection Pslib.getSpecsForSelectedArtboards()
+// option to execute arbitrary function while looping, and at the end
+Pslib.selectArtboardsCollection = function ( arr, individualFunc, globalFunc )
+{
+	if(!app.documents.length) return;
+	if(!arr) return;
+
+	if(Pslib.isPhotoshop)
+	{
+		for(var i = 0; i < arr.length; i++)
+		{
+			try
+			{
+				Pslib.selectLayerByID( arr[i].id, true );	
+				
+			}
+			catch(e)
+			{
+
+			}
+
+			if(individualFunc != undefined)
+			{
+				try
+				{
+					individualFunc();
+				}
+				catch(e)
+				{
+	
+				}
+			}
+		}
+
+		if(globalFunc != undefined)
+		{
+			try
+			{
+				globalFunc();
+			}
+			catch(e)
+			{
+
+			}
+		}
+
+		return true;
 	}
 }
 
@@ -2591,7 +3130,7 @@ Pslib.getSpecsForSelectedArtboards = function(onlyIDs)
 			(r = new ActionReference()).putProperty(sTID("property"), p = sTID('artboardEnabled'));
 			r.putIndex(sTID("layer"), i);
 			
-			// workaround for documents without artboards defined at all
+			// workaround for documents without any artboards defined
 			try
 			{
 				var artboardEnabled = executeActionGet(r).getBoolean(p);
@@ -2627,7 +3166,9 @@ Pslib.getSpecsForSelectedArtboards = function(onlyIDs)
 						bottom: artboardRect.getDouble(sTID('bottom'))
 					};
 				
-				artboards.push({ name: artboardName, index: i, id: artboardID, x: bounds.top, y: bounds.left, width: bounds.right - bounds.left, height: bounds.bottom - bounds.top });
+				
+
+				artboards.push({ name: artboardName, index: i, id: artboardID, x: bounds.left, y: bounds.top, width: bounds.right - bounds.left, height: bounds.bottom - bounds.top });
 			}
 		}
 		return artboards;
@@ -2638,23 +3179,44 @@ Pslib.getSpecsForSelectedArtboards = function(onlyIDs)
 		var initialSelection = doc.selection;
 
 		var artboards = Pslib.getArtboardsFromSelectedItems();
+// alert("artboards: " + artboards.length);
+
 		var artboardsCoords = [];
 		var placeholder;
+		
 		for(var i = 0; i < artboards.length; i++)
 		{
 			var artboard = artboards[i];
 			// var coords = Pslib.getArtboardCoordinates(artboard);
 			var artboardIndex = Pslib.getArtboardIndex(artboard, true);
 			// coordsObj.index = artboardIndex;
-			// doc.artboards.setActiveArtboardIndex(artboardIndex-1);
+			doc.artboards.setActiveArtboardIndex(artboardIndex);
+			doc.selectObjectsOnActiveArtboard();
+// alert(doc.selection.length);
 
 			placeholder = Pslib.getArtboardItem(artboard, "#");
 			var specsObj = { name: artboard.name.toFileSystemSafeName(), id: (artboardIndex+1) };
 			if(placeholder)
 			{
-				var tags = Pslib.getTags(placeholder, [ ["assetID", null], ["customMips", null] ]);
+
+				// swap property names when found in bidimensional/tridimensional array
+				// affects first item for each set, a third item is allowed, may be useful for presentation purposes
+				//
+				// var originalArr = [ [ "source", "~/file.psd"], [ "range", "1-8"], [ "destination", "./images"] ];
+				// var converterArr = [ [ "source", "gitUrl" ], [ "destination", "relativeExportLocation" ] ]; 
+				// var newArr =  originalArr.convertTags(converterArr); // yields [ [ "gitUrl", "~/file.psd"], [ "range", "1-8"], [ "relativeExportLocation", "./images"] ];
+				//
+				// then convert back with reversed flag, and content should match precisely
+				// var reconvertedArr = newArr.convertTags(converterArr, true); // yields [ [ "source", "~/file.psd"], [ "range", "1-8"], [ "destination", "./images"] ]
+
+				// var tags = Pslib.getTags(placeholder, [ ["assetID", null], ["customMips", null] ]);
+				var tags = Pslib.getTags( placeholder, Pslib.assetKeyValuePairs );
 				if(tags.length)
 				{
+					// // if conversion needed...?
+					// var convertedTags = tags.convertTags(Pslib.assetKeyConversionArr);
+					// var reversedTag = convertedTags.convertTags(Pslib.assetKeyConversionArr, true);
+
 					specsObj = Pslib.arrayToObj( tags, specsObj );
 				}
 			}
@@ -2725,12 +3287,13 @@ Pslib.getSpecsForAllArtboards = function(onlyIDs)
 						right: artboardRect.getDouble(sTID('right')),
 						bottom: artboardRect.getDouble(sTID('bottom'))
 					};
-				artboards.push({ name: artboardName, index: i, id: artboardID, x: bounds.top, y: bounds.left, width: bounds.right - bounds.left, height: bounds.bottom - bounds.top });
+				artboards.push({ name: artboardName, index: i, id: artboardID, x: bounds.left, y: bounds.top, width: bounds.right - bounds.left, height: bounds.bottom - bounds.top });
 			 }
 		}
 	
 		return artboards;
 	}
+	// TODO: this is nowhere as complete as Pslib.getSpecsForSelectedArtboards()
 	else if(Pslib.isIllustrator)
 	{
 		return Pslib.getArtboardCollectionCoordinates();
@@ -2759,7 +3322,7 @@ Pslib.getAllArtboards = function()
 	}
 	else if(Pslib.isIllustrator)
 	{
-		// Document.artboards is not a typical Array 
+		// Document.artboards is not a typical Array, use this to work around
 		for(var i = 0; i < doc.artboards.length; i++)
 		{
 			artboards = doc.artboards[i];
@@ -2788,21 +3351,27 @@ Pslib.getAllArtboardIDs = function()
       
 Pslib.getAdvancedSpecs = function( specsArr, obj )
 {
+	if(!app.documents.length) return;
+	var doc = app.activeDocument;
+
 	// if(Pslib.isPhotoshop)
 	// {
-		if(!specsArr) specsArr = Pslib.isPhotoshop ? Pslib.getSpecsForSelectedArtboards() : Pslib.getArtboardCollectionCoordinates(); // this still needs to be finetuned for illustrator
+		// if(!specsArr) specsArr = Pslib.isPhotoshop ? Pslib.getSpecsForSelectedArtboards() : Pslib.getArtboardCollectionCoordinates(); // this still needs to be finetuned for illustrator
+		if(!specsArr) specsArr = Pslib.getSpecsForSelectedArtboards();
 		if(!obj) obj = {};
 		if(!obj.dictionary) obj.dictionary = Pslib.arrayToObj(Pslib.assetKeyValuePairs);
 		if(!obj.namespace) obj.namespace = Pslib.XMPNAMESPACE;
 		if(!obj.converter) obj.converter = Pslib.assetKeyConversionArr; 
 
+		var initialSelection;
+		if(Pslib.isIllustrator) initialSelection = doc.selection;
 		var updatedSpecsArr = [];
 
 		for(var i = 0; i < specsArr.length; i++)
 		{
 			var specsObj = specsArr[i];
 			// var layerObj = Pslib.isPhotoshop ? Pslib.selectLayerByID( specsObj.id, false ) : ;
-			var layerObj = Pslib.selectLayerByID( specsObj.id, false ); // fix for illustrator
+			var layerObj = Pslib.selectLayerByID( specsObj.id, false ); // illustrator purposefully returns undefined
 
 			if(obj.dictionary)
 			{
@@ -2910,15 +3479,28 @@ Pslib.getAdvancedSpecs = function( specsArr, obj )
 			updatedSpecsArr.push(specsObj);
 		}
 
+		// this does not restore the initial illustrator selection 
 		if(Pslib.isPhotoshop)
 		{
-			// restore selection in layers palette 
-			for(var i = 0; i < specsArr.length; i++)
+			// if(Pslib.isPhotoshop)
+			// {
+			// 	// restore selection in layers palette 
+			// 	for(var i = 0; i < specsArr.length; i++)
+			// 	{
+			// 		if(specsArr[i])
+			// 		{
+			// 			if(specsArr[i].id) Pslib.selectLayerByID( specsArr[i].id, true );
+			// 		}
+			// 	}
+			// }
+
+			Pslib.selectArtboardsCollection(specsArr);
+		}
+		else if(Pslib.isIllustrator)
+		{
+			if(initialSelection)
 			{
-				if(specsArr[i])
-				{
-					if(specsArr[i].id) Pslib.selectLayerByID( specsArr[i].id, true );
-				}
+				doc.selection = initialSelection;
 			}
 		}
 
@@ -3070,7 +3652,7 @@ Pslib.getArtboardReferenceByID = function( id )
     }
 }
 
-// get simple coordinates from layer object (assuming raster)
+// get simple coordinates from layer object (assuming raster, no mask)
 Pslib.getLayerObjectCoordinates = function(layer)
 {
 	var coords = {};
@@ -3100,7 +3682,6 @@ Pslib.getLayerObjectCoordinates = function(layer)
 	return coords;
 }
 
-
 // quickly accessible basic info for all of a document's artboards
 Pslib.getArtboardCollectionCoordinates = function()
 {
@@ -3116,21 +3697,27 @@ Pslib.getArtboardCollectionCoordinates = function()
 	{
 		var artboards = doc.artboards;
 		app.coordinateSystem = CoordinateSystem.ARTBOARDCOORDINATESYSTEM;
-	
+		
+		// adjustment for illustrator
+		var docSpecs = Pslib.getDocumentSpecs();
+		// # substract topLeft[0] from X and add topLeft[1] to Y
+		var xOffset = -docSpecs.topLeft[0];
+		var yOffset = docSpecs.topLeft[1];
+
 		for(var i = 0; i < artboards.length; i++)
 		{
 			var coords = Pslib.getArtboardCoordinates( artboards[i] );
-			var obj = { name: coords.name, id: i, width: coords.width, height: coords.height, x: coords.x, y: coords.y };
+			var page = i+1;
+			var obj = { name: coords.name, id: i, page: page, width: coords.width, height: coords.height, x: coords.x+xOffset, y: coords.y+yOffset };
 			artboardObjArr.push(obj);
 		}
-	
 	}
 
 	return artboardObjArr;
 }
 
 // basic get full artboard collection coordinates
-Pslib.artboardCollectionCoordsToJsonFile = function( file, obj )
+Pslib.artboardCollectionCoordsToJsonFile = function( file, obj, advanced )
 {
 	if(!app.documents.length) return;
 	if(!obj) obj = {}
@@ -3138,7 +3725,7 @@ Pslib.artboardCollectionCoordsToJsonFile = function( file, obj )
 	var docNameNoExt = doc.name.getFileNameWithoutExtension();
     var assetsUri = docNameNoExt.getAssetsFolderLocation( undefined, undefined, true); // create directory if not present
 
-	var artboardCoords = Pslib.getArtboardCollectionCoordinates();
+	var artboardCoords = advanced ? Pslib.getArtboardCollectionCoordinates() : Pslib.getArtboardCollectionCoordinates();
 	obj.assets = artboardCoords;
 
 	var jsonFile = file ? file : new File(assetsUri + "/" + docNameNoExt + ".json");
@@ -3197,7 +3784,6 @@ Pslib.getDocumentSpecs = function( advanced )
 		var b = doc.visibleBounds;
 		// specs.topLeft = [ b[0], b[1] ];
 		// specs.bottomRight = [ b[2], b[3] ];
-
 
 		specs.width = Math.abs(Math.ceil(b[2]) - Math.floor(b[0]));
 		specs.height = Math.abs(Math.floor(b[3]) - Math.ceil(b[1]));
@@ -3281,9 +3867,13 @@ Pslib.getArtboardCoordinates = function( artboard )
 {
 	if(Pslib.isIllustrator)
 	{
+		var index;
+		var page;
 		if(!artboard)
 		{ 
 			var artboard = Pslib.getActiveArtboard();
+			index = app.activeDocument.artboards.getActiveArtboardIndex();
+			page = index+1;
 		}
 
 		if(app.coordinateSystem != CoordinateSystem.ARTBOARDCOORDINATESYSTEM) app.coordinateSystem = CoordinateSystem.ARTBOARDCOORDINATESYSTEM;
@@ -3292,6 +3882,8 @@ Pslib.getArtboardCoordinates = function( artboard )
 		var coords = {};
 
 		coords.name = artboard.name.trim();
+		if(index != undefined) coords.id = index;
+		if(page != undefined) coords.page = page;
 		coords.x = rect[0];
 		coords.y = (-rect[1]);
 		coords.width = rect[2] - rect[0];
@@ -3365,28 +3957,6 @@ Pslib.getArtboardCoordinates = function( artboard )
             coords.isLandscape = coords.width > coords.height;
             coords.hasIntegerCoords = coords.x == Math.round(coords.x) && coords.y == Math.round(coords.y) && coords.width == Math.round(coords.width) && coords.height == Math.round(coords.height);
 
-			// // advanced stuff, photoshop only
-			// var dt = r.getObjectValue(sTID("artboard"));
-			// coords.presetName = dt.getString(sTID('artboardPresetName'));
-			// coords.backgroundType = dt.getString(sTID('artboardBackgroundType'));
-
-			// var color = new SolidColor();
-			// if(coords.backgroundType != 3)
-			// {
-			// 	color = dt.getObjectValue(sTID('color'));
-	
-			// 	var red = color.getUnitDoubleValue(sTID("red"));
-			// 	var green = color.getUnitDoubleValue(sTID("grain")); // don't look!
-			// 	var blue = color.getUnitDoubleValue(sTID("blue"));
-	
-			// 	color = new SolidColor();
-			// 	color.rgb.red = red;
-			// 	color.rgb.green = green;
-			// 	color.rgb.blue = blue;
-
-			// 	coords.backgroundColor = color.rgb.hexValue;
-			// }
-
             return coords;
 		}
 	}
@@ -3406,10 +3976,10 @@ Pslib.getArtboardSpecs = function( artboard )
 		var doc = app.activeDocument;
 
 		specs.isPow2 = specs.width.isPowerOf2() && specs.height.isPowerOf2();
-		specs.isMult4 = specs.width.isMult4() && specs.width.isMult4();
-		specs.isMult8 = specs.width.isMult8() && specs.width.isMult8();
-		specs.isMult16 = specs.width.isMult16() && specs.width.isMult16();
-		specs.isMult32 = specs.width.isMult32() && specs.width.isMult32();
+		specs.isMult4 = specs.width.isMult4() && specs.height.isMult4();
+		specs.isMult8 = specs.width.isMult8() && specs.height.isMult8();
+		specs.isMult16 = specs.width.isMult16() && specs.height.isMult16();
+		specs.isMult32 = specs.width.isMult32() && specs.height.isMult32();
 
 		// if active, select items and harvest more information
 		if(isActive)
@@ -3459,17 +4029,17 @@ Pslib.getArtboardSpecs = function( artboard )
 			var specs = coords;
 
 			specs.isPow2 = specs.width.isPowerOf2() && specs.height.isPowerOf2();
-			specs.isMult4 = specs.width.isMult4() && specs.width.isMult4();
-			specs.isMult8 = specs.width.isMult8() && specs.width.isMult8();
-			specs.isMult16 = specs.width.isMult16() && specs.width.isMult16();
-			specs.isMult32 = specs.width.isMult32() && specs.width.isMult32();
+			specs.isMult4 = specs.width.isMult4() && specs.height.isMult4();
+			specs.isMult8 = specs.width.isMult8() && specs.height.isMult8();
+			specs.isMult16 = specs.width.isMult16() && specs.height.isMult16();
+			specs.isMult32 = specs.width.isMult32() && specs.height.isMult32();
 
 			return specs;
 		}
 	}
 }
 
-
+// make artboard transparency
 Pslib.updateArtboardBackgroundTransparent = function()
 {
 	if(!app.documents.length) return false;
@@ -3477,8 +4047,6 @@ Pslib.updateArtboardBackgroundTransparent = function()
 
     if(Pslib.isPhotoshop)
     {
-        // if(!obj.id) obj.id = doc.activeLayer.id;
-
 		var coords = Pslib.getArtboardCoordinates(doc.activeLayer.id);
 		var obj = { id: doc.activeLayer.id, width: coords.width, height: coords.height, hex: "transparent"};
 		Pslib.resizeArtboard( obj );
@@ -3486,18 +4054,13 @@ Pslib.updateArtboardBackgroundTransparent = function()
 	else if(Pslib.isIllustrator)
 	{
 		// get / create artboard rectangle, set color
-		// var item = Pslib.getArtboardItem(artboard, "#");
 		var item = Pslib.getArtboardItem();
 		if(!item)
 		{
-			// var rectObj = { artboard: artboard, name: "#", tags: [ ["name", artboard.name], ["index", indexNum], ["page", pageNum], ["assetID", ""] ], hex: undefined, opacity: undefined, layer: doc.layers.getByName("Placeholders"), sendToBack: true };
 			item = Pslib.addArtboardRectangle();
 		}
 		else if(item)
 		{
-			// var colorObj = new NoColor()// typeof hexStr == "string" ? Pslib.hexToRGBobj(hexStr) : hexStr;
-			// item.fillColor = colorObj;
-
 			var transp = new NoColor();
 			item.strokeColor = transp;
 			item.fillColor = transp;
@@ -3507,21 +4070,25 @@ Pslib.updateArtboardBackgroundTransparent = function()
 	return true;
 }
 
-// color rectangle placeholder 
-Pslib.updateArtboardBackgroundColor = function( hexStr, create )
+// color photoshop artboard background / illustrator rectangle placeholder 
+// needs an option for updating photoshop fill layers
+Pslib.updateArtboardBackgroundColor = function( hexStr, create, tags )
 {
-	if(hexStr == undefined) return false;
+	if(hexStr == undefined) return false; // consider making the artboard transparent if no hexString provided?
     if(!app.documents.length) return false;
 	var doc = app.activeDocument;
 
     if(Pslib.isPhotoshop)
     {
-        // if(!obj.id) obj.id = doc.activeLayer.id;
-		// var artboard = Pslib.getActiveArtboard();
         var coords = Pslib.getArtboardCoordinates(doc.activeLayer.id);
-
 		var obj = { id: doc.activeLayer.id, width: coords.width, height: coords.height, hex: hexStr};
-		Pslib.resizeArtboard( obj );
+		Pslib.resizeArtboard( obj ); // not actually resizing, but cannot update artboard color without invoking a function that updates the whole thing
+
+		var item = Pslib.getArtboardItem();
+		if(!item && create)
+		{
+			item = Pslib.addArtboardRectangle( { hex: hexStr, tags: tags });
+		}
 	}
 	else if(Pslib.isIllustrator)
 	{
@@ -3531,7 +4098,7 @@ Pslib.updateArtboardBackgroundColor = function( hexStr, create )
 		if(!item && create)
 		{
 			// var rectObj = { artboard: artboard, name: "#", tags: [ ["name", artboard.name], ["index", indexNum], ["page", pageNum], ["assetID", ""] ], hex: undefined, opacity: undefined, layer: doc.layers.getByName("Placeholders"), sendToBack: true };
-			item = Pslib.addArtboardRectangle( { hex: hexStr });
+			item = Pslib.addArtboardRectangle( { hex: hexStr, tags: tags });
 		}
 		else if(item)
 		{
@@ -3540,6 +4107,68 @@ Pslib.updateArtboardBackgroundColor = function( hexStr, create )
 			item.opacity = 100;
 		}
 	}
+	return true;
+}
+
+Pslib.updateArtboardCollectionBackgroundColor = function( arr, hexStr, create, tags )
+{
+	if(hexStr == undefined) return false;
+    if(!app.documents.length) return false;
+
+	var allSelected = false;
+
+	if((typeof arr == "string") && (hexStr == undefined))
+	{
+		hexStr = arr;
+		arr = Pslib.getSpecsForAllArtboards();
+		allSelected = true;
+	}
+
+	if(hexStr == undefined) hexStr = "transparent";
+	if(!arr)
+	{
+		arr = Pslib.getSpecsForAllArtboards();
+		allSelected = true;
+	}
+
+	var doc = app.activeDocument;
+	var initialArtboard;
+	var initialSelection;
+
+	if(Pslib.isPhotoshop)
+	{
+		initialArtboard = doc.activeLayer;
+		for(var i = 0; i < arr.length; i++)
+		{
+			Pslib.selectLayerByID(arr[i].id);
+			Pslib.updateArtboardBackgroundColor( hexStr, create, tags );
+		}
+
+		// if all artboards were being modified, only make original layer active
+		if(allSelected)
+		{
+			if(initialArtboard) doc.activeLayer = initialArtboard;
+		}
+		// if only a subset of artboards were modified, attempt to reselect
+		else
+		{
+			Pslib.selectArtboardsCollection(arr);
+		}
+	}
+	else if(Pslib.isIllustrator)
+	{
+		initialArtboard = doc.artboards.getActiveArtboardIndex();
+		initialSelection = doc.selection;
+		for(var i = 0; i < arr.length; i++)
+		{
+			Pslib.updateArtboardBackgroundColor( hexStr, create, tags );
+		}
+
+		// restore initial active artboard and selection
+		doc.artboards.setActiveArtboardIndex(initialArtboard);
+		if(initialSelection) doc.selection = initialSelection;
+	}
+
 	return true;
 }
 
@@ -6110,84 +6739,89 @@ Pslib.getArtboardItem = function( artboard, nameStr )
 	return targetItem;
 }
 
-// photoshop only
+// 
 Pslib.getArtboardSpecsInfo = function( obj )
 {
-    // return empty array if no document present
-    if(!app.documents.length)
-    {
-        return [];
-    }
+    if(!app.documents.length) return [];
 
     if(!obj)
     {
         var obj = { };
 		// obj.artboards = [];
 		// if(Pslib.isIllustrator) obj.artboards = app.activeDocument.artboards;
-
     }
 
     var doc = app.activeDocument;
-    var originalActiveLayer = doc.activeLayer; // may not be an artboard!
-    // var originalActiveLayerID = getActiveLayerID();
+	if(!obj.artboards) obj.artboards = Pslib.getAllArtboards();
 
-    if(!obj.artboards) obj.artboards = getArtboards();
+	if(Pslib.isPhotoshop)
+	{
+		var originalActiveLayer = doc.activeLayer; // may not be an artboard!
+		// var originalActiveLayerID = getActiveLayerID();
+	
+		// if(!obj.artboards) obj.artboards = getArtboards();
 
-    var docSpecs = [];
-    var artboardSpecs = [];
+	
+		var docSpecs = [];
+		var artboardSpecs = [];
+	
+		var docSpecs = Pslib.getXmpDictionary( app.activeDocument, { source: null, hierarchy: null, specs: null, custom: null }, false, false, false, obj.namespace ? obj.namespace : Pslib.XMPNAMESPACE);
+		var docHasTags = !JSUI.isObjectEmpty(docSpecs);
+	
+		// provide solution for exporting only active artboard specs
+		for(var i = 0; i < obj.artboards.length; i++)
+		{
+			// var artboard = selectByID(obj.artboards[i][0]); // from Pslib
+			var artboard = makeActiveByIndex(obj.artboards[i][0], false); // from Pslib
+	
+			artboard = app.activeDocument.activeLayer;
+	
+			// skip if extension needed but not found
+			if(obj.extension)
+			{
+				if( !artboard.name.hasSpecificExtension( obj.extension ) )
+				{
+					continue;
+				}
+			}
+	
+			// if(artboard.name.hasSpecificExtension( obj.extension ? obj.extension : ".png"))
+			// {
+				// alert(app.activeDocument.activeLayer.name);
+				// var specs = obj.artboards ? obj.artboards : getArtboardSpecs(artboard, obj.parentFullName);
+				var specs = getArtboardSpecs(artboard, obj.parentFullName);
+				// alert(specs)
+				// inject document tags if needed
+				if(docHasTags)
+				{
+					// if no tags present, force document's
+					if(!specs.hasOwnProperty("tags"))
+					{             
+						specs.tags = docSpecs;
+					}
+					// if tags object present, loop through template structure and inject as needed
+					else
+					{
+						// source: null, hierarchy: null, specs: null, custom: null
+						// here we assume that if a value is present, it should take precedence
+						if(!specs.tags.hasOwnProperty("source"))
+						{
+						   specs.tags.source = docSpecs.source;
+						}
+					}
+				}
+				artboardSpecs.push(specs);
+			// }
+	
+		}
+	
+		// restore initial activeLayer
+		if(doc.activeLayer != originalActiveLayer) doc.activeLayer != originalActiveLayer;
+	}
+    else if(Pslib.isIllustrator)
+	{
 
-    var docSpecs = Pslib.getXmpDictionary( app.activeDocument, { source: null, hierarchy: null, specs: null, custom: null }, false, false, false, obj.namespace ? obj.namespace : Pslib.XMPNAMESPACE);
-    var docHasTags = !JSUI.isObjectEmpty(docSpecs);
-
-    // provide solution for exporting only active artboard specs
-    for(var i = 0; i < obj.artboards.length; i++)
-    {
-        // var artboard = selectByID(obj.artboards[i][0]); // from Pslib
-        var artboard = makeActiveByIndex(obj.artboards[i][0], false); // from Pslib
-
-        artboard = app.activeDocument.activeLayer;
-
-        // skip if extension needed but not found
-        if(obj.extension)
-        {
-            if( !artboard.name.hasSpecificExtension( obj.extension ) )
-            {
-                continue;
-            }
-        }
-
-        // if(artboard.name.hasSpecificExtension( obj.extension ? obj.extension : ".png"))
-        // {
-            // alert(app.activeDocument.activeLayer.name);
-            // var specs = obj.artboards ? obj.artboards : getArtboardSpecs(artboard, obj.parentFullName);
-            var specs = getArtboardSpecs(artboard, obj.parentFullName);
-            // alert(specs)
-            // inject document tags if needed
-            if(docHasTags)
-            {
-                // if no tags present, force document's
-                if(!specs.hasOwnProperty("tags"))
-                {             
-                    specs.tags = docSpecs;
-                }
-                // if tags object present, loop through template structure and inject as needed
-                else
-                {
-                    // source: null, hierarchy: null, specs: null, custom: null
-                    // here we assume that if a value is present, it should take precedence
-                    if(!specs.tags.hasOwnProperty("source"))
-                    {
-                       specs.tags.source = docSpecs.source;
-                    }
-                }
-            }
-            artboardSpecs.push(specs);
-        // }
-
-    }
-
-    // restore initial activeLayer
-    if(doc.activeLayer != originalActiveLayer) doc.activeLayer != originalActiveLayer;
+	}
 
     return artboardSpecs;
 }
@@ -6218,6 +6852,8 @@ Pslib.addArtboardRectangle = function ( obj )
 		obj = { hex: obj };
 	}
 
+	if(obj.hex == undefined) obj.hex = "880088";
+
 	// then validate that hex string has six digits, override if needed
 	if(typeof obj.hex == "string")
 	{
@@ -6229,6 +6865,8 @@ Pslib.addArtboardRectangle = function ( obj )
 			}
 		}
 	}
+
+	if(!obj.name) obj.name = "#";
 
 	var rectangle;
 
@@ -6248,6 +6886,7 @@ Pslib.addArtboardRectangle = function ( obj )
 		else
 		{
 			rectangle = doc.pathItems.rectangle( coords.x, -coords.y, coords.x+coords.width, coords.y+coords.height );
+
 		}
 
 		if(!rectangle) return
@@ -6259,8 +6898,6 @@ Pslib.addArtboardRectangle = function ( obj )
 
 		if(typeof obj.hex == "string")
 		{
-			// JSUI.quickLog(obj.hex, "hex is string! ");
-
 			if(obj.hex == "transparent")
 			{
 				rectangle.fillColor = transp;
@@ -6268,9 +6905,7 @@ Pslib.addArtboardRectangle = function ( obj )
 			else
 			{
 				colorObj = Pslib.hexToRGBobj(obj.hex);
-				// JSUI.quickLog(colorObj, "illustrator color fill " + obj.hex + " " + typeof obj.hex );
 			}
-
 		}
 		else if(typeof obj.hex == "object")
 		{
@@ -6278,10 +6913,6 @@ Pslib.addArtboardRectangle = function ( obj )
 		}
 
 		rectangle.fillColor = colorObj;
-
-		// rectangle.opacity = obj.opacity != undefined ? obj.opacity : 66;
-
-		rectangle.name = obj.name ? obj.name : "#";
 	
 		if(obj.tags)
 		{
@@ -6347,13 +6978,9 @@ Pslib.addArtboardRectangle = function ( obj )
 		
 		var artboard = doc.activeLayer;
 
-		if(obj.hex == undefined) obj.hex = "880088";
-		// alert("obj.hex typeof " + (typeof obj.hex));
-		
 		var colorObj = typeof obj.hex == "string" ? Pslib.hexToRGBobj(obj.hex) : obj.hex;
 	
 		// get artboard size
-		// var coords = Pslib.getArtboardCoordinates(obj.artboard);
 		var coords = Pslib.getArtboardCoordinates(artboard.id);
 
 		// // fails
@@ -6365,6 +6992,7 @@ Pslib.addArtboardRectangle = function ( obj )
 		if(obj.mustBeUnique)
 		{
 			// find out if one of the children layers is a managed rectangle already
+			// faster than Pslib.isShape() because no layer selection needed
 			var artboardLayers = artboard.layers;
 			for(var i = 0; i < artboardLayers.length; i++)
 			{
@@ -6374,7 +7002,7 @@ Pslib.addArtboardRectangle = function ( obj )
 					// if shape layer
 					if(artboardLayer.kind == LayerKind.SOLIDFILL)
 					{
-						if(artboardLayer.name == "#")
+						if(artboardLayer.name == obj.name)
 						{
 							rectangle = artboardLayer;
 							break;
@@ -6383,132 +7011,22 @@ Pslib.addArtboardRectangle = function ( obj )
 				}
 			}
 		}
-
+		var created = false;
 		// if no pre existing reference rectangle, create new
 		if(!rectangle)
 		{
-			// scripting listener capture
-			var idmake = sTID( "make" );
-			var desc252 = new ActionDescriptor();
-			var idnull = sTID( "null" );
-				var ref6 = new ActionReference();
-				var idcontentLayer = sTID( "contentLayer" );
-				ref6.putClass( idcontentLayer );
-			desc252.putReference( idnull, ref6 );
-			var idusing = sTID( "using" );
-				var desc253 = new ActionDescriptor();
-				var idtype = sTID( "type" );
-				var desc254 = new ActionDescriptor();
-				var idcolor = sTID( "color" );
-					var desc255 = new ActionDescriptor();
-					var idred = sTID( "red" );
-					desc255.putDouble( idred, colorObj.rgb.red ); // red
-					var idgrain = sTID( "grain" ); 
-					desc255.putDouble( idgrain, colorObj.rgb.green ); // green
-					var idblue = sTID( "blue" );
-					desc255.putDouble( idblue, colorObj.rgb.blue ); // blue
-				var idRGBColor = sTID( "RGBColor" );
-				desc254.putObject( idcolor, idRGBColor, desc255 );
-			var idsolidColorLayer = sTID( "solidColorLayer" );
-			desc253.putObject( idtype, idsolidColorLayer, desc254 );
-			var idshape = sTID( "shape" );
-				var desc256 = new ActionDescriptor();
-				var idunitValueQuadVersion = sTID( "unitValueQuadVersion" );
-				desc256.putInteger( idunitValueQuadVersion, 1 );
-				var idtop = sTID( "top" );
-				var idpixelsUnit = sTID( "pixelsUnit" );
-				desc256.putUnitDouble( idtop, idpixelsUnit, coords.y );
-				var idleft = sTID( "left" );
-				var idpixelsUnit = sTID( "pixelsUnit" );
-				desc256.putUnitDouble( idleft, idpixelsUnit, coords.x );
-				var idbottom = sTID( "bottom" );
-				var idpixelsUnit = sTID( "pixelsUnit" );
-				desc256.putUnitDouble( idbottom, idpixelsUnit, coords.y + coords.height );
-				var idright = sTID( "right" );
-				var idpixelsUnit = sTID( "pixelsUnit" );
-				desc256.putUnitDouble( idright, idpixelsUnit, coords.x + coords.width );
-				var idtopRight = sTID( "topRight" );
-				var idpixelsUnit = sTID( "pixelsUnit" );
-				desc256.putUnitDouble( idtopRight, idpixelsUnit, 0.000000 );
-				var idtopLeft = sTID( "topLeft" );
-				var idpixelsUnit = sTID( "pixelsUnit" );
-				desc256.putUnitDouble( idtopLeft, idpixelsUnit, 0.000000 );
-				var idbottomLeft = sTID( "bottomLeft" );
-				var idpixelsUnit = sTID( "pixelsUnit" );
-				desc256.putUnitDouble( idbottomLeft, idpixelsUnit, 0.000000 );
-				var idbottomRight = sTID( "bottomRight" );
-				var idpixelsUnit = sTID( "pixelsUnit" );
-				desc256.putUnitDouble( idbottomRight, idpixelsUnit, 0.000000 );
-			var idrectangle = sTID( "rectangle" );
-			desc253.putObject( idshape, idrectangle, desc256 );
-			var idstrokeStyle = sTID( "strokeStyle" );
-				var desc257 = new ActionDescriptor();
-				var idstrokeStyleVersion = sTID( "strokeStyleVersion" );
-				desc257.putInteger( idstrokeStyleVersion, 2 );
-				var idstrokeEnabled = sTID( "strokeEnabled" );
-				desc257.putBoolean( idstrokeEnabled, false );
-				var idfillEnabled = sTID( "fillEnabled" );
-				desc257.putBoolean( idfillEnabled, true );
-				var idstrokeStyleLineWidth = sTID( "strokeStyleLineWidth" );
-				var idpixelsUnit = sTID( "pixelsUnit" );
-				desc257.putUnitDouble( idstrokeStyleLineWidth, idpixelsUnit, 0.000000 );
-				var idstrokeStyleLineDashOffset = sTID( "strokeStyleLineDashOffset" );
-				var idpointsUnit = sTID( "pointsUnit" );
-				desc257.putUnitDouble( idstrokeStyleLineDashOffset, idpointsUnit, 0.000000 );
-				var idstrokeStyleMiterLimit = sTID( "strokeStyleMiterLimit" );
-				desc257.putDouble( idstrokeStyleMiterLimit, 100.000000 );
-				var idstrokeStyleLineCapType = sTID( "strokeStyleLineCapType" );
-				var idstrokeStyleLineCapType = sTID( "strokeStyleLineCapType" );
-				var idstrokeStyleButtCap = sTID( "strokeStyleButtCap" );
-				desc257.putEnumerated( idstrokeStyleLineCapType, idstrokeStyleLineCapType, idstrokeStyleButtCap );
-				var idstrokeStyleLineJoinType = sTID( "strokeStyleLineJoinType" );
-				var idstrokeStyleLineJoinType = sTID( "strokeStyleLineJoinType" );
-				var idstrokeStyleMiterJoin = sTID( "strokeStyleMiterJoin" );
-				desc257.putEnumerated( idstrokeStyleLineJoinType, idstrokeStyleLineJoinType, idstrokeStyleMiterJoin );
-				var idstrokeStyleLineAlignment = sTID( "strokeStyleLineAlignment" );
-				var idstrokeStyleLineAlignment = sTID( "strokeStyleLineAlignment" );
-				var idstrokeStyleAlignCenter = sTID( "strokeStyleAlignCenter" );
-				desc257.putEnumerated( idstrokeStyleLineAlignment, idstrokeStyleLineAlignment, idstrokeStyleAlignCenter );
-				var idstrokeStyleScaleLock = sTID( "strokeStyleScaleLock" );
-				desc257.putBoolean( idstrokeStyleScaleLock, false );
-				var idstrokeStyleStrokeAdjust = sTID( "strokeStyleStrokeAdjust" );
-				desc257.putBoolean( idstrokeStyleStrokeAdjust, false );
-				var idstrokeStyleLineDashSet = sTID( "strokeStyleLineDashSet" );
-					var list4 = new ActionList();
-				desc257.putList( idstrokeStyleLineDashSet, list4 );
-				var idstrokeStyleBlendMode = sTID( "strokeStyleBlendMode" );
-				var idblendMode = sTID( "blendMode" );
-				var idnormal = sTID( "normal" );
-				desc257.putEnumerated( idstrokeStyleBlendMode, idblendMode, idnormal );
-				var idstrokeStyleOpacity = sTID( "strokeStyleOpacity" );
-				var idpercentUnit = sTID( "percentUnit" );
-				desc257.putUnitDouble( idstrokeStyleOpacity, idpercentUnit, 100.000000 );
-				var idstrokeStyleContent = sTID( "strokeStyleContent" );
-					var desc258 = new ActionDescriptor();
-					var idcolor = sTID( "color" );
-						var desc259 = new ActionDescriptor();
-						var idred = sTID( "red" );
-						desc259.putDouble( idred, 0.000000 );
-						var idgrain = sTID( "grain" );
-						desc259.putDouble( idgrain, 0.000000 );
-						var idblue = sTID( "blue" );
-						desc259.putDouble( idblue, 0.000000 );
-					var idRGBColor = sTID( "RGBColor" );
-					desc258.putObject( idcolor, idRGBColor, desc259 );
-				var idsolidColorLayer = sTID( "solidColorLayer" );
-				desc257.putObject( idstrokeStyleContent, idsolidColorLayer, desc258 );
-				var idstrokeStyleResolution = sTID( "strokeStyleResolution" );
-				desc257.putDouble( idstrokeStyleResolution, 144.000000 );
-			var idstrokeStyle = sTID( "strokeStyle" );
-			desc253.putObject( idstrokeStyle, idstrokeStyle, desc257 );
-			var idcontentLayer = sTID( "contentLayer" );
-			desc252.putObject( idusing, idcontentLayer, desc253 );
-			var idlayerID = sTID( "layerID" );
-			desc252.putInteger( idlayerID, 5 ); // ArtLayer type?
-			executeAction( idmake, desc252, DialogModes.NO );
+			rectangle = Pslib.addRectangle( obj );
+			created = true;
+		}
+		else
+		{
+			doc.activeLayer = rectangle;
+		}
 
-			rectangle = app.activeDocument.activeLayer;
-			rectangle.name = obj.name ? obj.name : "#";
+		// update color if previous rectangle found
+		if(obj.mustBeUnique && !created)
+		{
+			Pslib.setShapeColor( obj.hex );
 		}
 
 		if(obj.opacity != undefined) rectangle.opacity = obj.opacity;
@@ -6516,7 +7034,7 @@ Pslib.addArtboardRectangle = function ( obj )
 		if(obj.sendToBack)
 		{
 			// // moving a layer to the back of a layerset is tricky
-			// // not there yet
+			// // we're not there yet
 			// try
 			// {
 			// 	// rectangle.move(tmpSetRefLayer, ElementPlacement.PLACEAFTER);
@@ -6554,36 +7072,291 @@ Pslib.addArtboardRectangle = function ( obj )
 	return rectangle;
 }
 
+// plain add rectangle: default is document size
+Pslib.addDocumentRectangle = function ( obj )
+{    
+    if(!app.documents.length) return;
+    if(!obj) obj = {};
+
+    if(!obj.hex) obj.hex = "EF00FE";
+    if(!obj.opacity) obj.opacity = 50;
+    if(!obj.name) obj.name = "Document_#";
+
+    var doc = activeDocument;
+
+    // color object: use native format 
+    var colorObj;
+    if(obj.colorObj) colorObj = colorObj;
+    else colorObj = Pslib.hexToRGBobj(obj.hex);
+
+    var docSpecs = Pslib.getDocumentSpecs();
+    // obj.coords = { width: doc.width.as('px'), height: doc.height.as('px'), x: 0, y: 0 };
+    obj.coords = { width: docSpecs.width, height: docSpecs.height, x: 0, y: 0 };
+    
+    var rectangle;
+
+    if(Pslib.isPhotoshop)
+    {
+        rectangle = Pslib.addRectangle( obj );
+
+		rectangle = app.activeDocument.activeLayer;
+		rectangle.name = obj.name;
+
+		if(obj.opacity != undefined) rectangle.opacity = obj.opacity;
+    }
+    else if(Pslib.isIllustrator)
+    {
+		rectangle = doc.pathItems.rectangle( obj.coords.x, -obj.coords.y, obj.coords.x+obj.coords.width, obj.coords.y+obj.coords.height );
+
+		rectangle.name = obj.name;
+
+		rectangle.fillColor = colorObj;
+		if(obj.opacity != undefined) rectangle.opacity = obj.opacity;
+
+		// offset x: topLeft[0] and x: topLeft[1]
+		rectangle.left += docSpecs.topLeft[0];
+		rectangle.top += docSpecs.topLeft[1];
+
+		if(obj.opacity != undefined) rectangle.opacity = obj.opacity;
+
+		try
+		{
+			rectangle.zOrder(ZOrderMethod.SENDTOBACK);
+		}
+		catch(e)
+		{
+
+		}
+    }
+
+    return rectangle
+}
+
+
+// plain add rectangle shape layer/pathitem wrapper (defaults to artboard coordinates)
+Pslib.addRectangle = function ( obj )
+{
+    if(!app.documents.length) return;
+    if(!obj) obj = {};
+    if(!obj.hex) obj.hex = "FF00FF";
+    if(!obj.name) obj.name = "#";
+
+    var doc = activeDocument;
+    // var layer = doc.activeLayer;
+
+    var rectangle;
+    if(!obj.coords) obj.coords = coords = Pslib.getArtboardCoordinates();
+
+    var colorObj;
+    
+    if(obj.colorObj) colorObj = colorObj;
+    else colorObj = Pslib.hexToRGBobj(obj.hex);
+
+    if(Pslib.isPhotoshop)
+    {
+        // extended styling info
+        // idstrokeStyleResolution, 144.000000 ); // resolution rereference...?
+        if(obj.strokeResolution == undefined) obj.strokeResolution = 144.0; // or 72.0? instructions unclear
+        if(obj.strokeWidth == undefined) obj.strokeWidth = 0.0;
+        if(obj.strokeOpacity == undefined) obj.strokeOpacity = 100.0;
+        if(!obj.strokeHex) obj.strokeHex = "000000";         
+        var strokeColorObj = Pslib.hexToRGBobj(obj.strokeHex);
+
+        // scripting listener capture
+        var idmake = sTID( "make" );
+        var desc252 = new ActionDescriptor();
+        var idnull = sTID( "null" );
+            var ref6 = new ActionReference();
+            var idcontentLayer = sTID( "contentLayer" );
+            ref6.putClass( idcontentLayer );
+        desc252.putReference( idnull, ref6 );
+        var idusing = sTID( "using" );
+            var desc253 = new ActionDescriptor();
+            var idtype = sTID( "type" );
+            var desc254 = new ActionDescriptor();
+            var idcolor = sTID( "color" );
+                var desc255 = new ActionDescriptor();
+                var idred = sTID( "red" );
+                desc255.putDouble( idred, colorObj.rgb.red ); // red
+                var idgrain = sTID( "grain" ); // LET'S STORE OUR GRAIN FOR THE WINTER LOL
+                desc255.putDouble( idgrain, colorObj.rgb.green ); // green
+                var idblue = sTID( "blue" );
+                desc255.putDouble( idblue, colorObj.rgb.blue ); // blue
+            var idRGBColor = sTID( "RGBColor" );
+            desc254.putObject( idcolor, idRGBColor, desc255 );
+        var idsolidColorLayer = sTID( "solidColorLayer" );
+        desc253.putObject( idtype, idsolidColorLayer, desc254 );
+        var idshape = sTID( "shape" );
+            var desc256 = new ActionDescriptor();
+            var idunitValueQuadVersion = sTID( "unitValueQuadVersion" );
+            desc256.putInteger( idunitValueQuadVersion, 1 );
+            var idtop = sTID( "top" );
+            var idpixelsUnit = sTID( "pixelsUnit" );
+            desc256.putUnitDouble( idtop, idpixelsUnit, obj.coords.y );
+            var idleft = sTID( "left" );
+            var idpixelsUnit = sTID( "pixelsUnit" );
+            desc256.putUnitDouble( idleft, idpixelsUnit, obj.coords.x );
+            var idbottom = sTID( "bottom" );
+            var idpixelsUnit = sTID( "pixelsUnit" );
+            desc256.putUnitDouble( idbottom, idpixelsUnit, obj.coords.y + obj.coords.height );
+            var idright = sTID( "right" );
+            var idpixelsUnit = sTID( "pixelsUnit" );
+            desc256.putUnitDouble( idright, idpixelsUnit, obj.coords.x + obj.coords.width );
+            var idtopRight = sTID( "topRight" );
+            var idpixelsUnit = sTID( "pixelsUnit" );
+            desc256.putUnitDouble( idtopRight, idpixelsUnit, 0.000000 );
+            var idtopLeft = sTID( "topLeft" );
+            var idpixelsUnit = sTID( "pixelsUnit" );
+            desc256.putUnitDouble( idtopLeft, idpixelsUnit, 0.000000 );
+            var idbottomLeft = sTID( "bottomLeft" );
+            var idpixelsUnit = sTID( "pixelsUnit" );
+            desc256.putUnitDouble( idbottomLeft, idpixelsUnit, 0.000000 );
+            var idbottomRight = sTID( "bottomRight" );
+            var idpixelsUnit = sTID( "pixelsUnit" );
+            desc256.putUnitDouble( idbottomRight, idpixelsUnit, 0.000000 );
+        var idrectangle = sTID( "rectangle" );
+        desc253.putObject( idshape, idrectangle, desc256 );
+        var idstrokeStyle = sTID( "strokeStyle" );
+            var desc257 = new ActionDescriptor();
+            var idstrokeStyleVersion = sTID( "strokeStyleVersion" );
+            desc257.putInteger( idstrokeStyleVersion, 2 );
+            var idstrokeEnabled = sTID( "strokeEnabled" );
+            desc257.putBoolean( idstrokeEnabled, false );
+            var idfillEnabled = sTID( "fillEnabled" );
+            desc257.putBoolean( idfillEnabled, true );
+            var idstrokeStyleLineWidth = sTID( "strokeStyleLineWidth" );
+            var idpixelsUnit = sTID( "pixelsUnit" );
+            desc257.putUnitDouble( idstrokeStyleLineWidth, idpixelsUnit, obj.strokeWidth );  // stroke width
+            var idstrokeStyleLineDashOffset = sTID( "strokeStyleLineDashOffset" );
+            var idpointsUnit = sTID( "pointsUnit" );
+            desc257.putUnitDouble( idstrokeStyleLineDashOffset, idpointsUnit, 0.000000 );
+            var idstrokeStyleMiterLimit = sTID( "strokeStyleMiterLimit" );
+            desc257.putDouble( idstrokeStyleMiterLimit, 100.000000 );
+            var idstrokeStyleLineCapType = sTID( "strokeStyleLineCapType" );
+            var idstrokeStyleLineCapType = sTID( "strokeStyleLineCapType" );
+            var idstrokeStyleButtCap = sTID( "strokeStyleButtCap" );
+            desc257.putEnumerated( idstrokeStyleLineCapType, idstrokeStyleLineCapType, idstrokeStyleButtCap );
+            var idstrokeStyleLineJoinType = sTID( "strokeStyleLineJoinType" );
+            var idstrokeStyleLineJoinType = sTID( "strokeStyleLineJoinType" );
+            var idstrokeStyleMiterJoin = sTID( "strokeStyleMiterJoin" );
+            desc257.putEnumerated( idstrokeStyleLineJoinType, idstrokeStyleLineJoinType, idstrokeStyleMiterJoin );
+            var idstrokeStyleLineAlignment = sTID( "strokeStyleLineAlignment" );
+            var idstrokeStyleLineAlignment = sTID( "strokeStyleLineAlignment" );
+            var idstrokeStyleAlignCenter = sTID( "strokeStyleAlignCenter" );
+            desc257.putEnumerated( idstrokeStyleLineAlignment, idstrokeStyleLineAlignment, idstrokeStyleAlignCenter );
+            var idstrokeStyleScaleLock = sTID( "strokeStyleScaleLock" );
+            desc257.putBoolean( idstrokeStyleScaleLock, false );
+            var idstrokeStyleStrokeAdjust = sTID( "strokeStyleStrokeAdjust" );
+            desc257.putBoolean( idstrokeStyleStrokeAdjust, false );
+            var idstrokeStyleLineDashSet = sTID( "strokeStyleLineDashSet" );
+                var list4 = new ActionList();
+            desc257.putList( idstrokeStyleLineDashSet, list4 );
+            var idstrokeStyleBlendMode = sTID( "strokeStyleBlendMode" );
+            var idblendMode = sTID( "blendMode" );
+            var idnormal = sTID( "normal" );
+            desc257.putEnumerated( idstrokeStyleBlendMode, idblendMode, idnormal );
+            var idstrokeStyleOpacity = sTID( "strokeStyleOpacity" );
+            var idpercentUnit = sTID( "percentUnit" );
+            desc257.putUnitDouble( idstrokeStyleOpacity, idpercentUnit, obj.strokeOpacity); // stroke opacity
+            var idstrokeStyleContent = sTID( "strokeStyleContent" );
+                var desc258 = new ActionDescriptor();
+                var idcolor = sTID( "color" );
+                    var desc259 = new ActionDescriptor();
+                    var idred = sTID( "red" );
+                    desc259.putDouble( idred, strokeColorObj.rgb.red); // stroke RGB red
+                    var idgrain = sTID( "grain" );
+                    desc259.putDouble( idgrain, strokeColorObj.rgb.green ); // stroke RGB green
+                    var idblue = sTID( "blue" );
+                    desc259.putDouble( idblue, strokeColorObj.rgb.blue ); // stroke RGB blue
+                var idRGBColor = sTID( "RGBColor" );
+                desc258.putObject( idcolor, idRGBColor, desc259 );  // stroke RGBColorObj
+            var idsolidColorLayer = sTID( "solidColorLayer" );
+            desc257.putObject( idstrokeStyleContent, idsolidColorLayer, desc258 );
+            var idstrokeStyleResolution = sTID( "strokeStyleResolution" );
+            desc257.putDouble( idstrokeStyleResolution, obj.strokeResolution ); // stroke resolution (?)
+        var idstrokeStyle = sTID( "strokeStyle" );
+        desc253.putObject( idstrokeStyle, idstrokeStyle, desc257 );
+        var idcontentLayer = sTID( "contentLayer" );
+        desc252.putObject( idusing, idcontentLayer, desc253 );
+        var idlayerID = sTID( "layerID" );
+        desc252.putInteger( idlayerID, 5 ); // ArtLayer type?
+        executeAction( idmake, desc252, DialogModes.NO );
+
+        rectangle = app.activeDocument.activeLayer;
+        rectangle.name = obj.name ? obj.name : "#";
+
+        if(obj.opacity != undefined) rectangle.opacity = obj.opacity;
+    }
+    else if(Pslib.isIllustrator)
+    {
+		rectangle = doc.pathItems.rectangle( coords.x, -coords.y, coords.x+coords.width, coords.y+coords.height );
+
+		if(!rectangle) return
+		doc.selection = rectangle;
+	
+		var transp = new NoColor();
+		rectangle.strokeColor = transp;
+		var colorObj = transp;
+
+		if(typeof obj.hex == "string")
+		{
+			if(obj.hex == "transparent")
+			{
+				rectangle.fillColor = transp;
+			}
+			else
+			{
+				colorObj = Pslib.hexToRGBobj(obj.hex);
+			}
+		}
+		else if(typeof obj.hex == "object")
+		{
+			colorObj = obj.hex; // assume color object
+		}
+
+		rectangle.fillColor = colorObj;
+    }
+    return rectangle;
+}
+
 // add rectangles to all artboards
 // hexStr = "transparent"
-Pslib.addArtboardRectangles = function ( arr, hexStr, randomize, unique )
+Pslib.addArtboardRectangles = function ( arr, hexStr, randomize, unique, grayscale )
 {
 	if(!app.documents.length) return;
-	if(randomize == undefined) randomize = 0;
-	// if(!obj) obj = {};
+	if(randomize == undefined) randomize = false; // no randomization
 	// if(hexStr == undefined) hexStr = "ff00ff";
+	if(unique == undefined) unique = true;
+	if(grayscale == undefined) grayscale = false;
 
+	var allSelected = false;
+
+	// if the only argument provided is a string, assume its the hex value
 	if((typeof arr == "string") && (hexStr == undefined))
 	{
 		hexStr = arr;
+		hexStr = "transparent";
 		arr = Pslib.getSpecsForAllArtboards();
+		allSelected = true;
 	}
-
+	
 	if(hexStr == undefined) hexStr = "transparent";
 	if(!arr)
 	{
 		// arr = Pslib.getSpecsForAllArtboards(true);
 		arr = Pslib.getSpecsForAllArtboards();
+		allSelected = true;
 	}
 
 	var doc = app.activeDocument;
 	var rectArr = [];
-	var initialArtboard;
+	var initialArtboard = arr;
 
 	if(Pslib.isIllustrator)
 	{
 		// initialArtboard = Pslib.getArtboardIndex( Pslib.getActiveArtboard() );
 		initialArtboard = doc.artboards.getActiveArtboardIndex();
+		var initialSelection = doc.selection;
 
 		for(var i = 0; i < arr.length; i++)
 		{
@@ -6592,45 +7365,16 @@ Pslib.addArtboardRectangles = function ( arr, hexStr, randomize, unique )
 
 			var artboard = doc.artboards[artboardIndex];
 			doc.artboards.setActiveArtboardIndex(artboardIndex);
-
-			// var rgbObj = randomize ? JSUI.randomizeRGBColor(hexStr, randomize) : JSUI.hexToRGBobj(hexStr);
-
-			var rgbObj = JSUI.randomizeRGBColor(hexStr, randomize);
-
-			// //
-			// // fails with "transparent"
-			// //
-			// // convert HSB to better control RGB variations
-			// // if(hexStr == "transparent") hexStr = [1, 1, 1]
-			// var hsbArr = Pslib.RGBtoHSB( Pslib.hexToRGB(hexStr) );
-			// JSUI.quickLog(hsbArr, "hsbArr:");
-
-			// var hue = hsbArr[0];
-			// var sat = hsbArr[1];
-			// var bri = hsbArr[2];
-
-			// hue = JSUI.randomizeFloat( hue, 360, randomize );
-			// bri = JSUI.randomizeFloat( bri, 100, randomize );
-			// // var hue = Math.max(randomize * ( hue * Math.random() ), 360);
-
-			// // sat = JSUI.randomizeFloat( sat, 100, randomize );
-			// // bri = JSUI.randomizeFloat( bri, 100, randomize );
-
-			// var modifiedRgbArr = Pslib.HSBtoRGB( [ hue, sat, bri ] );
-			// var rgbObj = Pslib.RGBToColorObj(modifiedRgbArr);
-
-			// JSUI.quickLog("\thue: " + hue);
-			// JSUI.quickLog("\tbri: " + bri);
-
-
-			// var hex = JSUI.HexToR(hexStr)+JSUI.HexToG(hexStr)+JSUI.HexToB(hexStr);			
-			// var hex = JSUI.colorFillToHex(rgbObj);
+			var rgbObj = Pslib.randomizeRGBColor(hexStr, randomize, false, grayscale);
+			// var obj = { artboard: artboard, mustBeUnique: unique, hex: rgbObj.rgb.hexValue, sendToBack: true };
 			var obj = { artboard: artboard, mustBeUnique: unique, hex: rgbObj, sendToBack: true };
 			var rect = Pslib.addArtboardRectangle( obj );
 			rectArr.push(rect);
 		}
-
+		// restore initial active artboard and selection
 		doc.artboards.setActiveArtboardIndex(initialArtboard);
+		if(initialSelection) doc.selection = initialSelection;
+		// return true;
 	}
 	else if(Pslib.isPhotoshop)
 	{
@@ -6639,55 +7383,50 @@ Pslib.addArtboardRectangles = function ( arr, hexStr, randomize, unique )
 		for(var i = 0; i < arr.length; i++)
 		{
 			var artboard = arr[i].id;
-			// var rgbObj = randomize ? JSUI.randomizeRGBColor(hexStr, randomize) : JSUI.hexToRGBobj(hexStr);
-			var rgbObj = JSUI.randomizeRGBColor(hexStr, randomize);
+			// var rgbObj = randomize ? Pslib.randomizeRGBColor(hexStr, randomize) : Pslib.hexToRGBobj(hexStr);
+			var rgbObj = Pslib.randomizeRGBColor(hexStr, randomize, false, grayscale);
 			var obj = { artboard: artboard, mustBeUnique: unique, hex: rgbObj, sendToBack: true };
 			var rect = Pslib.addArtboardRectangle( obj );
-			if(unique)
-			{
-				// Pslib.updateArtboardBackgroundColor(hexStr, create) // for setting artboard background itself
-				Pslib.updateFillColor( rect, rgbObj ); // reference ectangle
-			}
+			// if(unique)
+			// {
+			// 	// Pslib.updateArtboardBackgroundColor(hexStr, create) // for setting artboard background itself
+			// 	Pslib.updateFillColor( rect, rgbObj ); // reference rectangle
+			// }
 			rectArr.push(rect);
 		}
 
-		if(initialArtboard) doc.activeLayer = initialArtboard;
+		// if all artboards were being modified, only make original layer active
+		if(allSelected)
+		{
+			if(initialArtboard) doc.activeLayer = initialArtboard;
+		}
+		// if only a subset of artboards were modified, attempt to reselect collection
+		else
+		{
+			Pslib.selectArtboardsCollection(arr);
+		}
 	}
 
     return rectArr;
 }
 
+// scan array of artboards and remove placeholder items
 Pslib.removeArtboardRectangles = function ( arr, nameStr )
 {
 	if(!app.documents.length) return;
-
 	var doc = activeDocument;
 
-	if(!arr)
-	{
-		arr = Pslib.getSpecsForAllArtboards( true );
-	}
-
-	// if(nameStr)
-	// {
-	// 	nameStr = "#";
-	// }
-
-	// var items = Pslib.getArtboardItems( arr, nameStr );
-
-	// JSUI.quickLog(items);
+	if(!arr) arr = Pslib.getSpecsForAllArtboards( true );
+	if(!nameStr) nameStr = "#";
 
 	if(Pslib.isPhotoshop)
 	{
 		for(var i = 0; i < arr.length; i++)
 		{
-			// var arr = arr[i];
 			Pslib.selectLayerByID(arr[i]);
 			var rectangle = Pslib.getArtboardItem( doc.activeLayer, nameStr);
 			if(rectangle)
 			{
-				// JSUI.quickLog("Removing " + item.name);
-
 				try
 				{
 					// JSUI.quickLog(arr[i]+" removing " + rectangle.name);
@@ -6710,15 +7449,67 @@ Pslib.removeArtboardRectangles = function ( arr, nameStr )
 			}
 
 		}
-		return;
+		return true;
 	}
 	else if(Pslib.isIllustrator)
 	{
+		// var items = Pslib.getArtboardItems( arr, nameStr );
 
+		// JSUI.quickLog(items);
+		for(var i = 0; i < arr.length; i++)
+		{
+			var rectangle = Pslib.getArtboardItem( doc.activeLayer, nameStr);
+			if(rectangle)
+			{
+				rectangle.remove();
+			}
+			else
+			{
+				// JSUI.quickLog(arr[i]+" No rectangle found.");
+			}
+		}
+		return true;
+	}
+}
+
+// delete rectangles for selected artboards (uses geometry)
+Pslib.deleteSelectedArtboardRectangles = function ( nameStr )
+{
+	if(!app.documents.length) return;
+	if(!nameStr) nameStr = "#";
+	var doc = activeDocument;
+	var deleteCount = 0;
+
+	if(Pslib.isPhotoshop)
+	{
+
+	}
+	else if(Pslib.isIllustrator)
+	{
+		// var initialSelection = doc.selection;
+
+		var artboards = Pslib.getArtboardsFromSelectedItems();
+		for(var i = 0; i < artboards.length; i++)
+		{
+			var artboard = artboards[i];
+			// var artboardIndex = Pslib.getArtboardIndex(artboard, true);
+			// doc.artboards.setActiveArtboardIndex(artboardIndex-1);
+			var rectangle; 
+			rectangle = Pslib.getArtboardItem(artboard, nameStr);
+			if(rectangle)
+			{
+				rectangle.remove();
+				deleteCount++;
+			}
+		}
+		// restoring selection in a context where we just deleted a bunch of stuff is just going to fail
+		// if(initialSelection) doc.selection = initialSelection;
+		return deleteCount;
 	}
 }
 
 // get RGB value of active object as hex string
+// overlaps with Pslib.getArtboardBackgroundColor() and Pslib.getShapeColor()
 Pslib.getFillColor = function ( asColorObj )
 {
 	if(!app.documents.length) return;
@@ -6732,20 +7523,19 @@ Pslib.getFillColor = function ( asColorObj )
 
 		if(layer.typename == "ArtLayer")
 		{
-			// if shape layer, proceed
 			if(layer.kind == LayerKind.SOLIDFILL)
 			{
-				var ref = new ActionReference();
-				ref.putEnumerated(cTID("Lyr "), cTID("Ordn"), cTID("Trgt"));
-				var desc = executeActionGet(ref);
+				var r = new ActionReference();
+				r.putEnumerated(cTID("Lyr "), cTID("Ordn"), cTID("Trgt"));
+				var d = executeActionGet(ref);
 		
-				var adjs = desc.getList(cTID('Adjs'));
-				var clrDesc = adjs.getObjectValue(0);
-				var color = clrDesc.getObjectValue(cTID('Clr '));
+				var l = d.getList(cTID('Adjs'));
+				var cd = l.getObjectValue(0);
+				var c = cd.getObjectValue(cTID('Clr '));
 		
-				var r = Math.round(color.getDouble(cTID('Rd  ')));
-				var g = Math.round(color.getDouble(cTID('Grn ')));
-				var b = Math.round(color.getDouble(cTID('Bl  ')));
+				var r = Math.round(c.getDouble(cTID('Rd  ')));
+				var g = Math.round(c.getDouble(cTID('Grn ')));
+				var b = Math.round(c.getDouble(cTID('Bl  ')));
 		
 				hexStr = Pslib.RGBtoHex(r, g, b);
 			}
@@ -6762,10 +7552,10 @@ Pslib.getFillColor = function ( asColorObj )
 		if(!doc.selection) return;
 		item = doc.selection[0];
 
-		var color = item.fillColor;
-		var r = color.fillColor.red;
-		var g = color.fillColor.green;
-		var b = color.fillColor.blue;
+		var c = item.fillColor;
+		var r = c.red;
+		var g = c.green;
+		var b = c.blue;
 
 		hexStr = Pslib.RGBtoHex(r, g, b);
 	}
@@ -6792,56 +7582,77 @@ Pslib.updateFillColor = function( item, hexStr )
 			doc.activeLayer = item;
 		}
 
-		if(layer.typename == "ArtLayer")
+		if(Pslib.isShape())
 		{
-			// if shape layer, proceed
-			if(layer.kind == LayerKind.SOLIDFILL)
+			Pslib.setShapeColor(hexStr);
+
+			// update layer's fill value
+			if(hexStr == "transparent")
 			{
-				// update layer's fill value
-				if(hexStr == "transparent")
+				// it should be noted that fill opacity leaves other layer styles visible
+				item.fillOpacity = 0; 
+			}
+			else 
+			{
+				// if fillOpacity zero, assume we want it opaque
+				if(item.fillOpacity == 0)
 				{
-					var currentColor = Pslib.getFillColor();
-					item.fillOpacity = 0;
-					hexStr = currentColor;
-				}
-				else 
-				{
-					// if fully transparent, assume we want it opaque
-					if(item.fillOpacity == 0)
-					{
-						item.fillOpacity = 100;
-					}
-				}
-
-				// if hexStr is already SolidColor, get hex value 
-				if(typeof hexStr == "object")
-				{
-					hexStr = hexStr.rgb.hexValue;
-				}
-
-				var sColor =  new SolidColor;
-				sColor.rgb.hexValue = hexStr;
-
-				var desc = new ActionDescriptor();
-					var ref = new ActionReference();
-					ref.putEnumerated( sTID('contentLayer'), cTID('Ordn'), cTID('Trgt') );
-				desc.putReference( cTID('null'), ref );
-					var fillDesc = new ActionDescriptor();
-						var colorDesc = new ActionDescriptor();
-						colorDesc.putDouble( cTID('Rd  '), sColor.rgb.red );
-						colorDesc.putDouble( cTID('Grn '), sColor.rgb.green );
-						colorDesc.putDouble( cTID('Bl  '), sColor.rgb.blue );
-					fillDesc.putObject( cTID('Clr '), cTID('RGBC'), colorDesc );
-				desc.putObject( cTID('T   '), sTID('solidColorLayer'), fillDesc );
-				executeAction( cTID('setd'), desc, DialogModes.NO );
-
-				// restore selection
-				if(initialSelection) 
-				{
-					doc.activeLayer = initialSelection;
+					item.fillOpacity = 100;
 				}
 			}
 		}
+		// if(layer.typename == "ArtLayer")
+		// {
+		// 	// if shape layer, proceed
+		// 	if(layer.kind == LayerKind.SOLIDFILL)
+		// 	{
+		// 		// update layer's fill value
+		// 		if(hexStr == "transparent")
+		// 		{
+		// 			// var currentColor = Pslib.getFillColor();
+		// 			var currentColor = Pslib.getShapeColor( true );
+
+		// 			item.fillOpacity = 0;
+		// 			hexStr = currentColor;
+		// 		}
+		// 		else 
+		// 		{
+		// 			// if fully transparent, assume we want it opaque
+		// 			if(item.fillOpacity == 0)
+		// 			{
+		// 				item.fillOpacity = 100;
+		// 			}
+		// 		}
+
+		// 		// if hexStr is already SolidColor, get hex value 
+		// 		if(typeof hexStr == "object")
+		// 		{
+		// 			hexStr = hexStr.rgb.hexValue;
+		// 		}
+
+		// 		var c =  new SolidColor;
+		// 		c.rgb.hexValue = hexStr;
+
+		// 		var d = new ActionDescriptor();
+		// 		var r = new ActionReference();
+		// 		r.putEnumerated( sTID('contentLayer'), cTID('Ordn'), cTID('Trgt') );
+		// 		d.putReference( cTID('null'), r );
+		// 		var fd = new ActionDescriptor();
+		// 		var cd = new ActionDescriptor();
+		// 		cd.putDouble( cTID('Rd  '), c.rgb.red );
+		// 		cd.putDouble( cTID('Grn '), c.rgb.green );
+		// 		cd.putDouble( cTID('Bl  '), c.rgb.blue );
+		// 		fd.putObject( cTID('Clr '), cTID('RGBC'), cd );
+		// 		d.putObject( cTID('T   '), sTID('solidColorLayer'), fd );
+		// 		executeAction( cTID('setd'), d, DialogModes.NO );
+
+		// 		// restore selection
+		// 		if(initialSelection) 
+		// 		{
+		// 			doc.activeLayer = initialSelection;
+		// 		}
+		// 	}
+		// }
 		else if(Pslib.isArtboard(layer))
 		{
 			if(typeof hexStr == "object")
@@ -6851,6 +7662,13 @@ Pslib.updateFillColor = function( item, hexStr )
 			
 			Pslib.updateArtboardBackgroundColor( hexStr );
 		}
+
+		// restore selection
+		if(initialSelection) 
+		{
+			doc.activeLayer = initialSelection;
+		}
+
 		return true;
 	}
 	else if(Pslib.isIllustrator)
@@ -6889,20 +7707,8 @@ Pslib.updateFillColor = function( item, hexStr )
 				item.fillOpacity = 100;
 			}
 		}
-
-
-
-		// var artboard = arr[i];
-		// var obj = { artboard: artboard, mustBeUnique: true, hex: rgbObj, sendToBack: true };
-		// return asColorObj ? Pslib.hexToRGBobj(hexStr) : hexStr;
 		return true;
 	}
-
-	// 	if(artboardLayer.typename == "ArtLayer")
-	// 	{
-	// 		// if shape layer
-	// 		if(artboardLayer.kind == LayerKind.SOLIDFILL)
-	// 		{
 }
 
 // this will make a Photoshop shape layer or artboard background fully transparent
@@ -6962,8 +7768,7 @@ Pslib.makeAllArtboardBackgroundsTransparent = function( artboards )
 	return;
 }
 
-
-Pslib.colorAllArtboardBackgrounds = function( hexStr )
+Pslib.colorAllArtboardBackgrounds = function( hexStr, randomize )
 {
 	if(!app.documents.length) return;
 	if(!hexStr) return;
@@ -6978,51 +7783,22 @@ Pslib.colorAllArtboardBackgrounds = function( hexStr )
 		{
 			var artboard = Pslib.selectLayerByID(coords[i].id);
 			// Pslib.makeFillTransparent(artboard);
+
+			if(randomize) 
+			{
+				// var randomHex = Pslib.randomizeRGBColor( hexStr, randomize);
+				// Pslib.randomizeRGBColor = function( hexStr, rangeFloat )
+				var randomColorObj = Pslib.randomizeRGBColor( hexStr, randomize);
+				
+				hexStr = Pslib.colorFillToHex(randomColorObj);
+			}
+
 			Pslib.updateFillColor(artboard, hexStr);
 		}
 		if(activeLayer == doc.activeLayer) doc.activeLayer = activeLayer;
 	}
 	else if(Pslib.isIllustrator)
 	{
-		// var placeholders = Pslib.getArtboardItems( doc.artboards );
-		// // // alert(placeholders.length);
-		// for(var i = 0; i < placeholders.length; i++)
-		// {
-		// 	var item = placeholders[i];
-
-		// 	JSUI.quickLog(i+" bounds: " + item.visibleBounds);
-		// 	doc.selection = item;
-		// 	item = doc.selection[0];
-
-		// 	Pslib.updateFillColor(item, hexStr);
-		// 	JSUI.quickLog(i+" placeholder color updated");
-			
-		// }
-		// return true;
-		
-		// var artboards = Pslib.getAllArtboards();
-
-		// for(var i = 0; i < placeholders.length; i++)
-		// {
-		// 	var artboard = artboards[i];
-		// 	// app.activeDocument.selection = item;
-
-		// 	Pslib.updateFillColor(item, hexStr);
-
-		// 	JSUI.quickLog(i+" placeholder color updated");
-		// }
-
-		// var coords = Pslib.getArtboardCollectionCoordinates();
-		// for(var i = 0; i < coords.length; i++)
-		// {
-		// 	var artboard = app.activeDocument.artboards[coords[i].index];
-		// 	if(artboard)
-		// 	{
-		// 		// Pslib.makeFillTransparent(artboard);
-		// 		Pslib.updateFillColor(artboard, hexStr);
-		// 	}
-
-		// }
 		var selection = doc.selection;
 		for(var i = 0; i < doc.artboards.length; i++)
 		{
@@ -7174,6 +7950,7 @@ Pslib.hexToRGBobj = function ( hexStr )
 	{
 		var color = new SolidColor();
 		if(hexStr == "transparent") return color;
+		if(hex instanceof Object) return hex;
 		color.rgb.hexValue = hex;
 		return color;
 	}
@@ -7245,6 +8022,159 @@ Pslib.HexToA = function(h)
 	return parseInt((Pslib.cutHex(h)).substring(6,8), 16);
 }
 
+// convert color object to usable hex string 
+// compensates for Illustrator's lack of .hexValue property
+Pslib.colorFillToHex = function(color)
+{
+	if(color == undefined) return "000000";
+	if(!(color instanceof Object)) return "000000";
+
+	if(Pslib.isIllustrator)
+	{
+		return Pslib.toHex(color.red) + Pslib.toHex(color.green) + Pslib.toHex(color.blue);
+	}
+	else if(Pslib.isPhotoshop)
+	{
+		return color.rgb.hexValue;
+	}
+}
+
+
+// "controlled" randomization, float sticks around a specified threshold
+Pslib.randomizeFloat = function( num, max, range )
+{
+	if(range == 0) return num; 
+	if(range > 1) range = 1;
+	var random = Math.random();
+	var flux = range * ( num * random );
+
+	flux = ( random < 0.5 ? (-flux) : flux);
+	flux = parseInt( num + flux);
+	flux = flux < 0 ? 0 : flux > max ? max : flux;
+	// JSUI.quickLog(flux, "randomised: ");
+	return flux;
+}
+
+//
+// misguided attempt at randomizing r, g, b values of color object 
+// while remaining within a specific hue range
+// achieving this with HSL/HSB would be a lot easier
+//
+// - a rangeFloat set to true, or 1.0 means FULL randomization across a range of 0-255 for each r, g, b component (no harmony)
+// - 0.04 yields difficult to see but actual variations in color
+// - a value between 0.75 and 0.9999 should be clearly visible, while retaining harmony with specified value
+// - values between 0.0 and 0.0038999 (or false) will not attempt to randomize unless specified (precise:true)
+//
+// NOTES
+// - randomization of "000000" is a waste, so we cheese it by bumping the value to "101010" (unless precise: true)
+// - r,g,b components with values neighboring 100% tend to not fluctuate as much as those within the medium range
+//
+Pslib.randomizeRGBColor = function( hexStr, rangeFloat, precise, grayscale )
+{
+	if(hexStr == "transparent") return hexStr;
+	if(hexStr == undefined) hexStr = "101010";
+
+	// if no randomization info provided, use full spectrum
+	if(rangeFloat == undefined) rangeFloat = false;
+	if(rangeFloat instanceof Boolean) rangeFloat = (rangeFloat ? 1.0 : 0.0);
+
+	// 1/255 = 0.003921568627
+	// anything below 0.004 is likely to be a waste of CPU, at least in depths of 8bits per channel
+	// unless specifically asked for precision, return object without randomization
+	if(rangeFloat < 0.0039 && !precise) return Pslib.hexToRGBobj(hexStr);
+
+	if(rangeFloat > 1) rangeFloat = 1;
+
+	// sanitization of string values
+	if(hexStr == "000000")
+	{
+		if(!precise) hexStr = "101010";
+	}
+
+	// if object, assume existing RGB solid fill object
+	if(typeof hexStr == "object")
+	{
+		var colObj = hexStr;
+		if(JSUI.isPhotoshop)
+		{	
+			hexStr = hexStr.rgb.hexValue;
+		}
+		else if(JSUI.isIllustrator)
+		{
+			hexStr = Pslib.toHex(colObj.red)+Pslib.toHex(colObj.green)+Pslib.toHex(colObj.blue);			
+		}
+		// if pure black, just return as is, because randomization will fail
+		if(hexStr == "000000" && !precise) return colObj;
+	}
+
+	// control randomization 
+	var doRandomize = precise ? true : (rangeFloat > 0.0039 && rangeFloat < 1);
+
+	var r,g,b = precise ? 0 : 16;
+
+	if(Pslib.isPhotoshop)
+	{		
+		var c = new SolidColor();
+		c.rgb.hexValue = hexStr;
+
+		r = c.rgb.red;
+		g = c.rgb.green;
+		b = c.rgb.blue;
+	}
+	else if(Pslib.isIllustrator)
+	{
+		var c = Pslib.hexToRGBobj(hexStr);
+
+		r = c.red;
+		g = c.green;
+		b = c.blue;
+	}
+
+	r = doRandomize ? Pslib.randomizeFloat(r, 255, rangeFloat) : Math.round(Math.random()*255);
+	g = doRandomize ? Pslib.randomizeFloat(g, 255, rangeFloat) : Math.round(Math.random()*255);
+	b = doRandomize ? Pslib.randomizeFloat(b, 255, rangeFloat) : Math.round(Math.random()*255);
+
+	// optional: convert to grayscale
+	if(grayscale)
+	{
+		// if(hexStr == "transparent") hsbArr = [1, 1, 1]
+		var hsbArr = Pslib.RGBtoHSB( [ r, g, b ] );
+
+		var hue = hsbArr[0];
+		var sat = hsbArr[1];
+		var bri = hsbArr[2];
+
+		sat = 0;
+		bri = doRandomize ? Pslib.randomizeFloat( bri, 100, rangeFloat ) : Math.round(Math.random()*100);
+
+		var grayArr = Pslib.HSBtoRGB( [ hue, sat, bri ] );
+
+		r = grayArr[0];
+		g = grayArr[1];
+		b = grayArr[2];
+	}
+
+	if(Pslib.isPhotoshop)
+	{
+		c.rgb.red = r;
+		c.rgb.green = g;		
+		c.rgb.blue = b;
+
+		return c;
+	}
+	else if	(Pslib.isIllustrator)
+	{
+		c.red = r;
+		c.green = g;
+		c.blue = b;
+
+		return c;
+	}
+	else
+	{
+		return;
+	}
+}
 
 //
 // standalone color conversion snippets
@@ -7422,6 +8352,225 @@ Pslib.getLayerColor = function(id)
 	}
 }
 
+// Get Solid Fill Color object 
+Pslib.getShapeColor = function( asObj )
+{
+	if(!app.documents.length) return false;
+    var doc = app.activeDocument;
+
+	if(Pslib.isPhotoshop)
+	{
+		var layer = doc.activeLayer;
+		var layerisFill = layer.typename == "ArtLayer" ? (layer.kind == LayerKind.SOLIDFILL ? true : false) : false;
+		if(!layerisFill) return;
+
+		var r = new ActionReference();
+		r.putEnumerated(cTID("Lyr "), cTID("Ordn"), cTID("Trgt"));
+		var d = executeActionGet(r);
+
+		var l = d.getList(cTID('Adjs'));
+		var cd = l.getObjectValue(0);
+		var c = cd.getObjectValue(cTID('Clr '));
+
+		var r = c.getDouble(cTID('Rd  '));
+		var g = c.getDouble(cTID('Grn '));
+		var b = c.getDouble(cTID('Bl  '));
+
+		var hex = Pslib.toHex(r) + Pslib.toHex(g) + Pslib.toHex(b);
+
+		if(asObj)
+		{
+			var sc = new SolidColor();
+			sc.rgb.hexValue = hex;
+		}
+		return asObj ? sc : hex;
+	}
+	else if(Pslib.isIllustrator)
+	{
+		var selection = doc.selection;
+		if(selection)
+		{
+			var item = selection[0];
+
+			var hex = "transparent";
+			var transp = new NoColor();
+
+			var fc = item.fillColor;
+			if(!fc) return asObj ? transp : hex;
+
+			if(fc == transp) return asObj ? transp : hex;
+			
+			var r = fc.red;
+			var g = fc.green;
+			var b = fc.blue;
+
+			var hex = Pslib.toHex(r) + Pslib.toHex(g) + Pslib.toHex(b);
+			return asObj ? fc : hex;
+		}
+	}	
+}
+
+// Get Solid Fill Color object 
+Pslib.getArtboardBackgroundColor = function( asObj )
+{
+	if(!app.documents.length) return false;
+    var doc = app.activeDocument;
+
+	if(Pslib.isPhotoshop)
+	{
+		var layer = doc.activeLayer;
+		if(!Pslib.isArtboard(layer))
+		{
+			if (!Pslib.selectParentArtboard()) return;
+		}
+
+		var artboard = doc.activeLayer;
+		var id = artboard.id;
+		var coords = Pslib.getArtboardCoordinates(id);
+		var r = Pslib.getArtboardReferenceByID(id);
+
+		var dt = r.getObjectValue(sTID("artboard"));
+		coords.presetName = dt.getString(sTID('artboardPresetName'));
+		coords.backgroundType = dt.getString(sTID('artboardBackgroundType'));
+
+		var color = new SolidColor();
+
+		// 3 == transparent, 4 == custom RGB
+		if(coords.backgroundType == 1) 
+		{
+			color.rgb.hexValue = "FFFFFF";
+		} 
+		if(coords.backgroundType == 2) 
+		{
+			color.rgb.hexValue = "000000";
+		} 
+		else if(coords.backgroundType == 3) return "transparent";
+		// if(coords.backgroundType != 3)
+		else if(coords.backgroundType == 4) 
+		{
+			var abColor = dt.getObjectValue(sTID('color'));
+
+			var r = abColor.getUnitDoubleValue(sTID("red"));
+			var g = abColor.getUnitDoubleValue(sTID("grain"));
+			var b = abColor.getUnitDoubleValue(sTID("blue"));
+
+			color.rgb.red = r;
+			color.rgb.green = g;
+			color.rgb.blue = b;
+		}
+		return asObj ? color : color.rgb.hexValue;
+	}
+	else if(Pslib.isIllustrator)
+	{
+		//
+		var item = Pslib.getArtboardItem();
+
+		var hex = "transparent";
+		var transp = new NoColor();
+
+		var fc = item.fillColor;
+		if(!fc) return asObj ? transp : hex;
+
+		if(fc == transp) return asObj ? transp : hex;
+		
+		var r = fc.red;
+		var g = fc.green;
+		var b = fc.blue;
+
+		var hex = Pslib.toHex(r) + Pslib.toHex(g) + Pslib.toHex(b);
+		return asObj ? fc : hex;
+	}	
+}
+
+// Set Solid Fill Color object 
+Pslib.isShape = function( )
+{
+	if(!app.documents.length) return false;
+    var doc = app.activeDocument;
+
+	if(Pslib.isPhotoshop)
+	{
+		var layer = doc.activeLayer;
+		if(!layer) return false;
+		var layerIsShape = layer.typename == "ArtLayer" ? (layer.kind == LayerKind.SOLIDFILL ? true : false) : false;
+		return layerIsShape;
+	}
+	else if(Pslib.isIllustrator)
+	{
+		var selection = doc.selection;
+		if(selection)
+		{
+			var item = selection[0];
+			return (item.typename == "PathItem")
+		}
+		return false;
+	}	
+}
+
+// Set Solid Fill Color object 
+Pslib.setShapeColor = function( hex )
+{
+	if(!app.documents.length) return false;
+    var doc = app.activeDocument;
+	if(!hex) return false;
+
+	if(Pslib.isPhotoshop)
+	{
+		var layer = doc.activeLayer;
+		if(!Pslib.isShape()) return false;
+
+		// assume color object
+		if(hex instanceof Object)
+		{
+			c = hex;
+		}
+		else 
+		{
+			c = Pslib.hexToRGBobj(hex);
+		}
+
+		var d = new ActionDescriptor();
+		var r = new ActionReference();
+		r.putEnumerated( sTID('contentLayer'), cTID('Ordn'), cTID('Trgt') );
+		d.putReference( cTID('null'), r );
+		var fd = new ActionDescriptor();
+		var cd = new ActionDescriptor();
+		cd.putDouble( cTID('Rd  '), c.rgb.red );
+		cd.putDouble( cTID('Grn '), c.rgb.green );
+		cd.putDouble( cTID('Bl  '), c.rgb.blue );
+		fd.putObject( cTID('Clr '), cTID('RGBC'), cd );
+		d.putObject( cTID('T   '), sTID('solidColorLayer'), fd );
+		executeAction( cTID('setd'), d, DialogModes.NO );
+
+		return true;
+	}
+	else if(Pslib.isIllustrator)
+	{
+		var selection = doc.selection;
+		if(selection)
+		{
+			var item = selection[0];
+
+			if(!Pslib.isShape()) return false;
+
+			var hex = "transparent";
+			var transp = new NoColor();
+
+			var fc = item.fillColor;
+			if(!fc) return asObj ? transp : hex;
+
+			if(fc == transp) return asObj ? transp : hex;
+			
+			var r = fc.red;
+			var g = fc.green;
+			var b = fc.blue;
+
+			var hex = Pslib.toHex(r) + Pslib.toHex(g) + Pslib.toHex(b);
+			return asObj ? fc : hex;
+		}
+	}	
+}
+
 // Photoshop: Pslib.setLayerColor(doc.activeLayer.id, "red")
 // Illustrator: Pslib.setLayerColor(doc.activeLayer, "FF0000")
 Pslib.setLayerColor = function(id, colorStr)
@@ -7459,14 +8608,58 @@ Pslib.setLayerColor = function(id, colorStr)
 		layer.color = Pslib.hexToRGBobj(colorStr);
 	}
 }
-
-// hack to allow Array.sort() to sort objects based on value of .assetArtboardID
+//
+//
+// a few workarounds to allow Array.sort() to sort objects 
+// based on specific property values (must be numeric)
+//
+// weirdness: if object does not have property, it comes out first in sorted array...?
+//
 Pslib.compareArtboardID = function( a, b )
 {
     if ( a.assetArtboardID < b.assetArtboardID ){ return -1; }
     if ( a.assetArtboardID > b.assetArtboardID ){ return 1; }
     return 0;
 }
+
+Pslib.compareAssetID = function( a, b )
+{
+    if ( a.assetID < b.assetID ){ return -1; }
+    if ( a.assetID > b.assetID ){ return 1; }
+    return 0;
+}
+
+Pslib.compareName = function( a, b )
+{
+    if ( a.name < b.name ){ return -1; }
+    if ( a.name > b.name ){ return 1; }
+    return 0;
+}
+
+Pslib.compareId = function( a, b )
+{
+    if ( a.id < b.id ){ return -1; }
+    if ( a.id > b.id ){ return 1; }
+    return 0;
+}
+
+Pslib.compareIndex = function( a, b )
+{
+    if ( a.index < b.index ){ return -1; }
+    if ( a.index > b.index ){ return 1; }
+    return 0;
+}
+
+Pslib.comparePage = function( a, b )
+{
+    if ( a.page < b.page ){ return -1; }
+    if ( a.page > b.page ){ return 1; }
+    return 0;
+}
+//
+//
+//
+
 
 //
 //
@@ -7819,7 +9012,6 @@ Array.prototype.convertTags = function( converter, reversed )
 
 	return newArr;
 }
-
 
 
 //

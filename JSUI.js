@@ -6675,14 +6675,15 @@ JSUI.randomizeFloat = function( num, max, range )
 // achieving this with HSL/HSB would be a lot easier
 //
 // rangeFloat default is 0, full randomization across a range of 0-255 for each r, g, b component
-// 0.04 yields difficult to see but different variations in color
-// a value of 0.75 means
+// 0.04 yields difficult to see but actual variations in color
+// a value between 0.75 and 1.0 should be clearly visible
 //
 JSUI.randomizeRGBColor = function( hexStr, rangeFloat )
 {
 	if(hexStr == "transparent") return hexStr;
 	if(hexStr == undefined) hexStr = "000000";
 	if(rangeFloat == undefined) rangeFloat = 0;
+	if(rangeFloat instanceof Boolean) rangeFloat =  (rangeFloat ? 0.0 : 0.0000001);
 	if(rangeFloat > 1) rangeFloat = 1;
 
 	// if object, assume color fill
@@ -6694,8 +6695,9 @@ JSUI.randomizeRGBColor = function( hexStr, rangeFloat )
 		}
 		else if(JSUI.isIllustrator)
 		{
-			hexStr = JSUI.HexToR(hexStr)+JSUI.HexToG(hexStr)+JSUI.HexToB(hexStr);			
-			// JSUI.quickLog( "illustrator hexStr: "+hexStr );
+			// hexStr = JSUI.HexToR(hexStr)+JSUI.HexToG(hexStr)+JSUI.HexToB(hexStr);			
+			var colObj = hexStr;
+			hexStr = JSUI.toHex(colObj.red)+JSUI.toHex(colObj.green)+JSUI.toHex(colObj.blue);			
 		}
 	}
 
