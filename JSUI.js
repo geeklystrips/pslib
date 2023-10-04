@@ -5784,6 +5784,31 @@ String.prototype.trim = function()
 	return this.replace(/^[\s]+|[\s]+$/g,'');
 };
 
+String.prototype.padStart = function(num, pad)
+{
+	if(!num) num = 6;
+	if(!pad) pad = " ";
+	if(pad == "0") return this.zeroPad(num);
+	num = Math.min(num, this.length)
+	var padStr = "";
+	if(this.length < num)
+	{
+		for(var i = 0; i < num; i++)
+		{
+			padStr += pad;
+		}
+	}
+	return padStr + this;
+}
+
+String.prototype.zeroPad = function(num)
+{
+	if(!num) num = 3;
+	var padStr = "";
+	if(this.length < num) { padStr = new Array(num - this.length+1).join("0"); }
+	return padStr + this;
+}
+
 // remove special characters that will cause problem in a file system context
 String.prototype.toFileSystemSafeName = function(replaceStr)
 {
