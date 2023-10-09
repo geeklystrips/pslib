@@ -131,7 +131,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version, used in tool window titles. Maybe.
-Pslib.version = 0.682;
+Pslib.version = 0.683;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -6147,7 +6147,130 @@ Pslib.moveItemsToLayer = function( items, layer )
 	}
 }
 
-Pslib.documentFromArtboard = function( templateUri )
+// this helps with grid-fitting (illustrator only)
+Pslib.fitRasterObjectToPixelGrid = function( rasterObj )
+{
+    if(!app.documents.length) return;
+
+	if(Pslib.isIllustrator)
+	{
+		if(!rasterObj)
+		{
+			if(app.selection)
+			{
+				rasterObj = app.selection[0];
+			}
+		}
+        else
+        {
+            app.selection = rasterObj;
+        }
+
+        if(!rasterObj) return;
+
+        if(rasterObj.typename != "RasterItem")
+        {
+			if(rasterObj.typename == "GroupItem")
+			{
+				var isTifGroup = Pslib.isMacOSplacedTif(rasterObj, true);
+				if(isTifGroup)
+				{
+					app.selection = isTifGroup;
+					rasterObj = app.selection[0];
+				}
+			}
+        }
+
+        if(rasterObj.typename == "RasterItem")
+        {        
+            try
+            {
+                // // should warn user if rotation is applied
+                // if(rasterObj.tags.length)
+                // { 
+                //     if(rasterObj.tags[0].name == "BBAccumRotation")
+                //     {
+                //
+                //     }
+                // }
+                var x = Math.round(rasterObj.left);
+                var y = Math.round(rasterObj.top);
+                var w = rasterObj.boundingBox[2];
+                var h = rasterObj.boundingBox[1];
+                rasterObj.left = x;
+                rasterObj.top = y;
+                rasterObj.width = w;
+                rasterObj.height = h;
+
+                app.selection = rasterObj;
+                return rasterObj;
+            }
+            catch(e)
+            {
+                // alert("Error resizing! " + e);
+            }
+        }
+
+    }
+    // attempt to get raster smartobject details, resize to match pixel grid?
+    else if(Pslib.isPhotoshop)
+	{
+
+    }
+}
+
+// if selection was pasted from clipboard on macOS...
+// item may be a GroupItem containing a single RasterItem 
+// named with six alphanumeric characters + .tif extension
+Pslib.isMacOSplacedTif = function(item, ungroup)
+{
+	if(!app.documents.length) return;
+
+	if(Pslib.isIllustrator)
+	{
+		if(!item) return;
+
+		// first check for expected structure
+		if(item.typename == "GroupItem")
+		{
+			// is group, AND has only one nested PageItem
+			if(item.pageItems.length == 1)
+			{
+				// var hasTifExt = item.name.getFileExtension() === ".tif"; // null if no match
+				var hasTifExt = item.name.hasSpecificExtension(".tif");
+				if(hasTifExt)
+				{
+					if(item.name.getFileNameWithoutExtension().length == 6)
+					{
+						if(item.pageItems[0].typename == "RasterItem")
+						{
+							if(item.pageItems[0].name == "Layer 0")
+							{	
+								if(ungroup)
+								{
+									var rasterGroup = item;
+									var storedName = rasterGroup.name;
+									var newItem = rasterGroup.pageItems[0];
+									newItem.name = storedName;
+									newItem.move(rasterGroup, ElementPlacement.PLACEAFTER);
+									return newItem;
+								}
+								return true;
+							}
+	
+						}
+					}
+				}
+			}
+		}
+	}
+	else if(Pslib.isPhotoshop)
+	{
+
+	}
+}
+
+Pslib.documentFromArtboard = function( templateUri, createOutlines )
 {
 	if(Pslib.isIllustrator)
 	{
@@ -6192,6 +6315,14 @@ Pslib.documentFromArtboard = function( templateUri )
 			var destItem = duplicatedItems[i][0];
 			destItem.left = duplicatedItems[i][1];
 			destItem.top = duplicatedItems[i][2];
+			
+			if(createOutlines)
+			{
+				if(destItem.typename == "TextFrame") // TextFrameItem + LegacyTextItem	
+				{
+					destItem.createOutline();
+				}
+			}
 		}
 
 		// zoom / center artboard in viewport
@@ -6279,7 +6410,7 @@ Pslib.artboardsToFiles = function( obj )
 {
 	if(Pslib.isIllustrator)
 	{ 
-		if(!obj) { var obj = {}; }
+		if(!obj) obj = {};
 
 		if(!app.documents.length) return;
 		var sourceDoc = app.activeDocument;
@@ -6742,7 +6873,7 @@ Pslib.artboardsToFiles = function( obj )
 				// only create new document if exporting to PSD or AI
 				if (extension == ".psd" || extension == ".ai")
 				{
-					newDoc = Pslib.documentFromArtboard( obj.templateUri );
+					newDoc = Pslib.documentFromArtboard( obj.templateUri, obj.createOutlines );
 				}
 
 				if(destinationFolder)
@@ -6961,18 +7092,17 @@ Pslib.artboardToFile = function( obj )
 		var placeholderCreated = false;
 		var selection = app.selection[0];
 
-		// obj.pagesArr = undefined; // active artboard
 		// if .psd, include a placeholder rectangle to force canvas dimensions
-
-		// 
 		if(obj.extension == ".psd")
 		{
+			// if creating photoshop file, make sure to outline text 
+			if(obj.createOutlines == undefined) obj.createOutlines = true;
+
 			var activeIndex = doc.artboards.getActiveArtboardIndex();
 			var artboard = Pslib.getActiveArtboard();
 
 			if(obj.pagesArr == undefined)
 			{
-				// activeIndex = doc.artboards.getActiveArtboardIndex();
 				artboard = doc.artboards[activeIndex];			
 				obj.pagesArr = [activeIndex+1];
 			}
@@ -6982,7 +7112,6 @@ Pslib.artboardToFile = function( obj )
 			{
 				doc.selection = null;
 				var index = parseInt(obj.pagesArr.toString());
-				// var index = obj.pagesArr[0]-1;
 				if(!isNaN(index))
 				{
 					index -= 1;
@@ -6992,7 +7121,6 @@ Pslib.artboardToFile = function( obj )
 			}
 
 			var placeholder;
-			// placeholder = Pslib.getArtboardItem(artboard, "#");
 
 			placeholder = Pslib.addArtboardRectangle( { hex: "transparent", name: "#" } ); // specs ignored
 			placeholderCreated = true;
@@ -7084,8 +7212,7 @@ Pslib.artboardFromFile = function( obj )
                 // zoom out first maybe?
                 item = doc.groupItems.createFromFile(obj.imgFile);  
                 
-                // perhaps "open" SVG as doc and get artboard content instead?
-
+                // could also "open" SVG as doc and get artboard content instead
             }
             else if(obj.extension == ".png")
             {
@@ -7094,16 +7221,10 @@ Pslib.artboardFromFile = function( obj )
                 item.embed(); 
 
                 Pslib.fitRasterObjectToPixelGrid(item);
-
-
             }
 
             if(item)
             {
-
-                // doc.selection = item;
-                // alert(item.width)
-
                 // position at integers
 
                 // add artboard
