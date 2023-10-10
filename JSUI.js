@@ -22,6 +22,7 @@
 	-----
 	
 	TODO
+	- built-in SVG image support for JSUI.createDialog(), JSUI.prompt(), JSUI.confirm() and JSUI.alert()
 	- better handle undefined path / 8103 error (file not saved)
 	- fix out-of-range issue with LZW string (feature removed for now)
 	- provide components for addVec2, addVec3, addVec4 (for XY, XYZ, RGBA, ARGB)
@@ -65,7 +66,7 @@ if(typeof JSUI !== "object")
 }
 
 /* version	*/
-JSUI.version = "0.982";
+JSUI.version = "0.983";
 
 // do some of the stuff differently depending on $.level and software version
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -455,21 +456,16 @@ JSUI.getChar = function(num)
 // pads numbers that don't have a minimum of 4 digits
 JSUI.zeropad = function(str)
 {
-	/* padding string with zeroes	*/
+	//  padding string with zeroes	
 	return (str.length < 2 ? "000" + str :  (str.length < 3 ? "00" + str : (str.length < 4 ? "0" + str : (str) ) ) ); // 40 becomes "0040"
 };
-
-// // pads hex numbers that don't have a minimum of 6 digits
-// JSUI.sixzeropad = function(str)
-// {
-// 	/* padding string with zeroes	*/
-// 	return ( ( (str.length < 2 ? "00000" + str :  (str.length < 3 ? "0000" + str : (str.length < 4 ? "000" + str : (str) ) ) ) ) ); // CC becomes "0000CC"
-// };
 
 // with help from Davide
 // *bows*
 JSUI.getCurrentTheme = function()
 {
+	var brnessLvl = "kPanelBrightnessMediumGray";
+
 	if(JSUI.isPhotoshop)
 	{
 		try
@@ -478,23 +474,66 @@ JSUI.getCurrentTheme = function()
 			ref.putProperty(charIDToTypeID("Prpr"), stringIDToTypeID("interfacePrefs"));
 			ref.putEnumerated(charIDToTypeID("capp"), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
 			var desc = executeActionGet(ref).getObjectValue(stringIDToTypeID("interfacePrefs"));
-			return typeIDToStringID(desc.getEnumerationValue(stringIDToTypeID("kuiBrightnessLevel")));
+			brnessLvl = typeIDToStringID(desc.getEnumerationValue(stringIDToTypeID("kuiBrightnessLevel")));
 		}
 		catch(e)
 		{
-			return "kPanelBrightnessMediumGray";
 		}
 	}
-	else
+	else if(JSUI.isIllustrator)
 	{
-		return "kPanelBrightnessMediumGray";
+		// default medium gray value
+		var uiBrightness = 0.5;
+		try
+		{
+			uiBrightness = app.preferences.getRealPreference("uiBrightness");
+  			// < 0.5 = dark, > 0.5 = light
+			// 0.0  // dark
+			// 0.5  // medium dark
+			// 0.5099999905 // medium light
+			// 1.0  // light
+
+		}
+		catch(e)
+		{
+		}
+
+		switch(uiBrightness)
+		{
+			case 1.0 : 
+			{
+				brnessLvl = "kPanelBrightnessOriginal";
+				break;
+			}
+			case 0.5099999905 : 
+			{
+				brnessLvl = "kPanelBrightnessLightGray";
+				break;
+			}
+			case 0.5 : 
+			{
+				brnessLvl = "kPanelBrightnessMediumGray";
+				break;
+			}
+			case 0.0 : 
+			{
+				brnessLvl = "kPanelBrightnessDarkGray";
+				break;
+			}
+			default :
+			{
+				brnessLvl = "kPanelBrightnessMediumGray";
+				break;
+			}
+		}
 	}
-};
+	return brnessLvl;
+}
 
 JSUI.getBackgroundColor = function()
 {
 	var currentTheme = JSUI.getCurrentTheme();
-
+	var color = JSUI.brightnessMediumGray;
 	switch(currentTheme)
 	{
 		case "kPanelBrightnessOriginal" : 
@@ -524,7 +563,7 @@ JSUI.getBackgroundColor = function()
 		}
 	}
 	return color;
-};
+}
 
 JSUI.backgroundColor = JSUI.getBackgroundColor();
 
@@ -984,6 +1023,16 @@ JSUI.getScriptUIStates = function( obj )
 	var proceed = false;
 	if(obj.imgFile != undefined)
 	{
+		// // if array, assume vector graphics?
+		// if(obj.imgFile instanceof Array)
+		// {
+		// 	// // ScriptUI.newImage (normal, disabled, pressed, rollover);
+		// 	// obj.active = ScriptUI.newImage(obj.imgFile, imgFileUp, imgFileDown, imgFileOver);
+		// 	// obj.inactive = ScriptUI.newImage(disabledImgFile, disabledImgFile, imgFileDown, disabledImgFileOver);
+
+		// 	// return obj;
+		// }
+
 		if(typeof obj.imgFile == "string")
 		{
 			var imgNameStr = obj.imgFile;
@@ -3387,7 +3436,7 @@ Object.prototype.addRectangle = function(propName, obj)
 	}
 
 	return c;
-};
+}
 
 
 // var customEllipseBtn2 = container.addEllipse( { width: 100, height: 100, text: "string" });
@@ -3410,7 +3459,6 @@ Object.prototype.addEllipse = function(obj)
 
 	// var c = this.add('iconbutton', undefined, undefined, {name: propName.toLowerCase(), style: 'toolbutton'});
 	var c = this.add('iconbutton', undefined, undefined, { style: 'toolbutton' });
-	// this.Components[propName] = c;
 	c.size = [ !isNaN(obj.width) ? obj.width : 50, !isNaN(obj.height) ? obj.height : 50 ];
 
 	c.fillBrush = c.graphics.newBrush( c.graphics.BrushType.SOLID_COLOR, JSUI.hexToRGB(obj.hexValue) );
@@ -3451,8 +3499,295 @@ Object.prototype.addEllipse = function(obj)
 	}
 
 	return c;
-};
+}
 
+// add image resource based on SVG code
+// var graphics = dialog.addVectorGraphics( { shapes: ["77 45 0 0 0 89 77 45"], width: 100, height: 100 });
+
+// IMPORTANT: 
+// In this context there is no such thing as rendering a negative shape.
+// These can be faked by cutting invisible openings in a main shape,
+// or overlapping portions of a same path.
+
+// RGB values are opaque by default
+// hex strings can contain 8 characters for specifying opacity
+// "#0F67D280"; // "80" = 50% opacity
+
+// simple image, no interaction
+Object.prototype.addVectorGraphics = function ( obj )
+{
+    if(!obj) obj = {};
+	if(!obj.shapes) return;
+	if(!obj.name) obj.name = "svg-graphics-image";
+	obj.simpleImage = true;
+
+	return this.addVectorGraphicsButton( obj );
+}
+
+Object.prototype.addVectorGraphicsButton = function ( obj )
+{
+    if(!obj) obj = {};
+	if(!obj.shapes) return;
+	if(!obj.name) obj.name = "svg-graphics-button";
+
+	// if no width/height provided, use default
+	if(!obj.width) obj.width = 150;
+	if(!obj.height) obj.height = 44;
+
+	// force foreground color based on UI theme?
+	if(obj.simpleImage)
+	{
+		if(!obj.hexValue)
+		{
+			obj.hexValue = "#00000000"; // transparent background
+		}
+
+		if(!obj.textHexValue)
+		{
+			obj.textHexValue = JSUI.backgroundColor[0] > 0.4 ? "#3f3f3f" : "#c6c8c8";
+		}
+	}
+		
+	if(!obj.hexValue) obj.hexValue = "#0F67D2"; // "#0F67D280" 50% opacity blue
+	if(!obj.textHexValue) obj.textHexValue = "#ffffff";
+	if(!obj.hoverValue) obj.hoverValue = "#46A0F5";
+	if(!obj.downValue) obj.downValue = "#000000";
+
+	// pre-process color objects
+	var btnBackgroundRGB = JSUI.hexToRGB(obj.hexValue);
+	var btnIconRGB = JSUI.hexToRGB(obj.textHexValue);
+	var btnBackgroundHoverRGB = JSUI.hexToRGB(obj.hoverValue);
+	var btnIconDownRGB = JSUI.hexToRGB(obj.downValue);
+
+	// must use container as a workaround for updating graphics
+    var containerGroup = this.add('group');
+	containerGroup.margins = 0;
+    containerGroup.alignment = ['fill', 'fill'];
+    containerGroup.alignChildren = ['fill', 'fill'];
+
+    var c = containerGroup.add('iconbutton', undefined, undefined, { name: obj.name, style: 'toolbutton'});
+	if(obj.helpTip) c.helpTip = obj.helpTip;
+
+    c.size = [ obj.width, obj.height ];
+    c.artSize = [ obj.width, obj.height ];
+    c.fillBrush = c.graphics.newBrush( c.graphics.BrushType.SOLID_COLOR, btnBackgroundRGB ); // allows transparency value between 0.0 and 1.0
+	// c.text = obj.text != undefined ? obj.text : "";
+	// if(c.text)
+	// {
+	// 	c.textPen = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR, btnIconRGB, 1);
+	// }
+	c.onDraw = _customDraw;
+
+    function _coordsFromSvgPolygons(vecCoord) {
+		var points = [];
+		var n;
+		for (var i = 0; i < vecCoord.length; i++)
+		{
+			var numbersArr = (typeof vecCoord[i] == "string") ? vecCoord[i].split(/[\s]/) : vecCoord[i].toString().split(",");
+			var coords = [];
+			var sets = [];
+			for (var k = 0; k < numbersArr.length; k += 2)
+			{
+				sets.push(numbersArr[k] + "," + numbersArr[k + 1]);
+			}
+			for (var j = 0; j < sets.length; j++)
+			{
+				n = sets[j].split(",");
+				coords[j] = n;
+				coords[j][0] = (parseFloat(coords[j][0]));
+				coords[j][1] = (parseFloat(coords[j][1]));
+			}
+			points.push(coords);
+		}
+		return points;
+	}
+
+    function _customDraw()
+	{ 
+		with( this )
+		{
+			graphics.drawOSControl();
+			graphics.rectPath( 0, 0, size[0], size[1]);
+			var fillBrush = this.graphics.newBrush(this.graphics.BrushType.SOLID_COLOR, btnBackgroundRGB);
+
+			graphics.fillPath( fillBrush );
+			if($.level) $.writeln("");
+            try {
+                for (var i = 0; i < obj.shapes.length; i++)
+				{
+                    var line = obj.shapes[i];
+                    graphics.newPath();
+				
+					var x = line[0][0];
+                    var y = line[0][1];
+
+                    graphics.moveTo(x + (size[0] / 2 - artSize[0] / 2), y + (size[1] / 2 - artSize[1] / 2));
+
+					for (var j = 0; j < line.length; j += 2) {
+                        var x = line[j][0];
+                        var y = line[j][1];
+
+                        // if($.level) $.writeln("x:" + x + "  y:" + y );
+                        graphics.lineTo(x + (size[0] / 2 - artSize[0] / 2), y + (size[1] / 2 - artSize[1] / 2));
+                    }
+ 					graphics.fillPath( fillBrush );
+                    
+                }
+				// if(!text) if($.level) $.writeln("no text to draw!");
+				// if(text)
+				// {
+				// 	if($.level) $.writeln("drawing string: " + text);
+				// 	var strSize = graphics.measureString(text, graphics.font, size[0]);
+				// 	var strW = strSize[0]; 
+				// 	var strH = strSize[1]; 
+				// 	graphics.drawString(
+				// 		text,
+				// 		textPen,
+				// 		(size[0] - strW) / 2,
+				// 		// (size[1] - strH) / 1.75,
+				// 		(size[1] - strH) / 2,
+				// 		graphics.font);
+				// }
+
+            } catch (e) {
+                if($.level)
+                {
+                    $.writeln( "customDraw - " + e );
+                }
+            }
+		}
+	}
+	
+	function _drawVectors()
+	{
+		this.graphics.drawOSControl();
+		this.graphics.rectPath(0, 0, this.size[0], this.size[1]);
+		this.graphics.fillPath(this.graphics.newBrush(this.graphics.BrushType.SOLID_COLOR, this.backgroundColor));
+		try
+		{
+			for (var i = 0; i < this.coord.length; i++)
+			{
+				var line = this.coord[i];
+				this.graphics.newPath();
+				this.graphics.moveTo(line[0][0] + (this.size[0] / 2 - this.artSize[0] / 2), line[0][1] + (this.size[1] / 2 - this.artSize[1] / 2));
+				for (var j = 0; j < line.length; j++)
+				{
+					this.graphics.lineTo(line[j][0] + (this.size[0] / 2 - this.artSize[0] / 2), line[j][1] + (this.size[1] / 2 - this.artSize[1] / 2));
+				}
+				this.graphics.fillPath(this.graphics.newBrush(this.graphics.BrushType.SOLID_COLOR, this.iconColor));
+			}
+
+			// if(this.iconText)
+			// {
+			// 	if($.level) $.writeln("drawing string: " + text);
+			// 	var strSize = this.graphics.measureString(text, this.graphics.font, size[0]);
+			// 	var strW = strSize[0]; 
+			// 	var strH = strSize[1]; 
+			// 	this.graphics.drawString(
+			// 		text,
+			// 		this.textPen,
+			// 		(size[0] - strW) / 2,
+			// 		// (size[1] - strH) / 1.75,
+			// 		(size[1] - strH) / 2,
+			// 		this.graphics.font);
+			// }
+		}
+		catch (e)
+		{
+			if($.level)
+			{
+				// $.writeln("_drawVectors error:\n\n" + e );
+			}
+		}
+	}
+
+    function _addVectorButton(parentObj, iconVec, size, staticColor, hoverColor, downColor, text) {
+		var btn = parentObj.add("button", [0, 0, size[0], size[1], undefined]);
+
+		// sanitize coords once, then reuse
+		iconVec = _coordsFromSvgPolygons(iconVec);
+
+			btn.coord = iconVec;
+			btn.iconColor = staticColor;
+			btn.iconText = text;
+			btn.backgroundColor = btnBackgroundRGB;
+			// btn.textPen = btn.graphics.newPen (btn.graphics.PenType.SOLID_COLOR, staticColor, 1);
+			btn.artSize = size;
+			btn.onDraw = _customDraw;
+
+        if (hoverColor && !obj.simpleImage)
+		{
+    		try
+			{
+    			btn.addEventListener("mouseover", function() { _updateVectorButtonOnHover(this, iconVec, hoverColor, btnBackgroundHoverRGB, size); });
+    			btn.addEventListener("mouseout", function() { _updateVectorButtonOnHover(this, iconVec, staticColor, btnBackgroundRGB, size); });
+    			btn.addEventListener("mousedown", function() { _updateVectorButtonOnHover(this, iconVec, downColor, staticColor, size); });
+    		}
+    		catch(e)
+			{
+
+    		}
+        }
+
+		// if(text)
+		// {
+		// 	if($.level) $.writeln("drawing string: " + text);
+		// 	var strSize = btn.graphics.measureString(text, btn.graphics.font, size[0]);
+		// 	var strW = strSize[0]; 
+		// 	var strH = strSize[1]; 
+		// 	btn.graphics.drawString(
+		// 		text,
+		// 		// btn.iconText,
+		// 		btn.textPen,
+		// 		(size[0] - strW) / 2,
+		// 		// (size[1] - strH) / 1.75,
+		// 		(size[1] - strH) / 2,
+		// 		btn.graphics.font);
+		// }
+
+        // btn.onDraw();
+        _updateVectorButtonOnHover(btn, iconVec, staticColor, btnBackgroundRGB, size, text);
+		return btn;
+	}
+
+	function _updateVectorButtonOnHover(btn, iconVec, iconColor, backgroundColor, size, text)
+	{
+		btn.coord = iconVec;
+		btn.iconColor = iconColor;
+		btn.iconText = text;
+		btn.backgroundColor = backgroundColor;
+		btn.artSize = size;
+		btn.onDraw = _drawVectors;
+		return btn;
+	}
+
+    c.updateGraphics = function(container)
+    {
+		if (container.children.length > 0)
+		{
+			if(container.children[container.children.length-1] == c)
+			{
+				container.remove(container.children[container.children.length-1]);
+				// if($.level) $.writeln("control refreshed!");
+
+				// replace existing button with updated version
+				c = _addVectorButton(container, obj.shapes, [obj.width, obj.height], btnIconRGB, btnIconRGB, btnIconDownRGB, obj.text);
+				if(obj.helpTip) c.helpTip = obj.helpTip;
+				c.onClick = function()
+				{
+					if(obj.onClickFunction != undefined)
+					{
+						obj.onClickFunction();
+					}
+				}
+			}
+		}
+    }
+
+    c.updateGraphics(containerGroup);
+
+    return c;
+}
 
 
 // "Call to action" button with custom colors
@@ -4025,6 +4360,12 @@ Object.prototype.addImage = function(obj)
 		c.preferredSize.width = 100;
 		c.preferredSize.height = 100;
 		return c;
+	}
+
+	// if obj.shapes provided, bypass and get 
+	if(obj.shapes)
+	{
+		return this.addVectorGraphics( obj );
 	}
 
 	// var scriptUIstates = JSUI.getScriptUIStates( obj );
@@ -6791,14 +7132,28 @@ JSUI.randomizeRGBColor = function( hexStr, rangeFloat )
 
 // get array of normalized values from hex string
 // "#f760e3" becomes [0.96862745098039,0.37647058823529,0.89019607843137,1];
+
+// JSUI.hexToRGB = function (hex)
+// {
+// 	var color = hex.trim().replace('#', '');
+// 	var r = parseInt(color.slice(0, 2), 16) / 255;
+// 	var g = parseInt(color.slice(2, 4), 16) / 255;
+// 	var b = parseInt(color.slice(4, 6), 16) / 255;
+// 	return [r, g, b, 1];
+// };
+
 JSUI.hexToRGB = function (hex)
 {
+	if(hex instanceof Array) return hex;
 	var color = hex.trim().replace('#', '');
 	var r = parseInt(color.slice(0, 2), 16) / 255;
 	var g = parseInt(color.slice(2, 4), 16) / 255;
 	var b = parseInt(color.slice(4, 6), 16) / 255;
-	return [r, g, b, 1];
+	var a = 1.0;
+	if(color.length == 8) a = parseInt(color.slice(6, 8), 16) / 255;
+	return [r, g, b, a];
 };
+
 
 // hex string to Photoshop/Illustrator color object
 JSUI.hexToRGBobj = function ( hexStr )
