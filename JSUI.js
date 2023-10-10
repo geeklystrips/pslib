@@ -59,13 +59,13 @@
 	writeIniFile 
 */
 
-/* persistent namespace	*/
+// persistent namespace
 if(typeof JSUI !== "object")
 {
 	JSUI = {}; 
 }
 
-/* version	*/
+// version
 JSUI.version = "0.983";
 
 // do some of the stuff differently depending on $.level and software version
@@ -79,7 +79,7 @@ JSUI.isAfterEffects = app.name == "Adobe AfterEffects";
 JSUI.isCS6 = JSUI.isPhotoshop ? app.version.match(/^13\./) != null : false; // photoshop-specific
 JSUI.is2020andAbove = JSUI.isPhotoshop ? (parseInt(app.version.match(/^\d.\./)) >= 21) : (parseInt(app.version.match(/^\d.\./)) >= 24); 
 
-/*	 system properties	*/
+//	 system properties
 JSUI.isWindows = $.os.match(/windows/i) == "Windows";
 JSUI.isWin7 = $.os.match(/windows/i) == "Windows" ? $.os.match(" 6.1 Service Pack ") != null : false;
 JSUI.isWin10 = $.os.match(/windows/i) == "Windows" ? $.os.match(" 6.2 Service Pack ") != null : false;
@@ -88,21 +88,21 @@ JSUI.is_x64 = JSUI.isWindows ? BridgeTalk.appVersion.match(/\d\d$/) == '64' : tr
 JSUI.TOOLNAME = "DEFAULTNAME";
 JSUI.TOOLDISPLAYNAME = JSUI.TOOLNAME;
 
-/*	This kind of data is frequently stored in ~/Library/Application Support.
-	User-specific settings are frequently stored in ~/Library/Preferences
-	Folder.appData = global, system preferences on OSX. Depending on user rights, applications might have trouble writing to this location.	
-	Folder.userData = roaming data
+// 	This kind of data is frequently stored in ~/Library/Application Support.
+// 	User-specific settings are frequently stored in ~/Library/Preferences
+// 	Folder.appData = global, system preferences on OSX. Depending on user rights, applications might have trouble writing to this location.	
+// 	Folder.userData = roaming data
 	
-JSUI.USERPREFSFOLDER = (JSUI.isWindows ? Folder.appData : "~/Library/Application Support");
-JSUI.USERPREFSFOLDER = (JSUI.isWindows ? Folder.userData : "~/Library/Application Support");
+// JSUI.USERPREFSFOLDER = (JSUI.isWindows ? Folder.appData : "~/Library/Application Support");
+// JSUI.USERPREFSFOLDER = (JSUI.isWindows ? Folder.userData : "~/Library/Application Support");
 
-// OSX user library:			/Users/username/Library/Application Support
-var userData = prompt("Folder.userData value:", userData.fsName);
+// // OSX user library:			/Users/username/Library/Application Support
+// var userData = prompt("Folder.userData value:", userData.fsName);
 
-// OSX system library		  /Library/Application Support
-//~ var appData = prompt("Folder.appData value:", appData.fsName);
+// // OSX system library		  /Library/Application Support
+// //~ var appData = prompt("Folder.appData value:", appData.fsName);
 
-	*/
+	
 //~ JSUI.USERPREFSFOLDER = (JSUI.isWindows ? "~" : "~/Library/Application Support");
 
 JSUI.USERPREFSFOLDER = Folder.userData;
@@ -186,11 +186,11 @@ JSUI.populateXML = function()
 	return JSUI.XMLFILE.exists;
 };
 
-/* INI prefs framework	*/
+// INI prefs framework
 JSUI.PREFS = {};
 JSUI.status = { progress: 0, percent: "0%", message: "" };
 
-/*  Layout and graphics  */
+//  Layout and graphics 
 JSUI.SPACING = (JSUI.isWindows ? 3 : 1); // results will vary depending on OS and version of Adobe software
 JSUI.DEFAULTEDITTEXTCHARLENGTH = 35;
 JSUI.DEFAULTEDITTEXTWIDTH = 300; // problematic if edittext is in container with alignChildren set to "fill"
@@ -212,8 +212,8 @@ JSUI.backgroundColor = [0.3255, 0.3255, 0.3255];
 
 JSUI.anchorRef = JSUI.isPhotoshop ? AnchorPosition.MIDDLECENTER : 5;
 
-/* failsafe for cases where the UI framework is used without a debugTxt dialog component	
- if this variable is not replaced, calls by regular functions to modify its state should not cause problems	*/
+// failsafe for cases where the UI framework is used without a debugTxt dialog component	
+// if this variable is not replaced, calls by regular functions to modify its state should not cause problems
 var debugTxt = {};
 
 JSUI.getScriptFile = function()
@@ -222,7 +222,7 @@ JSUI.getScriptFile = function()
 	return new File(path);
 };
 
-/* these functions return specs relative to JSUI.js (unless included files are flattened)	*/
+// these functions return specs relative to JSUI.js (unless included files are flattened)
 JSUI.getScriptFolder = function()
 {
 	var script = JSUI.getScriptFile();
@@ -237,9 +237,9 @@ JSUI.getScriptFileName = function()
 	return (f ? f.absoluteURI : '');
 };
 
-/*
- these should also use encodeURI/decodeURI
- convert URL to URI	"C:\\Program Files\\Adobe" becomes "file:///C|/Program%20Files/Adobe" */
+
+//  these should also use encodeURI/decodeURI
+//  convert URL to URI	"C:\\Program Files\\Adobe" becomes "file:///C|/Program%20Files/Adobe" 
 JSUI.url2uri = function(url) 
 {
 	var uri = url.toString().replace(":", "|");
@@ -249,7 +249,7 @@ JSUI.url2uri = function(url)
 	return uri;
 };
 
-/* convert URI to URL	"file:///C:/Program%20Files/Adobe" becomes "C:\Program Files\Adobe"	*/
+// convert URI to URL	"file:///C:/Program%20Files/Adobe" becomes "C:\Program Files\Adobe"
 JSUI.uri2url = function(uri) 
 {
 	var url = uri.toString().substring(8);
@@ -259,7 +259,7 @@ JSUI.uri2url = function(uri)
 	return url;
 };
 
-/* convert file system name to URI	"C:\Program Files\Adobe" becomes "c/Program Files/Adobe"	*/
+// convert file system name to URI	"C:\Program Files\Adobe" becomes "c/Program Files/Adobe"
 JSUI.fsname2uri = function(fsname) 
 {
 	var uri = fsname;
@@ -273,7 +273,7 @@ JSUI.fsname2uri = function(fsname)
 	return uri;
 };
 
-/* convert URI name to file system name	"c/Program Files/Adobe" becomes "C:\Program Files\Adobe"	*/
+// convert URI name to file system name	"c/Program Files/Adobe" becomes "C:\Program Files\Adobe"
 JSUI.uri2fsname = function(uri) 
 {
 	if(uri instanceof Folder) var fsname = new Folder(uri);
@@ -336,7 +336,7 @@ JSUI.launchURL = function(url)
 };
 
 
-/* print object properties to javascript console	*/
+// print object properties to javascript console	
 JSUI.reflectProperties = function(obj, msg)
 {
 	if(msg && $.level)
@@ -348,7 +348,7 @@ JSUI.reflectProperties = function(obj, msg)
 	
 	var props = obj.reflect.properties;
 	
-	/*Loop through object's properties	*/
+	// Loop through object's properties	
 	for (var i in props)
 	{
 		var val = props[i];
@@ -364,7 +364,7 @@ JSUI.reflectProperties = function(obj, msg)
 	return str;
 };
 
-/* UI debug function (with ExtendScript Toolkit only)	*/
+// UI debug function (with ExtendScript Toolkit only)
 JSUI.debug = function(str, textfield)
 {
 	if($.level)
@@ -429,20 +429,22 @@ JSUI.status.increment = function( num, absolute )
 	}
 };
 
-/* glyph to unicode	*/
+// glyph to unicode
 JSUI.getUnicode = function(str)
 {
 	var c = null;
 	if(str != "" && str != null)
 	{
-		c = str.charCodeAt(0); /*	 "@" becomes 64 (number)	*/
-		c = c.toString(16).toUpperCase();  /* 64 becomes "40" (number converted to string with base 16)	*/
-		c = JSUI.zeropad(c);
+		c = str.charCodeAt(0); //	 "@" becomes 64 (number)	
+		c = c.toString(16).toUpperCase();  // 64 becomes "40" (number converted to string with base 16)
+		// c = JSUI.zeropad(c);
+		c = c.zeroPad(4);
+		
 	}
 	return c;
-};
+}
 
-/* unicode to glyph	*/
+// unicode to glyph
 JSUI.getChar = function(num)
 {
 	var str = null;
@@ -451,14 +453,15 @@ JSUI.getChar = function(num)
 		str = String.fromCharCode(num);
 	}
 	return str;
-};
+}
 
 // pads numbers that don't have a minimum of 4 digits
 JSUI.zeropad = function(str)
 {
 	//  padding string with zeroes	
-	return (str.length < 2 ? "000" + str :  (str.length < 3 ? "00" + str : (str.length < 4 ? "0" + str : (str) ) ) ); // 40 becomes "0040"
-};
+	// return (str.length < 2 ? "000" + str :  (str.length < 3 ? "00" + str : (str.length < 4 ? "0" + str : (str) ) ) ); // 40 becomes "0040"
+	return str.zeroPad(4); // newer string method
+}
 
 // with help from Davide
 // *bows*
@@ -584,7 +587,7 @@ JSUI.createDialog = function( obj )
 
 	obj.palette = obj.palette != undefined ? obj.palette : false;
 
-	var dlg = new Window( obj.palette ? 'palette' : 'dialog', obj.title + obj.systemInfo + "" + obj.extraInfo, undefined, {closeButton:true/*, borderless:true*/});
+	var dlg = new Window( obj.palette ? 'palette' : 'dialog', obj.title + obj.systemInfo + "" + obj.extraInfo, undefined, { closeButton:true }); // borderless:true
 	if(JSUI.isPhotoshop && JSUI.isCS6 && JSUI.CS6styling) dlg.darkMode();
 
 	dlg.alignChildren = obj.alignChildren != undefined ? obj.alignChildren : "fill";
@@ -597,7 +600,7 @@ JSUI.createDialog = function( obj )
 	dlg.preferredSize.width = obj.width != undefined ? obj.width : 600;
 	dlg.preferredSize.height = obj.height != undefined ? obj.height : 200;
 
-	//var container = dlg.addRow( { alignChildren: "fill" /*margins: obj.margins ? obj.margins : 15, spacing: obj.spacing != undefined ? obj.spacing : 20 */ } );
+	//var container = dlg.addRow( { alignChildren: "fill" } ); //  margins: obj.margins ? obj.margins : 15, spacing: obj.spacing != undefined ? obj.spacing : 20
 	var img = null;
 	var imageSize = null;
 
