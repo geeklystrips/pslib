@@ -2261,7 +2261,7 @@ Object.prototype.addRadioButton = function(propName, obj)
 	c.update = function()
 	{
 		c.value = JSUI.PREFS[propName];
-	};
+	}
 	
 	return c;
 };
@@ -3527,6 +3527,39 @@ Object.prototype.addVectorGraphics = function ( obj )
 	return this.addVectorGraphicsButton( obj );
 }
 
+// clickable url button
+Object.prototype.addUrlButton = function ( obj )
+{
+    if(!obj) obj = {};
+	if(!obj.url) return;
+	if(!obj.shapes)
+	{
+		obj.shapes = [ "20.5 23.5 37.5 23.5 37.5 49.5 48.5 49.5 48.5 55.5 18.5 55.5 18.5 49.5 28.5 49.5 28.5 30.5 20.5 30.5 20.5 23.5", "28.5 7.5 33 7.5 37.5 7.5 37.5 12.5 37.5 17.5 33 17.5 28.5 17.5 28.5 12.5 28.5 7.5" ];
+		obj.width = 64;
+		obj.height = 64;
+	}
+	if(!obj.name) obj.name = "svg-graphics-url-button";
+
+	if(!obj.hexValue)
+	{
+		// obj.hexValue = "#00000000"; // transparent background
+		obj.hexValue = "#0F67D200";
+	}
+
+	if(!obj.textHexValue)
+	{
+		obj.textHexValue = JSUI.backgroundColor[0] > 0.5 ? "#3f3f3f" : "#c6c8c8";
+	}
+
+	if(!obj.hoverValue)
+	{
+		obj.hoverValue = JSUI.backgroundColor[0] > 0.5 ? "#ffffff80" : "#00000080";
+	}
+
+
+	return this.addVectorGraphicsButton( obj );
+}
+
 Object.prototype.addVectorGraphicsButton = function ( obj )
 {
     if(!obj) obj = {};
@@ -3547,16 +3580,17 @@ Object.prototype.addVectorGraphicsButton = function ( obj )
 
 		if(!obj.textHexValue)
 		{
-			obj.textHexValue = JSUI.backgroundColor[0] > 0.4 ? "#3f3f3f" : "#c6c8c8";
+			obj.textHexValue = JSUI.backgroundColor[0] > 0.5 ? "#3f3f3f" : "#c6c8c8";
 		}
 	}
-		
+	
+	// "call to action" blue button scheme
 	if(!obj.hexValue) obj.hexValue = "#0F67D2"; // "#0F67D280" 50% opacity blue
 	if(!obj.textHexValue) obj.textHexValue = "#ffffff";
 	if(!obj.hoverValue) obj.hoverValue = "#46A0F5";
 	if(!obj.downValue) obj.downValue = "#000000";
 
-	// pre-process color objects
+	// pre-process color object arrays
 	var btnBackgroundRGB = JSUI.hexToRGB(obj.hexValue);
 	var btnIconRGB = JSUI.hexToRGB(obj.textHexValue);
 	var btnBackgroundHoverRGB = JSUI.hexToRGB(obj.hoverValue);
@@ -3565,8 +3599,11 @@ Object.prototype.addVectorGraphicsButton = function ( obj )
 	// must use container as a workaround for updating graphics
     var containerGroup = this.add('group');
 	containerGroup.margins = 0;
+	containerGroup.preferredSize.width = obj.width;
+    containerGroup.preferredSize.height = obj.height;
     containerGroup.alignment = ['fill', 'fill'];
-    containerGroup.alignChildren = ['fill', 'fill'];
+    // containerGroup.alignChildren = ['fill', 'fill'];
+    containerGroup.alignChildren = ['center', 'center'];
 
     var c = containerGroup.add('iconbutton', undefined, undefined, { name: obj.name, style: 'toolbutton'});
 	if(obj.helpTip) c.helpTip = obj.helpTip;
@@ -3712,7 +3749,7 @@ Object.prototype.addVectorGraphicsButton = function ( obj )
 
 			btn.coord = iconVec;
 			btn.iconColor = staticColor;
-			btn.iconText = text;
+			// btn.iconText = text;
 			btn.backgroundColor = btnBackgroundRGB;
 			// btn.textPen = btn.graphics.newPen (btn.graphics.PenType.SOLID_COLOR, staticColor, 1);
 			btn.artSize = size;
@@ -3757,7 +3794,7 @@ Object.prototype.addVectorGraphicsButton = function ( obj )
 	{
 		btn.coord = iconVec;
 		btn.iconColor = iconColor;
-		btn.iconText = text;
+		// btn.iconText = text;
 		btn.backgroundColor = backgroundColor;
 		btn.artSize = size;
 		btn.onDraw = _drawVectors;
@@ -3776,11 +3813,18 @@ Object.prototype.addVectorGraphicsButton = function ( obj )
 				// replace existing button with updated version
 				c = _addVectorButton(container, obj.shapes, [obj.width, obj.height], btnIconRGB, btnIconRGB, btnIconDownRGB, obj.text);
 				if(obj.helpTip) c.helpTip = obj.helpTip;
+				else if(obj.url) c.helpTip = obj.url;
+
 				c.onClick = function()
 				{
+					// defined onClickFunction has priority
 					if(obj.onClickFunction != undefined)
 					{
 						obj.onClickFunction();
+					}
+					else if(obj.url)
+					{
+						JSUI.launchURL(obj.url);
 					}
 				}
 			}
