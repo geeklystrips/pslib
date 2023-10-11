@@ -2507,11 +2507,13 @@ Pslib.getDocTextLayers = function( xmp )
         return biDimArr;
     }
     
+// *** need a property name converter routine 
 
     // // get advanced properties + 
     // var packageObj = { 
     //     tags,                               // expected: bidimensional array
-    //     itemNameStr,                         // name of the placeholder item name, default "#"
+	// 	   converter,						   // converter for tag names
+    //     itemNameStr,                        // name of the placeholder item name, default "#"
     //     sidecarDocXmp: true,                // sidecarDocXmp: saves sidecar XMP file next to source document (debug/review) 
     //     sidecarPackageXmp: true,            // sidecarPackageXmp: saves sidecar XMP for packaged document
     //     assetsJsonFile: true,               // assetsJsonFile: saves JSON file along (debug/review)
@@ -2616,7 +2618,8 @@ Pslib.packageDocument = function( obj )
                 // select artboard by id
                 var artboard = Pslib.selectLayerByID( asset.id, false );
                 tags = Pslib.getXmpProperties(artboard, obj.tags, obj.namespace);
-                JSUI.quickLog(tags);
+
+                // JSUI.quickLog(tags);
             }
             else if(Pslib.isIllustrator)
             {
@@ -2631,6 +2634,23 @@ Pslib.packageDocument = function( obj )
                     tags = Pslib.getTags(placeholder, obj.tags);
                 }
             }
+
+			// convert tag names here
+
+			// swap property names when found in bidimensional/tridimensional array
+			// affects first item for each set, a third item is allowed, may be useful for presentation purposes
+			//
+			// var originalArr = [ [ "source", "~/file.psd"], [ "range", "1-8"], [ "destination", "./images"] ];
+			// var converterArr = [ [ "source", "gitUrl" ], [ "destination", "relativeExportLocation" ] ]; 
+			// var newArr =  originalArr.convertTags(converterArr); // yields [ [ "gitUrl", "~/file.psd"], [ "range", "1-8"], [ "relativeExportLocation", "./images"] ];
+			//
+			// then convert back with reversed flag, and content should match precisely
+			// var reconvertedArr = newArr.convertTags(converterArr, true); // yields [ [ "source", "~/file.psd"], [ "range", "1-8"], [ "destination", "./images"] ]
+
+			if(obj.converter)
+			{
+				tags = tags.convertTags(converter);
+			}
 
             //  inject tags into individual asset object
             if(tags)
@@ -2649,7 +2669,6 @@ Pslib.packageDocument = function( obj )
                     }
                 }
             }
-
         }
 
         // restore selection
@@ -2700,7 +2719,6 @@ Pslib.packageDocument = function( obj )
         {
             jsonFile = new File( assetsUri + "/" + docNameNoExt + ".json"); // goes to -assets
             // jsonFile = new File( xmpFileLocation + "/" + docNameNoExt + ".xmp"); // xmp is created next to source document
-    
         }
 
         var jsonStr = JSON.stringify(jsonAssetsObjArr, null, "\t");
@@ -2796,6 +2814,8 @@ Pslib.packageDocument = function( obj )
             for(var a = 0; a < obj.tags.length; a++)
             {
                 var kname = obj.tags[a][0];
+				// EXCEPT if property name is already part of the tags array
+				if(kname == "id" || kname == "name" || kname == "page") continue;
                 var kvalue = ab[kname];
                 if(kvalue != undefined) contentStr += ","+kname+":"+kvalue;
             }
@@ -2820,29 +2840,6 @@ Pslib.packageDocument = function( obj )
             //    <rdf:value>id:{int as string},name:{string},width:{int as string},height:{int as string},x:{int as string},y:{int as string}</rdf:value>
             //    <prefix:qualifier>Tag_A</prefix:qualifier>
             // </rdf:li>
-
-            //
-            //
-            // hardcoded for synchronization purposes:
-            // var qName = "assetName";
-            // var qValue = ab.name;
-            // if(qValue != undefined)
-            // {
-            //     newXmp.setQualifier(obj.namespace, obj.propertyName+'['+(j+1)+']', obj.qualifiersNamespace, qName, qValue);
-            //     if($.level) $.writeln( "      <"+obj.qualifiersNamespacePrefix+qName+">"+qValue+"</"+obj.qualifiersNamespacePrefix+qName+">" );
-            // }
-
-            // // var contentStr = "id:"+ab.id+","+( Pslib.isIllustrator ? "page:"+(ab.id+1)+"," : "" )+"name:"+ab.name;
-            // var qName = "assetArtboardID";
-            // var qValue = ab.id;
-            // if(qValue != undefined)
-            // {
-            //     newXmp.setQualifier(obj.namespace, obj.propertyName+'['+(j+1)+']', obj.qualifiersNamespace, qName, qValue);
-            //     if($.level) $.writeln( "      <"+obj.qualifiersNamespacePrefix+qName+">"+qValue+"</"+obj.qualifiersNamespacePrefix+qName+">" );
-            // }
-            //
-            //
-            //
             
            // obj.tags only contains custom tag names, no values
            for(var t = 0; t < obj.tags.length; t++)
@@ -2853,7 +2850,6 @@ Pslib.packageDocument = function( obj )
                var tvalue = ab[tqualifier]; // get values from artboard coords object
                if(tvalue != undefined)
                {
-                    // important: obj.dedicatedNamespace is the same as the default namespace by default, but may have been defined as something else
                     newXmp.setQualifier(obj.namespace, obj.propertyName+'['+(j+1)+']', obj.qualifiersNamespace, tqualifier, tvalue);
                     if($.level) $.writeln( "      <"+obj.qualifiersNamespacePrefix+tqualifier+">"+tvalue+"</"+obj.qualifiersNamespacePrefix+tqualifier+">" );
                }
@@ -5068,25 +5064,39 @@ Pslib.getMipsCount = function(coords, multNum)
 	return mCount;
 }
 
-// also needs function to reverse process (halve artboard size?)
+// reverse process
 Pslib.removeMipsLayout = function()
 {
-	Pslib.resizeArtboardHalfWidth( undefined, true );
+	if(!app.documents.length) return false;
 
-	var placeholder = Pslib.getArtboardItem();
-	if(placeholder)
+	var resized = Pslib.resizeArtboardHalfWidth( undefined, true );
+	var untagged = false;
+
+	if(Pslib.isIllustrator)
 	{
-		Pslib.removeTags( placeholder, ["customMips"] );
+		var placeholder = Pslib.getArtboardItem();
+		if(placeholder)
+		{
+			Pslib.removeTags( placeholder, ["customMips"] );
+			untagged = true;
+		}
 	}
+	else if(Pslib.isPhotoshop)
+	{
+
+	}
+
+	return resized && untagged;
 }
 
 // duplicate artboard artwork, prepare for manually optimized pixel art
-Pslib.createMipsLayout = function(scaleStylesBool, resizeArtboardBool, silentBool, multNum)
+Pslib.createMipsLayout = function(scaleStylesBool, resizeArtboardBool, silentBool, multNum, hex)
 {
 	if(!app.documents.length) return false;
 	if(resizeArtboardBool == undefined) resizeArtboardBool = false;
 	if(silentBool == undefined) silentBool = false;
 	if(multNum == undefined) multNum = 4;
+	if(hex == undefined) hex = "transparent";
 
 	var doc = app.activeDocument;
 	var artboard = Pslib.getActiveArtboard(); 
@@ -5121,7 +5131,7 @@ Pslib.createMipsLayout = function(scaleStylesBool, resizeArtboardBool, silentBoo
 			var layer;
 			try{ layer = doc.layers.getByName("Placeholders"); }
 			catch(e){}
-            var rectObj = { artboard: artboard, name: "#", tags: [ ["name", artboard.name], ["index", indexNum], ["page", pageNum], ["assetID", ""] ], hex: undefined, opacity: undefined, layer: layer, sendToBack: true };
+            var rectObj = { artboard: artboard, name: "#", hex: hex, tags: [ ["name", artboard.name], ["index", indexNum], ["page", pageNum], ["assetID", ""] ], hex: undefined, opacity: undefined, layer: layer, sendToBack: true };
             var placeholder = Pslib.addArtboardRectangle( rectObj );
  
             doc.selection = placeholder;
@@ -7685,7 +7695,7 @@ Pslib.addArtboardRectangle = function ( obj )
 		obj = { hex: obj };
 	}
 
-	if(obj.hex == undefined) obj.hex = "880088";
+	if(obj.hex == undefined) obj.hex = "transparent";
 
 	// then validate that hex string has six digits, override if needed
 	if(typeof obj.hex == "string")
@@ -7746,6 +7756,7 @@ Pslib.addArtboardRectangle = function ( obj )
 		}
 
 		rectangle.fillColor = colorObj;
+		rectangle.name = obj.name;
 	
 		if(obj.tags)
 		{
@@ -7849,6 +7860,7 @@ Pslib.addArtboardRectangle = function ( obj )
 		if(!rectangle)
 		{
 			rectangle = Pslib.addRectangle( obj );
+			rectangle.name = obj.name;
 			created = true;
 		}
 		else
