@@ -66,7 +66,7 @@ if(typeof JSUI !== "object")
 }
 
 // version
-JSUI.version = "0.983";
+JSUI.version = "0.984";
 
 // do some of the stuff differently depending on $.level and software version
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -3852,6 +3852,12 @@ Object.prototype.addCustomButton = function( obj )
 	if(!obj.height) obj.height = 32;
 	if(!obj.label) obj.label = "Close";
 
+	if(obj.hexValue == undefined) obj.hexValue = "#1473e6"; // static
+    if(obj.hoverValue == undefined) obj.hoverValue = "#0d66d0";
+    if(obj.downValue == undefined) obj.downValue = "#000000";
+
+    if(obj.textHexValue == undefined) obj.textHexValue = "#ffffff";
+
 	function _drawTextString()
 	{
 		this.graphics.drawOSControl();
@@ -3891,16 +3897,8 @@ Object.prototype.addCustomButton = function( obj )
 	if(obj.helpTip) c.helpTip = obj.helpTip;
 	if(obj.disabled) c.enabled = !obj.disabled;
 
-
     if(obj.width) c.preferredSize.width = obj.width;
     if(obj.height) c.preferredSize.height = obj.height;
-
-    // if(!obj.label) obj.label = "Close";
-    if(obj.hexValue == undefined) obj.hexValue = "#1473e6"; // static
-    if(obj.hoverValue == undefined) obj.hoverValue = "#0d66d0";
-    if(obj.downValue == undefined) obj.downValue = "#000000";
-
-    if(obj.textHexValue == undefined) obj.textHexValue = "#ffffff";
 
     c.fillBrush = c.graphics.newBrush(c.graphics.BrushType.SOLID_COLOR, JSUI.hexToRGB(obj.hexValue));
     c.text = obj.label;
@@ -5915,13 +5913,19 @@ JSUI.startTimer = function()
 	}
 }
 
-JSUI.stopTimer = function()
+JSUI.stopTimer = function( show )
 {
 	if(JSUI.allowTimers)
 	{
 		var durationSec = ($.hiresTimer * 0.000001);
 		var durationStr =  durationSec + " sec";
-		if($.level) $.writeln(" Duration: " + durationStr);
+		var msg = "Duration: " + durationStr;
+		if($.level) $.writeln(msg);
+		if(show)
+		{
+			JSUI.alert(msg);
+		}
+
 		return durationSec;
 	}
 }

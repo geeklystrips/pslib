@@ -131,7 +131,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version, used in tool window titles. Maybe.
-Pslib.version = 0.683;
+Pslib.version = 0.684;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -1319,6 +1319,93 @@ Pslib.clearNamespace = function (target, namespace, nsprefix)
 	Pslib.deleteXmpProperties(target, removePropArray, namespace ? namespace : Pslib.XMPNAMESPACE);
 };
 
+
+// namespace conversion
+Pslib.swapXmpNamespace = function( target, ns, prefix, newNs, newPrefix, silent )
+{
+    if(!app.documents.length) return;
+    if(!target) target = app.activeDocument;
+
+    // may have to eventually check for document filetype?
+    var xmp = Pslib.getXmp( target, false );
+
+    // dump namespace collection to string
+    // var namespaces = XMPMeta.dumpNamespaces();
+
+    // cheap version: directly replace tags from XMP string!
+    var allPreviousProperties = Pslib.getAllNsPropertiesArray(xmp, ns, false);
+    var allNewProperties = Pslib.getAllNsPropertiesArray(xmp, newNs, false);
+    // var allNewProperties = [];
+
+    // if nothing to convert, return as is
+    if(!allPreviousProperties.length)
+    {
+       if(!silent) JSUI.alert(ns + "\n\nNo properties belonging to this namespace were found.");
+        return xmp;
+    }
+
+    if(!allNewProperties.length)
+    {
+        // if array empty, proceed
+        var xmpStr = xmp.serialize();
+
+        var xmlnsDef = 'xmlns:'+prefix.replace(':', '')+'=\"'+ns+'\"';
+        var openingTag = '<'+prefix;
+        var closingTag = '</'+prefix;
+
+        var hasDefinition = (xmpStr.match(xmlnsDef) != null);
+        var hasOpeningTag = xmpStr.match(openingTag) != null;
+        var hasClosingTag = xmpStr.match(closingTag) != null;
+
+        if(hasDefinition)
+        {
+            var defMatch = new RegExp( xmlnsDef, 'g' );
+            xmpStr = xmpStr.replace(defMatch, 'xmlns:'+newPrefix.replace(':', '')+'=\"'+newNs+'\"');
+
+            if(hasOpeningTag && hasClosingTag)
+            {
+                var openingTagMatch = new RegExp( openingTag, 'g' );
+                xmpStr = xmpStr.replace(openingTagMatch, '<'+newPrefix);
+
+                var closingTagMatch = new RegExp( closingTag, 'g' );
+                xmpStr = xmpStr.replace(closingTagMatch, '</'+newPrefix);
+            }
+
+            // JSUI.quickLog(xmpStr);
+            xmp = new XMPMeta(xmpStr);
+            if(Pslib.isPhotoshop) target.xmpMetadata.rawData = xmp.serialize();
+            else if(Pslib.isIllustrator) target.XMPString = xmp.serialize();
+        }
+    }
+    else
+    {
+        if(!silent) JSUI.alert(newNs + "\n\nNamespace already present in target XMP.\nResolve any existing conflicts and try again.");
+        return xmp;
+    }
+    
+    // var allNsProperties = Pslib.getAllNsPropertiesArray(xmp, ns, false);
+    // JSUI.quickLog(allNsProperties);
+
+    // should also account for layer-based XMP
+
+        // check definitions
+
+        // check for collisions with root properties
+ 
+        // if any collision detected, show user?
+
+    // make sure to register new namespace
+        // XMPMeta.registerNamespace(newNs, newPrefix);
+
+
+    // safer version: get list of existing properties
+
+    // once done, delete original namespace
+    // XMPMeta.deleteNamespace (namespaceURI)
+
+    return xmp;
+}
+
 // save metadata to XML file
 Pslib.exportLayerMetadata = function (target, path, alertMsg)
 {
@@ -1327,24 +1414,24 @@ Pslib.exportLayerMetadata = function (target, path, alertMsg)
 		var xmp;
 		
 		// verify that xmp data is available
-		   try
-		   {
-			  xmp = Pslib.isIllustrator ? target.XMPString.toString() : target.xmpMetadata.rawData.toString();
+		try
+		{
+			xmp = Pslib.isIllustrator ? target.XMPString.toString() : target.xmpMetadata.rawData.toString();
 
-			if(alertMsg) alert(xmp);
-	
-		   }
-			catch(e)
-			{
-			   var msg = "";
-			   if(e.message.match("missing") != null)
-			   {	
-				   msg += "There doesn't seem to be any metadata attached to layer \"" + target.name + "\"";  
-				}
-				if($.level) $.writeln(msg + "\n" + e);
-				else alert(msg + "\n" + e);
-				return false;
-		   }
+		if(alertMsg) alert(xmp);
+
+		}
+		catch(e)
+		{
+			var msg = "";
+			if(e.message.match("missing") != null)
+			{	
+				msg += "There doesn't seem to be any metadata attached to layer \"" + target.name + "\"";  
+			}
+			if($.level) $.writeln(msg + "\n" + e);
+			else alert(msg + "\n" + e);
+			return false;
+		}
 	   
 		var path = path == undefined ? File.saveDialog() : path;
 		if(path != null)
@@ -2257,8 +2344,8 @@ Pslib.getDocTextLayers = function( xmp )
         if(!qualifiersArr) return;
     
         var arr = Pslib.getLeafNodesArr(xmp, ns, property, leafNs, qualifiersArr);
-		JSUI.quickLog(arr, "getLeafNodesArr");
-		return;
+		// JSUI.quickLog(arr, "getLeafNodesArr");
+		return arr;
 
         var objArr = [];
     
@@ -2635,18 +2722,7 @@ Pslib.packageDocument = function( obj )
                 }
             }
 
-			// convert tag names here
-
-			// swap property names when found in bidimensional/tridimensional array
-			// affects first item for each set, a third item is allowed, may be useful for presentation purposes
-			//
-			// var originalArr = [ [ "source", "~/file.psd"], [ "range", "1-8"], [ "destination", "./images"] ];
-			// var converterArr = [ [ "source", "gitUrl" ], [ "destination", "relativeExportLocation" ] ]; 
-			// var newArr =  originalArr.convertTags(converterArr); // yields [ [ "gitUrl", "~/file.psd"], [ "range", "1-8"], [ "relativeExportLocation", "./images"] ];
-			//
-			// then convert back with reversed flag, and content should match precisely
-			// var reconvertedArr = newArr.convertTags(converterArr, true); // yields [ [ "source", "~/file.psd"], [ "range", "1-8"], [ "destination", "./images"] ]
-
+			// convert tag names here if needed
 			if(obj.converter)
 			{
 				tags = tags.convertTags(converter);
@@ -2804,7 +2880,7 @@ Pslib.packageDocument = function( obj )
             var ab = jsonAssetsObjArr[j];
 
             // cheap version only meant for debugging 
-            var artboardNameStr = "Artboard" + ab.id.toString().zeroPad(3);
+            var artboardNameStr = "Artboard" + ab.id.toString().zeroPad( Pslib.isIllustrator ? 3 : 4); // illustrator has a limit of 1000 artboards (0-999)
             // basic stuff
             var contentStr = "id:"+ab.id+","+( Pslib.isIllustrator ? "page:"+(ab.id+1)+"," : "" )+"name:"+ab.name;
             // precise coordinates 
@@ -7927,7 +8003,7 @@ Pslib.addDocumentRectangle = function ( obj )
     if(!obj.opacity) obj.opacity = 50;
     if(!obj.name) obj.name = "Document_#";
 
-    var doc = activeDocument;
+    var doc = app.activeDocument;
 
     // color object: use native format 
     var colorObj;
@@ -7944,7 +8020,7 @@ Pslib.addDocumentRectangle = function ( obj )
     {
         rectangle = Pslib.addRectangle( obj );
 
-		rectangle = app.activeDocument.activeLayer;
+		rectangle = doc.activeLayer;
 		rectangle.name = obj.name;
 
 		if(obj.opacity != undefined) rectangle.opacity = obj.opacity;
@@ -7974,7 +8050,7 @@ Pslib.addDocumentRectangle = function ( obj )
 		}
     }
 
-    return rectangle
+    return rectangle;
 }
 
 
@@ -8322,7 +8398,7 @@ Pslib.deleteSelectedArtboardRectangles = function ( nameStr )
 {
 	if(!app.documents.length) return;
 	if(!nameStr) nameStr = "#";
-	var doc = activeDocument;
+	var doc = app.activeDocument;
 	var deleteCount = 0;
 
 	if(Pslib.isPhotoshop)
@@ -8352,6 +8428,234 @@ Pslib.deleteSelectedArtboardRectangles = function ( nameStr )
 		return deleteCount;
 	}
 }
+
+// add text item / rectangle background - target artboard or document geometry
+// 
+// var textObj = { text: "DOCUMENT", hex: "000000", background: true, entireDocument: true, backgroundHex: "FF0000", backgroundOpacity: 66 };
+// var textItem = Pslib.addTextItem( textObj );
+Pslib.addTextItem = function( obj )
+{
+    if(!app.documents.length) return;
+
+    if(!obj) obj = {};
+    if(!obj.text) obj.text = "PLACEHOLDER";
+    // if(!obj.text) obj.font = "Arial";
+    // if(!obj.size) obj.size = 36;
+    if(!obj.hex) obj.hex = "ffffff";
+    if(!obj.width) obj.width = 350;
+    if(!obj.height) obj.height = 42;
+    if(obj.x == undefined) obj.x = 15;
+    if(obj.y == undefined) obj.y = 15;
+
+    // if(!obj.arboard)
+    // obj.backgroundColor
+
+    var doc = app.activeDocument;
+
+    var textItem;
+    var rectangle;
+
+    if(Pslib.isPhotoshop)
+    {
+        var container;
+        if(obj.background)
+        {
+            // deal with label / background item
+            if(obj.artboard)
+            {
+                container = obj.artboard;
+                rectangle = Pslib.addArtboardRectangle( { artboard: container.id, hex: obj.backgroundHex });
+            }
+            else if(obj.entireDocument)
+            {
+                container = doc;
+                rectangle = Pslib.addDocumentRectangle( { hex: obj.backgroundHex });
+            }
+            else
+            {
+                container = Pslib.getActiveArtboard();
+            }
+        }
+        else
+        {
+            container = Pslib.getActiveArtboard();
+        }
+
+        if(!container) return;
+
+        if(container)
+        {
+            if(!obj.entireDocument) doc.activeLayer = container;
+            tlayer = container.artLayers.add();
+        }
+        else
+        {
+            tlayer = doc.artLayers.add();
+        }
+
+        doc.activeLayer = tlayer;
+        // tlayer = container ? container.artLayers.add() : doc.artLayers.add(); // empty layer to work with
+        tlayer.kind = LayerKind.TEXT;
+
+        var textObj = tlayer.textItem;
+        textObj.kind = TextType.PARAGRAPHTEXT;
+        // textObj.kind = TextType.POINTTEXT;
+        textObj.justification = Justification.CENTER;
+        // textObj.size = obj.size;
+        // textObj.position = [obj.x, obj.y];
+        textObj.position = [ 0, 0 ];
+        textObj.contents = obj.text;
+        textObj.color = Pslib.hexToRGBobj(obj.hex);
+        
+
+        if(rectangle)
+        {
+            var rectCoords = Pslib.getLayerObjectCoordinates(rectangle);
+            var textSize = obj.size ? obj.size : Math.min(rectCoords.width, rectCoords.height) / 4;
+            // textItem.textRange.characterAttributes.size = textSize / 4;
+
+            // textItem.left = rectangle.left + ((rectangle.width - textItem.width) /2);
+            // textItem.top = rectangle.top - ((rectangle.height - textItem.height) /2);
+
+
+
+    textObj.width = new UnitValue(rectCoords.width + " pixels");
+    textObj.height = new UnitValue(rectCoords.height + " pixels");
+
+            // move text layer
+            // textObj.position = [0,20];
+            textObj.size = textSize;
+
+            var tLayerCoords = Pslib.getLayerObjectCoordinates(tlayer);
+            // var xt = rectCoords.x - tLayerCoords.x;
+            // var yt = rectCoords.y - tLayerCoords.y;
+            var xt = rectCoords.x;
+            var yt = rectCoords.y;
+            tlayer.translate(xt, yt);
+
+            // center text vertically using baseline shift
+
+            // var tOrigin = textObj.position; // this will fail in some cases
+            // var tWidth = textObj.width.as('px');
+            var tHeight = textObj.height.as('px');
+
+            // textObj.baselineShift = -((tHeight / 2)-((obj.size/2) -(obj.size*0.15)));
+            textObj.baselineShift = ((tHeight / 2)-((textObj.size/2) -(textObj.size*0.15)));
+        }
+        else
+        {
+            var tLayerCoords = Pslib.getLayerObjectCoordinates(tlayer);
+            var artboardCoords = Pslib.getArtboardCoordinates(container.id);
+            var xt = artboardCoords.x;
+            var yt = artboardCoords.y;
+
+            // if no rectangle created, assume target is artboard 
+            textObj.width = new UnitValue(obj.width + " pixels");
+            textObj.height = new UnitValue(obj.height + " pixels");
+
+            tlayer.translate(xt, yt);
+        }
+
+
+        textItem = tlayer;
+
+
+        // move to container if provided
+
+        // create if not found
+    }
+    else if(Pslib.isIllustrator)
+    {
+        if(!obj.artboard) obj.artboard = Pslib.getActiveArtboard();
+
+        if(obj.background)
+        {
+            // deal with label / background item
+            if(obj.artboard && !obj.entireDocument)
+            {
+                rectangle = Pslib.addArtboardRectangle( { hex: obj.backgroundHex, opacity: obj.backgroundOpacity });
+            }
+            else if(obj.entireDocument)
+            {
+                rectangle = Pslib.addDocumentRectangle( { hex: obj.backgroundHex, opacity: obj.backgroundOpacity });
+            }
+
+            // rectangle creation forces ZOrderMethod.SENDTOBACK, let's fix this here
+            try
+            {
+                rectangle.zOrder(ZOrderMethod.BRINGTOFRONT);
+            }
+            catch(e)
+            {
+    
+            }
+
+        }
+
+        textItem = doc.textFrames.add();
+        textItem.contents = obj.text;
+        textItem.opticalAlignment = true;
+
+        // update text color
+        if(textItem.textRange.length > 0)
+        {
+            var paragraphs = textItem.textRange.paragraphs;
+            var col = Pslib.hexToRGBobj(obj.hex);
+            for(var p = 0; p < paragraphs.length; p++)
+            {
+                var par = paragraphs[p];
+                if(par.characters.length)
+                {
+                    if(par.fillColor instanceof RGBColor)
+                    {
+                        par.fillColor = col;
+                    }
+                }
+            }
+        }
+
+        // if(obj.background)
+        // {
+        //     // deal with label / background item
+        //     if(obj.artboard)
+        //     {
+        //         rectangle = Pslib.addArtboardRectangle( { hex: obj.backgroundHex, opacity: obj.backgroundOpacity });
+        //     }
+        //     else if(obj.entireDocument)
+        //     {
+        //         rectangle = Pslib.addDocumentRectangle( { hex: obj.backgroundHex, opacity: obj.backgroundOpacity });
+        //     }
+
+        // }
+
+        // move to container if provided
+        // obj.container
+
+        // create if not found
+
+        if(rectangle)
+        {
+            // attempt to determine text size based on target rectangle size
+            var textSize = obj.size ? obj.size : Math.min(rectangle.width, rectangle.height);
+            textItem.textRange.characterAttributes.size = textSize / 4;
+
+            textItem.left = rectangle.left + ((rectangle.width - textItem.width) /2);
+            textItem.top = rectangle.top - ((rectangle.height - textItem.height) /2);
+            // textItem.top = rectangle.top - ((rectangle.height - textItem.height));
+
+            // if layer / container provided
+            // rectangle.move(layer, ElementPlacement.PLACEATBEGINNING);
+            // doc.selection = textItem;
+            // textItem.move(layer, ElementPlacement.PLACEATBEGINNING);
+        }
+
+        // create group from created items
+
+    }
+
+    return textItem;
+}
+
 
 // get RGB value of active object as hex string
 // overlaps with Pslib.getArtboardBackgroundColor() and Pslib.getShapeColor()
