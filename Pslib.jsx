@@ -2725,7 +2725,14 @@ Pslib.packageDocument = function( obj )
 			// convert tag names here if needed
 			if(obj.converter)
 			{
-				tags = tags.convertTags(converter);
+				// beware, we may still have null instead of an array here
+				if(tags) 
+				{
+					if(tags.length)
+					{
+						tags = tags.convertTags(obj.converter);
+					}
+				}
 			}
 
             //  inject tags into individual asset object
