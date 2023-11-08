@@ -1320,7 +1320,7 @@ Pslib.clearNamespace = function (target, namespace, nsprefix)
 };
 
 
-// namespace conversion
+// namespace conversion (document or target)
 Pslib.swapXmpNamespace = function( target, ns, prefix, newNs, newPrefix, silent )
 {
     if(!app.documents.length) return;
@@ -2617,21 +2617,79 @@ Pslib.packageDocument = function( obj )
     if(!app.documents.length) return;
     if(!obj) obj = {};
     if(obj.embedCoords == undefined) obj.embedCoords = true;
+
+	// assuming target namespaces may not have been registered at the moment of launching 
+	// dealing with custom namespaces or not, keep track of registration status
+	var mustRegisterNameSpace = false;
+	
+	// dump namespace collection to string
+	var namespacesStr = XMPMeta.dumpNamespaces();
+
+	//  check for match in dumped namespaves
+
     if(!obj.namespace)
     {
         if(!obj.namespacePrefix) obj.namespacePrefix = Pslib.XMPNAMESPACEPREFIX;
         obj.namespace = Pslib.XMPNAMESPACE;
+		mustRegisterNameSpace = namespacesStr.match(obj.namespace) != null;
     }
 
     if(!obj.qualifiersNamespace)
     {
         obj.qualifiersNamespace = Pslib.XMPNAMESPACE;
+		// mustRegisterNameSpace = mustRegisterNameSpace ? true : namespacesStr.match(obj.qualifiersNamespace) != null;
     }
+	else
+	{
+		mustRegisterNameSpace = mustRegisterNameSpace ? true : namespacesStr.match(obj.qualifiersNamespace) != null;
+	}
 
     if(!obj.simplePropertiesNamespace)
     {
+		if(!obj.simplePropertiesNamespacePrefix) obj.simplePropertiesNamespacePrefix = Pslib.SECONDARYXMPNAMESPACEPREFIX;
         obj.simplePropertiesNamespace = Pslib.SECONDARYXMPNAMESPACE;
     }
+	else
+	{
+		mustRegisterNameSpace = mustRegisterNameSpace ? true : namespacesStr.match(obj.simplePropertiesNamespace) != null;
+	}
+
+	if(mustRegisterNameSpace)
+	{
+		if(obj.embedCoords)
+		{
+			if(obj.writeSimpleProperties)
+			{
+				if(obj.simplePropertiesNamespace)
+				{
+					if(!obj.simplePropertiesNamespacePrefix)
+					{
+						obj.simplePropertiesNamespacePrefix = XMPMeta.getNamespacePrefix(obj.namespace);
+					}
+
+					XMPMeta.registerNamespace(obj.simplePropertiesNamespace, obj.simplePropertiesNamespacePrefix);
+				}
+			}
+
+			if(obj.simplePropertiesNamespace)
+			{
+				if(!obj.simplePropertiesNamespacePrefix)
+				{
+					obj.simplePropertiesNamespacePrefix = XMPMeta.getNamespacePrefix(obj.simplePropertiesNamespace);
+				}
+				XMPMeta.registerNamespace(obj.simplePropertiesNamespace, obj.simplePropertiesNamespacePrefix);
+			}
+
+			if(obj.qualifiersNamespace)
+			{
+				if(!obj.qualifiersNamespacePrefix)
+				{
+					obj.qualifiersNamespacePrefix = XMPMeta.getNamespacePrefix(obj.qualifiersNamespace);
+				}
+				XMPMeta.registerNamespace(obj.qualifiersNamespace, obj.qualifiersNamespacePrefix);
+			}
+		}
+	}
 
     if(!obj.propertyName) obj.propertyName = "ManagedArtboards";
 
@@ -4265,20 +4323,28 @@ Pslib.getArtboardIndexByName = function (nameStr, activateBool)
 // get simple artboard names array for matching / renaming
 Pslib.getArtboardNames = function( artboards )
 {
+	var artboardNames = [];
 	if(Pslib.isIllustrator)
 	{
 		if(!artboards)
 		{
 			artboards = app.activeDocument.artboards;
 		}
-
-		var artboardNames = [];
-		for(var i = 0; i < artboards.length; i++)
-		{
-			artboardNames.push(artboards[i].name.trim());
-		}
-		return artboardNames;
 	}
+	else if(Pslib.isPhotoshop)
+	{
+		if(!artboards)
+		{
+			artboards = Pslib.getSpecsForAllArtboards();
+		}
+	}
+
+	for(var i = 0; i < artboards.length; i++)
+	{
+		artboardNames.push(artboards[i].name);
+	}
+
+	return artboardNames;
 }
 
 // get Photoshop layer reference without selecting (can be an artlayer / group / artboard)
@@ -6058,6 +6124,277 @@ Pslib.validateArtboardRects = function( artboards, offsetPageItems )
 
 		return updated;
 	}
+}
+
+// check for any locked layers 
+Pslib.hasLockedLayers = function( layers )
+{
+	if(!app.documents.length) { return false; }
+	var doc = app.activeDocument;
+	var hasLockedLayers = false;
+
+	if(Pslib.isIllustrator)
+	{		
+		if(!layers)
+		{
+			layers = doc.layers;
+		}
+
+		for(var i = 0; i < layers.length; i++)
+		{
+			var layer = layers[i];
+			hasLockedLayers = layer.locked;
+			if(hasLockedLayers) break;
+		}
+	}
+	return hasLockedLayers;
+}
+
+// get list of locked layers 
+Pslib.getLockedLayers = function( layers )
+{
+	if(!app.documents.length) { return false; }
+	var doc = app.activeDocument;
+	var lockedLayers = [];
+
+	if(Pslib.isIllustrator)
+	{		
+		if(!layers)
+		{
+			layers = doc.layers;
+		}
+
+		for(var i = 0; i < layers.length; i++)
+		{
+			var layer = layers[i];
+			if(layer.locked) lockedLayers.push(layer);
+		}
+	}
+	return lockedLayers;
+}
+
+// unlock layers 
+Pslib.unlockLayers = function( layers )
+{
+	if(!app.documents.length) { return false; }
+	if(!layers) { return false; }
+	var unlockedLayers = [];
+
+	if(Pslib.isIllustrator)
+	{		
+		if(!layers)
+		{
+			layers = Pslib.getLockedLayers();
+		}
+
+		for(var i = 0; i < layers.length; i++)
+		{
+			var layer = layers[i];
+			if(layer.locked)
+			{
+				layer.locked = false;
+				unlockedLayers.push(layer);
+			}
+		}
+	}
+	return unlockedLayers;
+}
+
+// restore locked layers 
+Pslib.restoreLockedLayers = function( layers )
+{
+	if(!app.documents.length) { return false; }
+	if(!layers) { return false; }
+	var restoredLockedLayers = [];
+
+	if(Pslib.isIllustrator)
+	{		
+		for(var i = 0; i < layers.length; i++)
+		{
+			var layer = layers[i];
+			if(!layer.locked)
+			{
+				layer.locked = true;
+				restoredLockedLayers.push(layer);
+			}
+		}
+	}
+	return restoredLockedLayers;
+}
+
+//
+//
+// check for any hidden layers 
+Pslib.hasHiddenLayers = function( layers )
+{
+	if(!app.documents.length) { return false; }
+	var doc = app.activeDocument;
+	var hasHiddenLayers = false;
+
+	if(Pslib.isIllustrator)
+	{		
+		if(!layers)
+		{
+			layers = doc.layers;
+		}
+
+		for(var i = 0; i < layers.length; i++)
+		{
+			var layer = layers[i];
+			hasHiddenLayers = layer.visible == false;
+			if(hasHiddenLayers) break;
+		}
+
+	}
+	return hasHiddenLayers;
+}
+
+
+// get list of hidden layers 
+Pslib.getHiddenLayers = function( layers )
+{
+	if(!app.documents.length) { return false; }
+	var doc = app.activeDocument;
+	var hiddenLayers = [];
+
+	if(Pslib.isIllustrator)
+	{		
+		if(!layers)
+		{
+			layers = doc.layers;
+		}
+
+		for(var i = 0; i < layers.length; i++)
+		{
+			var layer = layers[i];
+			if(!layer.visible) hiddenLayers.push(layer);
+		}
+	}
+	return hiddenLayers;
+}
+
+// show layers 
+Pslib.showHiddenLayers = function( layers )
+{
+	if(!app.documents.length) { return false; }
+	if(!layers) { return false; }
+	var visibleLayers = [];
+
+	if(Pslib.isIllustrator)
+	{		
+		if(!layers)
+		{
+			layers = Pslib.getLockedLayers();
+		}
+
+		for(var i = 0; i < layers.length; i++)
+		{
+			var layer = layers[i];
+			if(!layer.visible)
+			{
+				layer.visible = true;
+				visibleLayers.push(layer);
+			}
+		}
+	}
+	return visibleLayers;
+}
+
+// restore hidden layers 
+Pslib.restoreHiddenLayers = function( layers )
+{
+	if(!app.documents.length) { return false; }
+	if(!layers) { return false; }
+	var restoredHiddenLayers = [];
+
+	if(Pslib.isIllustrator)
+	{		
+		for(var i = 0; i < layers.length; i++)
+		{
+			var layer = layers[i];
+			if(!layer.visible)
+			{
+				layer.visible = true;
+				restoredHiddenLayers.push(layer);
+			}
+		}
+	}
+	return restoredHiddenLayers;
+}
+
+//
+//
+
+// get list of both visible AND locked layers 
+Pslib.getVisibleAndLockedLayers = function( layers )
+{
+	if(!app.documents.length) { return false; }
+	var doc = app.activeDocument;
+	var visibleAndLockedLayers = [];
+
+	if(Pslib.isIllustrator)
+	{		
+		if(!layers)
+		{
+			layers = doc.layers;
+		}
+
+		for(var i = 0; i < layers.length; i++)
+		{
+			var layer = layers[i];
+			if(layer.locked && layer.visible) visibleAndLockedLayers.push(layer);
+		}
+	}
+	return visibleAndLockedLayers;
+}
+
+
+//
+//
+
+// useful headless functions
+// - check for duplicates in names
+// - check for whitespace in names
+// - check for file extension in names
+// - check for leading and trailing whitespace
+
+// check for duplicates, return list
+Pslib.documentHasDuplicateArtboards = function( getListBool )
+{
+	if(!app.documents.length) return;
+
+	// var doc = app.activeDocument;
+
+	var names = Pslib.getArtboardNames();
+	var coordsCollection = getListBool ? Pslib.getArtboardCollectionCoordinates() : [];
+	var namesStr = names.join(", "); // avoid false positives
+	var hasDuplicates = false;
+	var duplicates = [];
+
+	for(var i = 0; i < names.length; i++)
+	{
+		var nameMatches = new RegExp( names[i]+", ", 'g' );
+		var matches = namesStr.match(nameMatches);
+
+		if(matches != null)
+		{
+			if(matches.length > 1)
+			{
+				hasDuplicates = true;
+				if(getListBool)
+				{
+					var coords = coordsCollection[i];
+					duplicates.push( coords );
+				}
+				else
+				{
+					break;
+				}
+			}
+		}
+	}
+
+	return  getListBool ? duplicates : hasDuplicates;
 }
 
 // simple function to find/replace/add text patterns in artboard names 
