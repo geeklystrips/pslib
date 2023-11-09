@@ -666,8 +666,8 @@ JSUI.createDialog = function( obj )
 
 		var buttons = messageContainer.addRow( { spacing: 20 } );
 
-		var no = buttons.addButton( { label: "No", name: "cancel", width: 125, height: 32, alignment: "right" });
-		var yes = buttons.addButton( { label: "Yes", name: "ok", width: 125, height: 32, alignment: "left" });
+		var no = buttons.addButton( { label: "No", name: "cancel", width: 150, height: 32, alignment: "right" });
+		var yes = buttons.addCustomButton( { label: obj.label ? obj.label : "Yes", name: "ok", width: 150, height: 32, alignment: "left" });
 
 		yes.onClick = function()
 		{
