@@ -667,7 +667,8 @@ JSUI.createDialog = function( obj )
 		var buttons = messageContainer.addRow( { spacing: 20 } );
 
 		var no = buttons.addButton( { label: "No", name: "cancel", width: 150, height: 32, alignment: "right" });
-		var yes = buttons.addCustomButton( { label: obj.label ? obj.label : "Yes", name: "ok", width: 150, height: 32, alignment: "left" });
+		// var yes = buttons.addCustomButton( { label: obj.label ? obj.label : "Yes", name: "ok", width: 150, height: 32, alignment: "left" });
+		var yes = buttons.addCustomButton( { label: obj.label ? obj.label : "Yes", name: "ok", helpTip: obj.helpTip ? obj.helpTip : undefined }); // better results without a defined w+h (?)
 
 		yes.onClick = function()
 		{
@@ -1209,7 +1210,8 @@ Object.prototype.addCloseButton = function( labelStr )
 {
 	var labelStr = labelStr != undefined ? labelStr : "";
 	// var closeButton = this.addButton( { label: labelStr ? labelStr : "Close", name: "ok", width: 150, height: 32, alignment: "center" });
-	var closeButton = this.addCustomButton( { label: labelStr ? labelStr : "Close", name: "ok", width: 150, height: 32, alignment: "center" });
+	// var closeButton = this.addCustomButton( { label: labelStr ? labelStr : "Close", name: "ok", width: 150, height: 32, alignment: "center" });
+	var closeButton = this.addCustomButton( { label: labelStr ? labelStr : "Close", name: "ok", alignment: "center" });
 	// var closeButton = this.addCustomButton( { label: "Close Dialog", name: "ok", height: 32, width: 150 } );
 
 	return closeButton;
@@ -6436,6 +6438,54 @@ Array.prototype.map = function(callback) {
         arr.push(callback(this[i], i, this));
     return arr;
 };
+
+// ECMA3 limitations: from array of JSON objects, compile list of identical values and return a one of each
+Array.prototype.getUniqueValues = function( pname )
+{
+	if(!this.length) return this;
+	var value = this[0][pname];
+	if(value == undefined) return this;
+
+	var uniqueNames = [ value ];
+	var currValue = value;
+
+	for(var i = 0; i < this.length; i++)
+	{
+		currValue = this[i][pname];
+		if(currValue != undefined)
+		{
+			if(currValue != value)
+			{
+				uniqueNames.push(currValue);
+				value = currValue;
+			}
+		}
+	}
+
+	return uniqueNames;
+}
+
+// ECMA3 limitations: from array of JSON objects, get bidimensional arrays containing duplicates
+Array.prototype.getObjectPropertyDuplicates = function( pname )
+{
+	if(!this.length) return this;
+	var values = this.getUniqueValues(pname);
+	var sets = [];
+
+	for(var i = 0; i < values.length; i++)
+	{
+		var val = values[i];
+		var set = [];
+		for(var j = 0; j < this.length; j++)
+		{
+			var obj = this[j];
+			if(!obj) continue;
+			if(obj[pname] == val) set.push(obj);
+		}
+		if(set.length) sets.push(set);
+	}
+	return sets;
+}
 
 // removes duplicates in array
 Array.prototype.getUnique = function()

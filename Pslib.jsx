@@ -949,7 +949,7 @@ Pslib.getAllNsPropertiesArray = function (xmp, namespace, asObj, sortByPropertyN
 	// if(!namespace) namespace = Pslib.SECONDARYXMPNAMESPACE;
 	if(!namespace) namespace = Pslib.XMPNAMESPACE;
 	var nsprefix = XMPMeta.getNamespacePrefix(namespace);
-	if(!nsprefix) return;
+	if(!nsprefix) return [];
 
 	// get existing array from dedicated namespace
 	var existingProperties = [];
@@ -1335,52 +1335,113 @@ Pslib.swapXmpNamespace = function( target, ns, prefix, newNs, newPrefix, silent 
     // cheap version: directly replace tags from XMP string!
     var allPreviousProperties = Pslib.getAllNsPropertiesArray(xmp, ns, false);
     var allNewProperties = Pslib.getAllNsPropertiesArray(xmp, newNs, false);
-    // var allNewProperties = [];
 
     // if nothing to convert, return as is
+    // if(!allPreviousProperties.length)
     if(!allPreviousProperties.length)
     {
-       if(!silent) JSUI.alert(ns + "\n\nNo properties belonging to this namespace were found.");
-        return xmp;
+       if(!silent) JSUI.alert(ns + "\n\nNo properties belonging to this namespace found to work with!");
+        return false;
     }
 
-    if(!allNewProperties.length)
-    {
-        // if array empty, proceed
-        var xmpStr = xmp.serialize();
+	// if properties belonging to both namespaces are found, warn user
+	if( allPreviousProperties.length && allNewProperties.length )
+	{
+		if(!silent) 
+		{
+			// here we could validate that there are no matches
+			var conflicts = [];
 
-        var xmlnsDef = 'xmlns:'+prefix.replace(':', '')+'=\"'+ns+'\"';
-        var openingTag = '<'+prefix;
-        var closingTag = '</'+prefix;
+			for (var i = 0; i < allPreviousProperties.length; i++)
+			{
+				var pproperty = allPreviousProperties[i][0];
 
-        var hasDefinition = (xmpStr.match(xmlnsDef) != null);
-        var hasOpeningTag = xmpStr.match(openingTag) != null;
-        var hasClosingTag = xmpStr.match(closingTag) != null;
+				for (var n = 0; n < allNewProperties.length; n++)
+				{
+					var nproperty = allNewProperties[n][0];
+					if(pproperty == nproperty)
+					{
+						conflicts.push(pproperty);
+					}
+				}
+			}
 
-        if(hasDefinition)
-        {
-            var defMatch = new RegExp( xmlnsDef, 'g' );
-            xmpStr = xmpStr.replace(defMatch, 'xmlns:'+newPrefix.replace(':', '')+'=\"'+newNs+'\"');
+			if(conflicts.length)
+			{
+				var ns1PropertiesStr = ns + "\n  "+prefix +" "+ allPreviousProperties.join("\n  "+prefix+" ");
+				var ns2PropertiesStr = newNs + "\n  "+newPrefix +" "+ allNewProperties.join("\n  "+newPrefix+" ");
+				var confirmMsg = "Existing properties found for both namespaces.\nProceed?\n\n" + ns1PropertiesStr + "\n\n" + ns2PropertiesStr;
+				var confirmObj = { message: confirmMsg, label: "Merge", title: "Potential Namespace Conflict" };
+				if(!JSUI.confirm( confirmObj ))
+				{
+					return false;
+				}
 
-            if(hasOpeningTag && hasClosingTag)
-            {
-                var openingTagMatch = new RegExp( openingTag, 'g' );
-                xmpStr = xmpStr.replace(openingTagMatch, '<'+newPrefix);
+				var confirmKeepNewNSmsg = "Accept new?";
+				var confirmKeepObj = { message: confirmKeepNewNSmsg, label: "Keep New", title: "Confirm" }
+				if(JSUI.confirm( confirmKeepObj ))
+				{
+					// remove original conflicting properties to keep new
+					for(var i = 0; i < conflicts.length; i++)
+					{
+						xmp.deleteProperty(ns, conflicts[i]);
+						JSUI.quickLog("deleted "+prefix+conflicts[i]);
+					}
+				}
+				else
+				{
+					// remove new conflicting properties to keep older ones
+					for(var i = 0; i < conflicts.length; i++)
+					{
+						xmp.deleteProperty(newNs, conflicts[i]);
+						JSUI.quickLog("deleted "+newPrefix+conflicts[i]);
+					}
+				}
 
-                var closingTagMatch = new RegExp( closingTag, 'g' );
-                xmpStr = xmpStr.replace(closingTagMatch, '</'+newPrefix);
-            }
+			}
+		}
+		else
+		{
+			return false;
+		}
+	}
 
-            // JSUI.quickLog(xmpStr);
-            xmp = new XMPMeta(xmpStr);
-            if(Pslib.isPhotoshop) target.xmpMetadata.rawData = xmp.serialize();
-            else if(Pslib.isIllustrator) target.XMPString = xmp.serialize();
-        }
-    }
+	if(allPreviousProperties.length)
+	{
+		var xmpStr = xmp.serialize();
+
+		var xmlnsDef = 'xmlns:'+prefix.replace(':', '')+'=\"'+ns+'\"';
+		var openingTag = '<'+prefix;
+		var closingTag = '</'+prefix;
+
+		var hasDefinition = (xmpStr.match(xmlnsDef) != null);
+		var hasOpeningTag = xmpStr.match(openingTag) != null;
+		var hasClosingTag = xmpStr.match(closingTag) != null;
+
+		if(hasDefinition)
+		{
+			var defMatch = new RegExp( xmlnsDef, 'g' );
+			xmpStr = xmpStr.replace(defMatch, 'xmlns:'+newPrefix.replace(':', '')+'=\"'+newNs+'\"');
+
+			if(hasOpeningTag && hasClosingTag)
+			{
+				var openingTagMatch = new RegExp( openingTag, 'g' );
+				xmpStr = xmpStr.replace(openingTagMatch, '<'+newPrefix);
+
+				var closingTagMatch = new RegExp( closingTag, 'g' );
+				xmpStr = xmpStr.replace(closingTagMatch, '</'+newPrefix);
+			}
+
+			JSUI.quickLog(xmpStr);
+			xmp = new XMPMeta(xmpStr);
+			if(Pslib.isPhotoshop) target.xmpMetadata.rawData = xmp.serialize();
+			else if(Pslib.isIllustrator) target.XMPString = xmp.serialize();
+		}
+	}
     else
     {
         if(!silent) JSUI.alert(newNs + "\n\nNamespace already present in target XMP.\nResolve any existing conflicts and try again.");
-        return xmp;
+        return false;
     }
     
     // var allNsProperties = Pslib.getAllNsPropertiesArray(xmp, ns, false);
@@ -2608,6 +2669,7 @@ Pslib.getDocTextLayers = function( xmp )
     //         namespace: undefined,           // namespace: xmp namespace to write custom property to 
     //         propertyName: undefined,        // propertyName: xmp property name (possibly includes complex path)
     //     advanced: true,                     // advanced: slower, gets advanced information like individual artboard tags
+	//		extraStructFields: [],       			// any arbitrary property names from JSON objects that should be included as struct fields
     //     writeSimpleProperties: true,        // writeSimpleProperties: writes one property for each artboard (mostly for debugging, but may actually be useful)
     //         qualifiersNamespace: undefined,   // dedicatedNamespace: if ordered array struct qualifiers are meant to use a separate namespace (undefined defaults to Pslib.SECONDARYXMPNAMESPACE)
     //         simplePropertiesNamespace: undefined   // simplePropertiesNamespace: if simple properties are meant to use a separate namespace  (undefined defaults to Pslib.SECONDARYXMPNAMESPACE)
@@ -2622,6 +2684,9 @@ Pslib.packageDocument = function( obj )
 	// dealing with custom namespaces or not, keep track of registration status
 	var mustRegisterNameSpace = false;
 	
+	if (!ExternalObject.AdobeXMPScript) ExternalObject.AdobeXMPScript = new ExternalObject('lib:AdobeXMPScript');
+
+
 	// dump namespace collection to string
 	var namespacesStr = XMPMeta.dumpNamespaces();
 
@@ -2712,12 +2777,12 @@ Pslib.packageDocument = function( obj )
     // expected: .psd or .ai, block if anything else
     if(!docExtension)
     {
-        alert("Document is not valid for this operation.");
+        JSUI.alert("Document is not valid for this operation.");
         return;
     }
     if(docExtension == ".png" || docExtension == ".svg" || docExtension == ".pdf")
     {
-        alert("Wrong document format.");
+        JSUI.alert("Wrong document format.");
         return;
     }
 
@@ -2924,14 +2989,20 @@ Pslib.packageDocument = function( obj )
             obj.qualifiersNamespacePrefix = XMPMeta.getNamespacePrefix(obj.qualifiersNamespace);
         }
         
-
-
-        // var propertyExists = newXmp.doesPropertyExist(obj.namespace, obj.propertyName);
-        // // if property exists already (unlikely because we just created the output file) choose what to do with it
-        // if(propertyExists)
-        // {
-
-        // }
+		if(obj.extraStructFields)
+		{ 
+			if(obj.extraStructFields.length)
+			{ 
+				for(var sf = 0; sf < obj.extraStructFields.length; sf++)
+				{
+					var sfName = obj.extraStructFields[sf];
+					if(sfName)
+					{
+						obj.tags.push( [ sfName, null ] );
+					}
+				}
+			}
+		}
 
         // write ordered array (main namespace)
         // newXmp.setProperty(obj.namespace, obj.propertyName, "Seq placeholder content", XMPConst.ARRAY_IS_ORDERED); // <prefix:propName>
@@ -2947,8 +3018,18 @@ Pslib.packageDocument = function( obj )
             // cheap version only meant for debugging 
             var artboardNameStr = "Artboard" + ab.id.toString().zeroPad( Pslib.isIllustrator ? 3 : 4); // illustrator has a limit of 1000 artboards (0-999)
             // basic stuff
-            var contentStr = "id:"+ab.id+","+( Pslib.isIllustrator ? "page:"+(ab.id+1)+"," : "" )+"name:"+ab.name;
+            // var contentStr = "id:"+ab.id+","+( Pslib.isIllustrator ? "page:"+(ab.id+1)+"," : "" )+"name:"+ab.name;
+            var contentStr = "id:"+ab.id+","+"name:"+ab.name;
+
             // precise coordinates 
+			if(obj.roundValues)
+			{
+				ab.width = Math.round(ab.width);
+				ab.height = Math.round(ab.height);
+				ab.x = Math.round(ab.x);
+				ab.y = Math.round(ab.y);
+			}
+			
             contentStr += ",width:"+ab.width+",height:"+ab.height+",x:"+ab.x+",y:"+ab.y ;
 
             // + any custom tags harvested by previous operation 
@@ -2957,6 +3038,23 @@ Pslib.packageDocument = function( obj )
                 var kname = obj.tags[a][0];
 				// EXCEPT if property name is already part of the tags array
 				if(kname == "id" || kname == "name" || kname == "page") continue;
+
+				// OR if not part of extraStructFields
+				if(obj.extraStructFields)
+				{
+					if(obj.extraStructFields.length)
+					{ 
+						for(var sf = 0; sf < obj.extraStructFields.length; sf++)
+						{
+							var sfName = obj.extraStructFields[sf];
+							if(sfName)
+							{
+								if(kname == sfName) continue;
+							}
+						}
+					}
+				}
+
                 var kvalue = ab[kname];
                 if(kvalue != undefined) contentStr += ","+kname+":"+kvalue;
             }
@@ -2996,6 +3094,7 @@ Pslib.packageDocument = function( obj )
                }
            }
            if($.level) $.writeln( "    </rdf:li>" ); 
+		   contentStr = "";
         }
 
         if($.level) $.writeln( "  </rdf:Seq>\n</"+obj.namespacePrefix+obj.propertyName+">\n" ); 
@@ -6370,6 +6469,7 @@ Pslib.documentHasDuplicateArtboards = function( getListBool )
 	var namesStr = names.join(", "); // avoid false positives
 	var hasDuplicates = false;
 	var duplicates = [];
+	var duplicateSets = [];
 
 	for(var i = 0; i < names.length; i++)
 	{
@@ -6394,7 +6494,114 @@ Pslib.documentHasDuplicateArtboards = function( getListBool )
 		}
 	}
 
-	return  getListBool ? duplicates : hasDuplicates;
+	if(getListBool)
+	{
+		if(duplicates.length)
+		{
+			duplicateSets = duplicates.getObjectPropertyDuplicates("name");
+		}
+	}
+
+	return  getListBool ? duplicateSets : hasDuplicates;
+}
+
+// rename artboard duplicates based on collection of JSON objects
+// expects bidimensional array with pre-filtered duplicates to rename
+// var obj = { duplicatesArr: [ [ obj1, obj2 ], [ obj10, obj13 ] ], confirmBool: true, message: "Custom message" }
+Pslib.renameDuplicateArtboards = function( obj )
+{
+	if(!app.documents.length) return;
+	if(!obj) obj = {};
+
+	var doc = app.activeDocument;
+	var processed = [];
+
+	if(obj.duplicatesArr == undefined) 
+	{
+		obj.duplicatesArr = Pslib.documentHasDuplicateArtboards( true );
+	}
+
+	if( obj.duplicatesArr.length )
+	{
+		// first array item should be an array
+		// if JSON object, assume array must be processed to detect duplicates
+		if( !(obj.duplicatesArr[0] instanceof Array) )
+		{
+			obj.duplicatesArr = obj.duplicatesArr.getObjectPropertyDuplicates("name");
+			if(!obj.duplicatesArr.length)
+			{
+				return processed;
+			}
+
+			// abort if failed
+			if( !(obj.duplicatesArr[0] instanceof Array) )
+			{
+				return processed;
+			}
+		}
+	}
+	else
+	{
+		if(obj.confirmBool) JSUI.alert("No duplicates found.");
+		return processed;
+	}
+
+	// get duplicates info
+	if(obj.confirmBool)
+	{
+		obj.message = obj.message ? obj.message : "Rename artboards?";
+
+		var dupesMsg = "Duplicate artboard names detected\n\n";
+        if(obj.duplicatesArr.length)
+        {
+            for(var i = 0; i < obj.duplicatesArr.length; i++)
+            {   
+                var dupe = obj.duplicatesArr[i];
+                dupesMsg += ( dupe.length+"x\t"+dupe.getUniqueValues("name") + "\n" );
+            }
+			obj.message += dupesMsg;
+        }
+
+		obj.title = "Confirm Rename Artboard Duplicates";
+		obj.label = "Rename";
+
+		if(!JSUI.confirm( obj ))
+		{
+			return processed;
+		}
+	}
+
+	for(var i = 0; i < obj.duplicatesArr.length; i++)
+	{
+		var set = obj.duplicatesArr[i];
+		// skip first item!
+		for(var j = 1; j < set.length; j++)
+		{
+			var jsObj = set[j];
+			if(!jsObj) continue;
+			var updatedName = jsObj.name.trim() + "_" + (j+1).toString().zeroPad(3);
+
+			if(Pslib.isIllustrator)
+			{
+				var artboard = doc.artboards[jsObj.id];
+				if(artboard)
+				{
+					artboard.name = updatedName;
+					processed.push(artboard);
+				}
+			}
+			else if(Pslib.isPhotoshop)
+			{
+				var artboard = Pslib.selectLayerByID(jsObj.id);
+				if(artboard)
+				{
+					artboard.name = updatedName;
+					processed.push(artboard);
+				}
+			}
+		}
+	}
+	return processed;
 }
 
 // simple function to find/replace/add text patterns in artboard names 
