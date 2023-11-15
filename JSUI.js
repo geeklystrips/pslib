@@ -66,7 +66,7 @@ if(typeof JSUI !== "object")
 }
 
 // version
-JSUI.version = "0.984";
+JSUI.version = "0.985";
 
 // do some of the stuff differently depending on $.level and software version
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -617,16 +617,43 @@ JSUI.createDialog = function( obj )
 			obj.imgFile = "/img/" + ( JSUI.isPhotoshop ? "Photoshop" : "Illustrator") + (JSUI.isPhotoshop && JSUI.isCS6 ? "CS6" : "CC" ) + "_96px.png";
 			// img = imageContainer.addImage( obj );
 		}
-		// else
-		// {
+
+		if(obj.shapes)
+		{
+			if(obj.shapes.length)
+			{
+				if((typeof obj.shapes[0]) == "string")
+				{
+					img = imageContainer.addVectorGraphics( obj );
+					if(obj.imgWidth || obj.imgHeight)
+					{
+						if(!obj.imgHeight) obj.imgHeight = obj.imgWidth;
+						if(!obj.imgWidth) obj.imgWidth = obj.imgHeight;
+						imageSize = [ obj.imgWidth, obj.imgHeight ];
+					}
+					else
+					{
+						imageSize = [ 96, 96 ];
+					}
+				}
+			}
+			else
+			{
+				img = imageContainer.addImage( obj );
+			}
+
+		}
+		else
+		{
 			img = imageContainer.addImage( obj );
-		// }
+		}
 
 		// attempt to get image size for layouting
 		try
 		{
 			imageSize = img.image.size;
 			imageContainer.preferredSize.width = imageSize[0];
+			imageContainer.preferredSize.height = imageSize[1];
 		}
 		catch(e)
 		{
@@ -665,8 +692,7 @@ JSUI.createDialog = function( obj )
 		var confirm = null;
 
 		var buttons = messageContainer.addRow( { spacing: 20 } );
-
-		var no = buttons.addButton( { label: "No", name: "cancel", width: 150, height: 32, alignment: "right" });
+		var no = buttons.addButton( { label: obj.dismissLabel ? obj.dismissLabel : "No", name: "cancel", width: 125, height: 32, alignment: "right" });
 		// var yes = buttons.addCustomButton( { label: obj.label ? obj.label : "Yes", name: "ok", width: 150, height: 32, alignment: "left" });
 		var yes = buttons.addCustomButton( { label: obj.label ? obj.label : "Yes", name: "ok", helpTip: obj.helpTip ? obj.helpTip : undefined }); // better results without a defined w+h (?)
 
@@ -699,10 +725,11 @@ JSUI.createDialog = function( obj )
 		var textfield = messageContainer.add("edittext", undefined, obj.text != undefined ? obj.text : "DEFAULT STRING");
 		textfield.characters = obj.characters != undefined ? obj.characters : 35;
 		
-
-		var buttons = messageContainer.addRow( { spacing: obj.spacing } );
- 		var cancel = buttons.addButton( { label: "Cancel", name: "cancel", width: 125, height: 32, alignment: "right" });
-		var ok = buttons.addButton( { label: obj.confirmLabel != undefined ? obj.confirmLabel : "Confirm", name: "ok", onClickFunction: obj.onClickFunction, width: 125, height: 32, alignment: "right" });
+		var buttons = messageContainer.addRow( { spacing: 20 } );
+ 		var cancel = buttons.addButton( { label: obj.dismissLabel ? obj.dismissLabel : "Dismiss", name: "cancel", width: 125, height: 32, alignment: "right" });
+		// var ok = buttons.addButton( { label: obj.confirmLabel != undefined ? obj.confirmLabel : "Confirm", name: "ok", onClickFunction: obj.onClickFunction, width: 125, height: 32, alignment: "right" });
+		// var ok = buttons.addCustomButton( { label: (obj.confirmLabel ? obj.confirmLabel : ( obj.label ? obj.label : "Accept")), name: "ok", helpTip: obj.helpTip ? obj.helpTip : undefined, onClickFunction: obj.onClickFunction }); // better results without a defined w+h (?)
+		var ok = buttons.addCustomButton( { label: (obj.confirmLabel ? obj.confirmLabel : ( obj.label ? obj.label : "Accept")), name: "ok", helpTip: obj.helpTip ? obj.helpTip : undefined});
 
 		textfield.active = true;
 
@@ -776,6 +803,9 @@ JSUI.alert = function( obj )
 	obj.height = obj.height != undefined ? obj.height : 150; 
 
 	obj.imgFile = obj.imgFile != undefined ? obj.imgFile : "/img/WarningSign_48px.png";
+	if(obj.shapes) obj.imgFile = obj.shapes;
+
+	// if(obj.dismissLabel) obj.label = obj.dismissLabel;
 	
 	obj.orientation = "column";
 	obj.alignChildren = "left";
@@ -791,18 +821,23 @@ JSUI.alert = function( obj )
 	// ... or fallback to default system stuff 
 	else
 	{
-		alert( obj.message );
+		alert( obj.message, obj.title );
 	}
 };
 
 // softer version of the above function, which is meant as informative more than a warning
-JSUI.message = function( messageStr) //, urlStr)
+JSUI.message = function( messageStr ) //, urlStr)
 {
-	var obj = {};
-	// obj.url = urlStr; 
-
-	obj.message = messageStr;
-	obj.imgFile = obj.imgFile != undefined ? obj.imgFile : "/img/" + ( JSUI.isPhotoshop ? "Photoshop" : "Illustrator") + (JSUI.isPhotoshop && JSUI.isCS6 ? "CS6" : "CC" ) + "_96px.png";
+	if(typeof messageStr == "object")
+	{
+		var obj = messageStr;
+	}
+	else
+	{
+		var obj = {};
+		obj.message = messageStr;
+		obj.imgFile = obj.imgFile != undefined ? obj.imgFile : "/img/" + ( JSUI.isPhotoshop ? "Photoshop" : "Illustrator") + (JSUI.isPhotoshop && JSUI.isCS6 ? "CS6" : "CC" ) + "_96px.png";
+	}
 
 	JSUI.alert( obj );
 };
@@ -810,11 +845,19 @@ JSUI.message = function( messageStr) //, urlStr)
 // informative message + button to launch URL
 JSUI.showInfo = function( messageStr, urlStr, imgFile )
 {
-	var obj = {};
-	obj.message = messageStr;
-	obj.imgFile = imgFile ? imgFile : "/img/Info_48px.png";
-
-	obj.url = urlStr;
+	if(typeof messageStr == "object")
+	{
+		var obj = messageStr;
+		if(urlStr) obj.url = urlStr;
+		if(imgFile) obj.imgFile = imgFile;
+	}
+	else
+	{
+		var obj = {};
+		obj.message = messageStr;
+		obj.imgFile = imgFile ? imgFile : "/img/Info_48px.png";
+		obj.url = urlStr;
+	}	
 
 	JSUI.alert( obj );
 };
@@ -838,12 +881,13 @@ JSUI.confirm = function( obj )
 	}
 
 	obj.confirm = true;
-	obj.title = obj.title ? obj.title : "JSUI Confirm Dialog";
+	obj.title = obj.title ? obj.title : "Confirm";
 
 	obj.width = obj.width != undefined ? obj.width : 400; 
 	obj.height = obj.height != undefined ? obj.height : 200; 
 
 	obj.imgFile = obj.imgFile != undefined ? obj.imgFile : "/img/" + ( JSUI.isPhotoshop ? "Photoshop" : "Illustrator") + (JSUI.isPhotoshop && JSUI.isCS6 ? "CS6" : "CC" ) + "_96px.png";
+	if(obj.shapes) obj.imgFile = obj.shapes;
 
 	obj.orientation = "column";
 	obj.alignChildren = "left";
@@ -888,13 +932,14 @@ JSUI.prompt = function( obj )
 	}
 
 	obj.prompt = true;
-	obj.title = obj.title ? obj.title : "JSUI Prompt Dialog";
-	obj.text = obj.text ? obj.text : "JSUI Prompt Text";
+	obj.title = obj.title ? obj.title : "Prompt Dialog";
+	obj.text = obj.text ? obj.text : "Prompt Text";
 
 	obj.width = obj.width != undefined ? obj.width : 500; 
 	obj.height = obj.height != undefined ? obj.height : 200; 
 
 	obj.imgFile = obj.imgFile != undefined ? obj.imgFile : "/img/" + (JSUI.isPhotoshop ? "Photoshop" : "Illustrator") + (JSUI.isCS6 ? "CS6" : "CC" ) + "_96px.png";
+	if(obj.shapes) obj.imgFile = obj.shapes;
 
 	obj.orientation = "column";
 	obj.alignChildren = "right";
@@ -4139,6 +4184,19 @@ Object.prototype.addButton = function(imgNameStr, obj)
 	}
 	else
 	{
+		// if shapes array provided, delegate to vector graphics button class
+		if(obj.shapes)
+		{
+			if(!obj.hexValue) obj.hexValue = "#00000000"; // default is transparent background
+			if(!obj.textHexValue) obj.textHexValue = JSUI.backgroundColor[0] > 0.5 ? "#3f3f3f" : "#c6c8c8";
+			if(!obj.hoverValue) obj.hoverValue = "#46A0F5";
+			if(!obj.downValue) obj.downValue = JSUI.backgroundColor[0] > 0.5 ? "#ffffff" : "#000000";
+
+			if(!obj.width) obj.width = 48;
+			if(!obj.height) obj.height = 48;
+
+			return this.addVectorGraphicsButton( obj );
+		}
 		scriptUIstates = JSUI.getScriptUIStates( obj );
 	}
 	
