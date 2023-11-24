@@ -131,7 +131,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version, used in tool window titles. Maybe.
-Pslib.version = 0.684;
+Pslib.version = 0.685;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -2670,6 +2670,7 @@ Pslib.getDocTextLayers = function( xmp )
     //         propertyName: undefined,        // propertyName: xmp property name (possibly includes complex path)
     //     advanced: true,                     // advanced: slower, gets advanced information like individual artboard tags
 	//		extraStructFields: [],       			// any arbitrary property names from JSON objects that should be included as struct fields
+	//		roundValues: true,					// width, height, x, y will be rounded
     //     writeSimpleProperties: true,        // writeSimpleProperties: writes one property for each artboard (mostly for debugging, but may actually be useful)
     //         qualifiersNamespace: undefined,   // dedicatedNamespace: if ordered array struct qualifiers are meant to use a separate namespace (undefined defaults to Pslib.SECONDARYXMPNAMESPACE)
     //         simplePropertiesNamespace: undefined   // simplePropertiesNamespace: if simple properties are meant to use a separate namespace  (undefined defaults to Pslib.SECONDARYXMPNAMESPACE)
@@ -2679,13 +2680,13 @@ Pslib.packageDocument = function( obj )
     if(!app.documents.length) return;
     if(!obj) obj = {};
     if(obj.embedCoords == undefined) obj.embedCoords = true;
+    if(obj.roundValues == undefined) obj.roundValues = true;
 
 	// assuming target namespaces may not have been registered at the moment of launching 
 	// dealing with custom namespaces or not, keep track of registration status
 	var mustRegisterNameSpace = false;
 	
 	if (!ExternalObject.AdobeXMPScript) ExternalObject.AdobeXMPScript = new ExternalObject('lib:AdobeXMPScript');
-
 
 	// dump namespace collection to string
 	var namespacesStr = XMPMeta.dumpNamespaces();
@@ -3845,6 +3846,19 @@ Pslib.getSelectedLayerIndexes = function()
 			selectedIndexes.push( executeActionGet(ref).getInteger(cTID( "ItmI" )) - increment); 
 		}   
 		return selectedIndexes;   
+	}
+}
+
+Pslib.documentHasBackgroundLayer = function()
+{
+	if(!app.documents.length) return;
+
+	if(Pslib.isPhotoshop)
+	{
+		var r = new ActionReference();
+		r.putProperty(sTID("property"), sTID('hasBackgroundLayer'));
+		r.putEnumerated(sTID("document"), sTID("ordinal"), sTID("targetEnum"));
+		return executeActionGet(r).getBoolean(sTID('hasBackgroundLayer'));
 	}
 }
 
@@ -7984,6 +7998,7 @@ Pslib.documentToFile = function( obj )
 	var assetsUri = docNameNoExt.getAssetsFolderLocation( undefined, undefined, true); // create directory if not present
 
 	var artboardsCount = Pslib.getArtboardsCount();
+	var tempRectangle;
 	
 	if(Pslib.isIllustrator)
 	{
@@ -8037,7 +8052,7 @@ Pslib.documentToFile = function( obj )
 			// tempArtboard.name = "TEMP_" + (Math.random() * 1000).toString(16);
 			tempArtboard.name = docNameNoExt;
 			doc.artboards.setActiveArtboardIndex(artboardsCount);
-			var rectangle = Pslib.addArtboardRectangle(); // if you need a color reference
+			tempRectangle = Pslib.addArtboardRectangle(); // if you need a color reference
 			// should we also delete 
 			artboardNameIndex = artboardsCount; // last 
 		}
@@ -8075,6 +8090,7 @@ Pslib.documentToFile = function( obj )
 	
 		if(tempArtboard)
 		{
+			tempRectangle.remove();
 			tempArtboard.remove();
 			doc.artboards.setActiveArtboardIndex(activeArtboardIndex);
 		}
@@ -8294,6 +8310,178 @@ Pslib.getArtboardSpecsInfo = function( obj )
 	}
 
     return artboardSpecs;
+}
+
+
+// create transparent artboart
+Pslib.addNewArtboard = function( obj )
+{
+    if(!obj) obj = {};
+    if(!obj.name) obj.name = "New Artboard";
+    if(!obj.spacing) obj.spacing = 100;
+
+    if(!app.documents.length) return false;
+	var doc = app.activeDocument;
+    var artboard;
+    var coords;
+    var usingDocument = false;
+
+    if(obj.x == undefined || obj.y == undefined || obj.width == undefined || obj.height == undefined)
+    {
+        // user is expected to select an artboard with lot of space on its right-side
+        var referenceArtboard = Pslib.getActiveArtboard();
+
+        if(referenceArtboard)
+        {
+            coords = Pslib.getArtboardCoordinates( referenceArtboard.id );
+            coords.x += (coords.width + obj.spacing);
+        }
+
+        // if we still don't have coordinates, either get the last created artboard...
+        if(obj.orientation)
+        {
+
+        }
+        else if(!coords)
+        {
+            var artboardIDs = Pslib.getArtboardsIDs();
+        
+            if(artboardIDs.length)
+            {
+                coords = Pslib.getArtboardCoordinates( artboardIDs[artboardIDs.length-1]);
+                coords.x += (coords.width + obj.spacing);
+            }
+            else 
+            {
+                if(Pslib.documentHasBackgroundLayer())
+                {
+                    // or fallback to document metrics
+                    var docSpecs = Pslib.getDocumentSpecs();
+                    coords = { name: obj.name, width: docSpecs.width, height: docSpecs.height, x: 0, y: 0 };
+                    usingDocument = true;
+
+                    if(obj.orientation == "stack") 
+                    {
+                        obj.orientation = undefined;
+                    }
+
+                    obj.x = 0
+                    obj.y = 0;
+                    obj.width = docSpecs.width;
+                    obj.height = docSpecs.height;
+                }
+            }    
+        }
+
+        // if given a direction, auto-calculate coordinates
+        if( !obj.orientation && !usingDocument && (coords.x == undefined || coords.y == undefined || coords.width == undefined || coords.height == undefined) ) return;
+        if(!usingDocument && obj.orientation)
+        {
+            var direction = obj.orientation.toLowerCase();
+            if( direction == "left" )
+            {
+                obj.x = coords.x - ((coords.width + obj.spacing)*2);
+                obj.y = coords.y;
+                obj.width = coords.width;
+                obj.height = coords.height;
+            }
+            else if( direction == "top")
+            {
+                obj.x = coords.x -(coords.width + obj.spacing);
+                obj.y = coords.y - (coords.height + obj.spacing);
+                obj.width = coords.width;
+                obj.height = coords.height;
+            }
+            else if( direction == "right")
+            {
+                obj.x = coords.x;
+                obj.y = coords.y;
+                obj.width = coords.width;
+                obj.height = coords.height;
+            }
+            else if( direction == "bottom")
+            {
+                obj.x = coords.x - (coords.width + obj.spacing);
+                obj.y = coords.y + (coords.height + obj.spacing);
+                obj.width = coords.width;
+                obj.height = coords.height;
+            }
+            else if( direction == "stack")
+            {
+                if(!usingDocument)
+                {
+                    obj.x = coords.x - (coords.width + obj.spacing);
+                    obj.y = coords.y;
+                    obj.width = coords.width;
+                    obj.height = coords.height;
+                }
+            }
+            else
+            {
+                obj.x = coords.x;
+                obj.y = coords.y;
+                obj.width = coords.width;
+                obj.height = coords.height;
+            }
+        }
+        else if(coords.x == undefined || coords.y == undefined || coords.width == undefined || coords.height == undefined) return;
+        else
+        {
+            obj.x = coords.x;
+            obj.y = coords.y;
+            obj.width = coords.width;
+            obj.height = coords.height;
+        }
+    }
+
+    if(Pslib.isPhotoshop)
+    {
+        var idmake = sTID( "make" );
+        var desc1 = new ActionDescriptor();
+        var idnull = sTID( "null" );
+            var ref5 = new ActionReference();
+            var idartboardSection = sTID( "artboardSection" );
+            ref5.putClass( idartboardSection );
+        desc1.putReference( idnull, ref5 );
+        var idlayerSectionStart = sTID( "layerSectionStart" );
+        desc1.putInteger( idlayerSectionStart, 5 );
+        var idlayerSectionEnd = sTID( "layerSectionEnd" );
+        desc1.putInteger( idlayerSectionEnd, 6 );
+        var idname = sTID( "name" );
+        desc1.putString( idname, obj.name );
+        var idartboardRect = sTID( "artboardRect" );
+            var desc2 = new ActionDescriptor();
+            var idtop = sTID( "top" );
+            desc2.putDouble( idtop, obj.y );
+            var idleft = sTID( "left" );
+            desc2.putDouble( idleft, obj.x);
+            var idbottom = sTID( "bottom" );
+            desc2.putDouble( idbottom, obj.y+obj.height );
+            var idright = sTID( "right" );
+            desc2.putDouble( idright, obj.x+obj.width );
+        var idclassFloatRect = sTID( "classFloatRect" );
+        desc1.putObject( idartboardRect, idclassFloatRect, desc2 );
+        executeAction( idmake, desc1, DialogModes.NO );
+
+        if(obj.hex != undefined)
+        {
+            Pslib.updateArtboardBackgroundColor( obj.hex );
+        }
+        else
+        {
+            Pslib.updateArtboardBackgroundTransparent();
+        }
+
+        artboard = doc.activeLayer;
+        artboard.name = obj.name;
+	}
+	else if(Pslib.isIllustrator)
+	{
+        // artboard = doc.artboards.add( [ obj.x, obj.y, obj.x + obj.width, obj.y + obj.height ] ); // [x1, y1, x2, y2]
+        // doc.artboards.setActiveArtboardIndex(doc.artboards.length-1);
+	}
+
+    return artboard;
 }
 
 // basic visual geometry covering artboard bounds
@@ -9569,6 +9757,27 @@ Pslib.getArtboardsCount = function()
 	{
 		return doc.artboards.length;
 	}
+}
+
+// get simple array with all artboard "IDs"
+Pslib.getArtboardsIDs = function()
+{
+    if(!app.documents.length) return false;
+    var doc = app.activeDocument;
+	var IDs = [];
+
+    if(Pslib.isPhotoshop)
+	{
+        IDs = Pslib.getSpecsForAllArtboards(true);
+    }
+    else if(Pslib.isIllustrator)
+	{
+		for (var i = 0; i < doc.artboards.length; i++)
+		{
+			IDs.push(i);
+		}
+	}
+	return IDs; 
 }
 
 // illustrator context always has at least one artboard, photoshop does not.
