@@ -131,7 +131,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version, used in tool window titles. Maybe.
-Pslib.version = 0.685;
+Pslib.version = 0.686;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -2859,7 +2859,7 @@ Pslib.packageDocument = function( obj )
 				}
 			}
 
-            //  inject tags into individual asset object
+            // inject tags into individual asset object
             if(tags)
             {
                 for(var t = 0; t < tags.length; t++)
@@ -4362,12 +4362,28 @@ Pslib.getActiveArtboard = function()
 	return artboard;
 }
 
+// get artboard by name (not 100% accurate if multiple objects with same name)
 Pslib.getArtboardByName = function (nameStr, activateBool)
 {
-	if(Pslib.isIllustrator)
+	if(!app.documents.length) return;
+
+	var doc = app.activeDocument;
+	var artboard;
+
+	if(Pslib.isPhotoshop)
 	{
-		var doc = app.activeDocument;
-		var artboard = doc.artboards.getByName(nameStr);
+		artboard = doc.layers.getByName(nameStr);
+		if(artboard)
+		{
+			if(activateBool)
+			{
+				doc.activeLayer = artboard;
+			}
+		}
+	}
+	else if(Pslib.isIllustrator)
+	{
+		artboard = doc.artboards.getByName(nameStr);
 
 		if(artboard)
 		{
@@ -4383,17 +4399,20 @@ Pslib.getArtboardByName = function (nameStr, activateBool)
 	
 				}
 			}
-			return artboard;
 		}
 	}
+	return artboard;
 }
 
 // get artboard index without having to make it active
 Pslib.getArtboardIndex = function (artboard, activateBool)
 {
+	if(!app.documents.length) return;
+	
+	var doc = app.activeDocument;
+
 	if(Pslib.isIllustrator)
 	{
-		var doc = app.activeDocument;
 		var index;
 
 		for(var i = 0; i < doc.artboards.length; i++)
@@ -4413,9 +4432,12 @@ Pslib.getArtboardIndex = function (artboard, activateBool)
 // okay-ish for getting indexes IF you don't have multiple artboards with the same name
 Pslib.getArtboardIndexByName = function (nameStr, activateBool)
 {
+	if(!app.documents.length) return;
+
+	var doc = app.activeDocument;
+
 	if(Pslib.isIllustrator)
 	{
-		var doc = app.activeDocument;
 		var artboard = doc.artboards.getByName(nameStr);
 		var index;
 
@@ -8312,23 +8334,49 @@ Pslib.getArtboardSpecsInfo = function( obj )
     return artboardSpecs;
 }
 
+// also need a function for ungrouping layersets / GroupItems
 
-// create transparent artboart
+Pslib.collapseAllGroups = function()
+{
+    if(!app.documents.length) return;
+
+    var doc = app.activeDocument;
+    var collapsed = false;
+
+	if(Pslib.isPhotoshop)
+	{
+        app.runMenuItem(stringIDToTypeID('collapseAllGroupsEvent'));
+        collapsed = true;
+    }
+    // else if(Pslib.isIllustrator)
+    // {
+
+    // }
+
+    return collapsed;
+}
+
+// add new artboard using specific coordinates
+// .orientation: "left" "right" "up" "down"
 Pslib.addNewArtboard = function( obj )
 {
+	if(!app.documents.length) return false;
     if(!obj) obj = {};
-    if(!obj.name) obj.name = "New Artboard";
-    if(!obj.spacing) obj.spacing = 100;
 
-    if(!app.documents.length) return false;
+    if(!obj.name) obj.name = "New Artboard";
+    if(!obj.spacing) obj.spacing = Pslib.isPhotoshop ? 100 : ( Pslib.isIllustrator ? 20 : 100);
+	if(!obj.tags) obj.tags = [];
+	if(!obj.ns) obj.ns = Pslib.XMPNAMESPACE;
+
 	var doc = app.activeDocument;
-    var artboard;
+
+	var artboard;
     var coords;
-    var usingDocument = false;
+    var usingDocument = false; // ps only
 
     if(obj.x == undefined || obj.y == undefined || obj.width == undefined || obj.height == undefined)
     {
-        // user is expected to select an artboard with lot of space on its right-side
+        // user is expected to select an artboard with sufficient space on its right-side
         var referenceArtboard = Pslib.getActiveArtboard();
 
         if(referenceArtboard)
@@ -8337,7 +8385,7 @@ Pslib.addNewArtboard = function( obj )
             coords.x += (coords.width + obj.spacing);
         }
 
-        // if we still don't have coordinates, either get the last created artboard...
+        // if we still don't have coordinates, either use last created artboard as a reference...
         if(obj.orientation)
         {
 
@@ -8377,44 +8425,83 @@ Pslib.addNewArtboard = function( obj )
         if( !obj.orientation && !usingDocument && (coords.x == undefined || coords.y == undefined || coords.width == undefined || coords.height == undefined) ) return;
         if(!usingDocument && obj.orientation)
         {
-            var direction = obj.orientation.toLowerCase();
-            if( direction == "left" )
+			// top right bottom left
+			// UP RIGHT DOWN LEFT 
+			// NORTH EAST SOUTH WEST
+            var d = obj.orientation.toString().toLowerCase();
+
+			if( d == "topright" || d == "northeast" || d == "9")
+            { 
+                obj.x = coords.x; // + (coords.width + obj.spacing);
+                obj.y = coords.y - (coords.height + obj.spacing);
+				if(Pslib.isIllustrator) obj.y = coords.y + (coords.height + obj.spacing);
+                obj.width = coords.width;
+                obj.height = coords.height;
+            }
+            else if( d == "top" || d == "topcenter" || d == "north" || d == "up" || d == "8")
+            {
+                obj.x = coords.x - (coords.width + obj.spacing);
+                obj.y = coords.y - (coords.height + obj.spacing);
+				if(Pslib.isIllustrator) obj.y = coords.y + (coords.height + obj.spacing);
+                obj.width = coords.width;
+                obj.height = coords.height;
+            }
+			else if( d == "topleft" || d == "northwest" || d == "7")
+            {
+                obj.x = coords.x - ((coords.width + obj.spacing)*2);
+                obj.y = coords.y - (coords.height + obj.spacing);
+				if(Pslib.isIllustrator) obj.y = coords.y + (coords.height + obj.spacing);
+                obj.width = coords.width;
+                obj.height = coords.height;
+            }
+			else if( d == "left" || d == "west" || d == "6")
             {
                 obj.x = coords.x - ((coords.width + obj.spacing)*2);
                 obj.y = coords.y;
                 obj.width = coords.width;
                 obj.height = coords.height;
             }
-            else if( direction == "top")
-            {
-                obj.x = coords.x -(coords.width + obj.spacing);
-                obj.y = coords.y - (coords.height + obj.spacing);
-                obj.width = coords.width;
-                obj.height = coords.height;
-            }
-            else if( direction == "right")
+			// if need be, create artboard directly on top of the active one.
+			else if( d == "stack" || d == "5")
+			{
+				if(!usingDocument)
+				{
+					obj.x = coords.x - (coords.width + obj.spacing);
+					obj.y = coords.y;
+					obj.width = coords.width;
+					obj.height = coords.height;
+				}
+			}
+            else if( d == "right" || d == "east" || d == "4")
             {
                 obj.x = coords.x;
                 obj.y = coords.y;
                 obj.width = coords.width;
                 obj.height = coords.height;
             }
-            else if( direction == "bottom")
-            {
-                obj.x = coords.x - (coords.width + obj.spacing);
+			else if( d == "bottomright" || d == "southeast"|| d == "3")
+            { 
+                obj.x = coords.x; //+ (coords.width + obj.spacing);
                 obj.y = coords.y + (coords.height + obj.spacing);
+				if(Pslib.isIllustrator) obj.y = coords.y - (coords.height + obj.spacing);
                 obj.width = coords.width;
                 obj.height = coords.height;
             }
-            else if( direction == "stack")
+            else if( d == "bottom" || d == "south" || d == "down" || d == "2")
             {
-                if(!usingDocument)
-                {
-                    obj.x = coords.x - (coords.width + obj.spacing);
-                    obj.y = coords.y;
-                    obj.width = coords.width;
-                    obj.height = coords.height;
-                }
+                obj.x = coords.x - (coords.width + obj.spacing);
+                obj.y = coords.y + (coords.height + obj.spacing);
+				if(Pslib.isIllustrator) obj.y = coords.y - (coords.height + obj.spacing);
+                obj.width = coords.width;
+                obj.height = coords.height;
+            }
+			else if( d == "bottomleft" || d == "southwest" || d == "1")
+            { 
+                obj.x = coords.x - ((coords.width + obj.spacing)*2);
+                obj.y = coords.y + (coords.height + obj.spacing);
+				if(Pslib.isIllustrator) obj.y = coords.y - (coords.height + obj.spacing);
+                obj.width = coords.width;
+                obj.height = coords.height;
             }
             else
             {
@@ -8465,7 +8552,7 @@ Pslib.addNewArtboard = function( obj )
 
         if(obj.hex != undefined)
         {
-            Pslib.updateArtboardBackgroundColor( obj.hex );
+            Pslib.updateArtboardBackgroundColor( obj.hex, false, [] );
         }
         else
         {
@@ -8474,14 +8561,210 @@ Pslib.addNewArtboard = function( obj )
 
         artboard = doc.activeLayer;
         artboard.name = obj.name;
+
+		if(obj.tags.length)
+		{
+			Pslib.setXmpProperties(artboard, obj.tags, obj.ns);
+		}
+
+		// option to reselect initial artboard
 	}
 	else if(Pslib.isIllustrator)
 	{
-        // artboard = doc.artboards.add( [ obj.x, obj.y, obj.x + obj.width, obj.y + obj.height ] ); // [x1, y1, x2, y2]
-        // doc.artboards.setActiveArtboardIndex(doc.artboards.length-1);
+		usingDocument = false; // illustrator document never has less than one artboard
+
+		// var coords = Pslib.getArtboardCoordinates(obj.artboard);
+
+			// top & bottom inverted!
+        artboard = doc.artboards.add( [ obj.x, obj.y, obj.x + obj.width, obj.y - obj.height ] ); // [x1, y1, x2, y2]
+		artboard.name = obj.name;
+
+		var placeholder;
+
+		// if(obj.hex || obj.tags.length)
+		// {
+			placeholder = Pslib.addRectangle( { name: "#", hex: obj.hex } );
+
+			if(placeholder)
+			{
+				placeholder.name = "#";
+				if(obj.tags.length)
+				{
+					Pslib.setTags( placeholder, obj.tags );
+				}
+				
+				// send to layer?
+				if(obj.layer)
+				{
+					// app.selection = placeholder;
+					placeholder.move(obj.layer, ElementPlacement.PLACEATEND);
+				}
+			}
+		// }
+
+        doc.artboards.setActiveArtboardIndex(doc.artboards.length-1);
+
+		// option to reselect initial artboard
+
 	}
 
     return artboard;
+}
+
+// pshop+ilst wrapper for abstract selection of artboard (object, id, index, name)
+Pslib.selectArtboard = function( artboardObj )
+{
+    if(!app.documents.length) return;
+	if(artboardObj == undefined) return Pslib.getActiveArtboard();
+	var doc = app.activeDocument;
+	var selectedArtboard;
+
+	if( typeof artboardObj == "string")
+	{
+		// string, assume we want to get object by name
+		return Pslib.getArtboardByName(artboardObj, true);
+	}
+
+	if(Pslib.isPhotoshop)
+	{
+		if( typeof artboardObj == "number" )
+		{
+			// if number, assume photoshop layer ID
+			selectedArtboard = Pslib.selectLayerByID( artboardObj, false );
+		}
+		else if(typeof artboardObj == "object")
+		{
+			// if JSON object with .id property, assume photoshop layer ID
+			if(artboardObj.id != undefined)
+			{
+				selectedArtboard = Pslib.selectLayerByID( artboardObj.id, false );
+			}
+			// otherwise assume we're given an actual layer object to select
+			else
+			{
+				doc.activeLayer = artboardObj;
+				selectedArtboard = doc.activeLayer;
+			}
+			if(!Pslib.isArtboard(selectedArtboard)) selectedArtboard = undefined;
+		}
+	}
+	else if(Pslib.isIllustrator)
+	{
+		// if number, assume artboard index
+		if( typeof artboardObj == "number" )
+		{
+			doc.artboards.setActiveArtboardIndex(artboardObj);
+			selectedArtboard = doc.artboards[artboardObj];
+		}
+		else if(typeof artboardObj == "object")
+		{
+			// if JSON object with .id property, assume photoshop layer ID
+			if(artboardObj.index != undefined)
+			{
+				doc.artboards.setActiveArtboardIndex(artboardObj.index);
+				selectedArtboard = doc.artboards[artboardObj.index];
+			}
+			// otherwise assume we're given an actual artboard object to select
+			// brute-force this by comparing object with all artboards present in document
+			else
+			{
+				for(var i = 0; i < doc.artboards.length; i++)
+				{
+					if(doc.artboards[i] == artboardObj)
+					{
+						doc.artboards.setActiveArtboardIndex(i);
+						selectedArtboard = doc.artboards[i];
+						break;
+					}
+	
+				}
+			}
+		}
+	}
+
+	return selectedArtboard;
+}
+
+// 
+// chance to use prefab with custom colors, name, and destination illustrator layers for placeholders
+// var targetLayer;
+// try { targetLayer = doc.layers.getByName("Placeholders"); }catch(e){}
+// var cfg = {
+//     north: { orientation: "north", name: "Top-most", hex: "000000", tags: [ [ "color", "000000"] ], layer: targetLayer },
+//     east: { orientation: "east", name: "Right-most", hex: "00FF80", tags: [ [ "color", "00FF80"] ], layer: targetLayer },
+//     south: { orientation: "south", name: "Bottom-most", hex: "8000FF", tags: [ [ "color", "8000FF"] ], layer: targetLayer },
+//     west: { orientation: "west", name: "Left-most", hex: "800000", tags: [ [ "color", "800000"] ], layer: targetLayer }
+// }
+Pslib.addArtboardCompass = function( obj )
+{
+    if(!app.documents.length) return;
+    if(!obj) obj = {};
+    var doc = app.activeDocument;
+
+    var artboards = {};
+	
+    artboards.center = Pslib.getActiveArtboard();
+
+	if(!artboards.center) return;
+
+	// if using prefab
+	if(obj.north && obj.east && obj.south && obj.west)
+	{
+		artboards.north = Pslib.addNewArtboard( obj.north ? obj.north : { orientation: "north", name: obj.north.name ? obj.north.name : artboards.center.name + "_NORTH", tags: obj.tags, hex: obj.hex, layer: obj.targetLayer });
+		Pslib.selectArtboard(artboards.center);
+
+		if(obj.northeast)
+		{
+			artboards.northeast = Pslib.addNewArtboard( obj.northeast ? obj.northeast : { orientation: "northeast", name: obj.north.name ? obj.north.name : artboards.center.name + "_NORTHEAST", tags: obj.tags, hex: obj.hex, layer: obj.targetLayer });
+			Pslib.selectArtboard(artboards.center);
+		}
+	
+		artboards.east = Pslib.addNewArtboard( obj.east ? obj.east : { orientation: "east", name: obj.east.name ? obj.east.name : artboards.center.name + "_EAST", tags: obj.tags, hex: obj.hex, layer: obj.targetLayer });
+		Pslib.selectArtboard(artboards.center);
+	
+		if(obj.southeast)
+		{
+			artboards.southeast = Pslib.addNewArtboard( obj.southeast ? obj.southeast : { orientation: "southeast", name: obj.north.name ? obj.north.name : artboards.center.name + "_SOUTHEAST", tags: obj.tags, hex: obj.hex, layer: obj.targetLayer });
+			Pslib.selectArtboard(artboards.center);
+		}
+
+		artboards.south = Pslib.addNewArtboard( obj.south ? obj.south : { orientation: "south", name: obj.south.name ? obj.south.name : artboards.center.name + "_SOUTH", tags: obj.tags, hex: obj.hex, layer: obj.targetLayer });
+		Pslib.selectArtboard(artboards.center);
+	
+		if(obj.southwest)
+		{
+			artboards.southwest = Pslib.addNewArtboard( obj.southwest ? obj.southwest : { orientation: "southwest", name: obj.north.name ? obj.north.name : artboards.center.name + "_SOUTHWEST", tags: obj.tags, hex: obj.hex, layer: obj.targetLayer });
+			Pslib.selectArtboard(artboards.center);
+		}
+
+		artboards.west = Pslib.addNewArtboard( obj.west ? obj.west : { orientation: "west", name: obj.west.name ? obj.west.name : artboards.center.name + "_WEST", tags: obj.tags, hex: obj.hex, layer: obj.targetLayer });
+		Pslib.selectArtboard(artboards.center);
+
+		if(obj.northwest)
+		{
+			artboards.northwest = Pslib.addNewArtboard( obj.northwest ? obj.northwest : { orientation: "northwest", name: obj.north.name ? obj.north.name : artboards.center.name + "_NORTHWEST", tags: obj.tags, hex: obj.hex, layer: obj.targetLayer });
+			Pslib.selectArtboard(artboards.center);
+		}
+	}
+	else
+	{
+		var targetLayer;
+		try { if(Pslib.isIllustrator) targetLayer = doc.layers.getByName("Placeholders"); }catch(e){};
+
+		artboards.north = Pslib.addNewArtboard( { orientation: "north", name: artboards.center.name + "_NORTH", hex: "transparent", layer: targetLayer });
+		Pslib.selectArtboard(artboards.center);
+	
+		artboards.east = Pslib.addNewArtboard( { orientation: "east", name: artboards.center.name + "_EAST", hex: "transparent", layer: targetLayer });
+		Pslib.selectArtboard(artboards.center);
+	
+		artboards.south = Pslib.addNewArtboard( { orientation: "south", name: artboards.center.name + "_SOUTH", hex: "transparent", layer: targetLayer });
+		Pslib.selectArtboard(artboards.center);
+	
+		artboards.west = Pslib.addNewArtboard( { orientation: "west", name: artboards.center.name + "_WEST", hex: "transparent", layer: targetLayer });
+		Pslib.selectArtboard(artboards.center);
+	}
+
+    return artboards;
 }
 
 // basic visual geometry covering artboard bounds
@@ -10153,7 +10436,7 @@ Pslib.HSBtoRGB = function( hsbArr )
     return Pslib.HSLtoRGB(hslArr);
 }
 
-Pslib.HSBtoHSL = function( hsbArr, convert )
+Pslib.HSBtoHSL = function( hsbArr )
 {
     if(!hsbArr) return;
     if(!hsbArr.length) return;
@@ -10391,7 +10674,7 @@ Pslib.getArtboardBackgroundColor = function( asObj )
 	}	
 }
 
-// Set Solid Fill Color object 
+// bool is shape / solid fill
 Pslib.isShape = function( )
 {
 	if(!app.documents.length) return false;
