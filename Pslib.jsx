@@ -3764,8 +3764,7 @@ Pslib.selectArtboardsCollection = function ( arr, individualFunc, globalFunc )
 		{
 			try
 			{
-				Pslib.selectLayerByID( arr[i].id, true );	
-				
+				Pslib.selectLayerByID( typeof arr[i] == "number" ? arr[i] : arr[i].id, true );		
 			}
 			catch(e)
 			{
@@ -3796,6 +3795,8 @@ Pslib.selectArtboardsCollection = function ( arr, individualFunc, globalFunc )
 
 			}
 		}
+
+		Pslib.collapseAllGroups();
 
 		return true;
 	}
