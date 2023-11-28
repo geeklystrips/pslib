@@ -2091,7 +2091,7 @@ Pslib.getOrderedArrayItems = function ( obj )
 	return resultsArr;
 }
 
-// get <xmpTPg:Fonts> bag as array of objects
+// get <xmpTPg:Fonts> bag as array
 Pslib.getDocFonts = function( xmp )
 {
 	if(Pslib.isIllustrator)
@@ -2103,13 +2103,13 @@ Pslib.getDocFonts = function( xmp )
 		var qualifier_NS = "http://ns.adobe.com/xap/1.0/sType/Font#"; // "stFnt:"
 		var qualifiers = [ "fontName", "fontFamily", "fontFace", "fontType", "versionString", "composite", "fontFileName" ];
 
-		var arr = Pslib.getLeafNodesObj(xmp, property_NS, property, qualifier_NS, qualifiers);
+		var arr = Pslib.getLeafNodesArr(xmp, property_NS, property, qualifier_NS, qualifiers);
 
 		return arr;
 	}
 }
 
-// get <xmpTPg:SwatchGroups> seq of nested structs as array of objects
+// get <xmpTPg:SwatchGroups> seq of nested structs as array
 Pslib.getDocSwatches = function( xmp )
 {
 	if(Pslib.isIllustrator)
@@ -2122,27 +2122,28 @@ Pslib.getDocSwatches = function( xmp )
 		
 		//  should account for "cyan", "magenta", "yellow", "black"
 		var qualifiers = [ "groupName", "groupType", ["Colorants", ["swatchName", "mode", "type", "tint", "red", "green", "blue" ]] ]; 
-		var arr = Pslib.getLeafNodesObj(xmp, property_NS, property, qualifier_NS, qualifiers);
+		var arr = Pslib.getLeafNodesArr(xmp, property_NS, property, qualifier_NS, qualifiers);
 
 		return arr;
 	}
 }
 
-// get <xmpMM:Manifest> linked/placed items as array of objects
+// get <xmpMM:Manifest> linked/placed items as array
 Pslib.getDocPlacedItems = function( xmp )
 {
 	if(!xmp) xmp = Pslib.getXmp(app.activeDocument);
+	var arr = [];
 
 	// "Ingredients" bag: placed items
+	var property = "Ingredients"; 
+	var property_NS = "http://ns.adobe.com/xap/1.0/mm/"; // "xmpMM:"
+	var qualifier_NS = "http://ns.adobe.com/xap/1.0/sType/ResourceRef#"; // "stRef:"
+	var qualifiers = [ "linkForm", "filePath", "DocumentID" ];
+
+	var arr = Pslib.getLeafNodesArr(xmp, property_NS, property, qualifier_NS, qualifiers);
+
 	if(Pslib.isPhotoshop)
 	{
-		var property = "Ingredients"; 
-		var property_NS = "http://ns.adobe.com/xap/1.0/mm/"; // "xmpMM:"
-		var qualifier_NS = "http://ns.adobe.com/xap/1.0/sType/ResourceRef#"; // "stRef:"
-		var qualifiers = [ "linkForm", "filePath", "DocumentID" ];
-
-		var arr = Pslib.getLeafNodesObj(xmp, property_NS, property, qualifier_NS, qualifiers);
-
 		return arr;
 	}
 	// incomplete for now!
@@ -2162,15 +2163,17 @@ Pslib.getDocPlacedItems = function( xmp )
 			// stMfs:linkForm>
 				// stMfs:reference
 
-		var property = "Manifest"; 
-
-		var property_NS = "http://ns.adobe.com/xap/1.0/mm/"; // "xmpMM:"
-		var qualifier_NS = "http://ns.adobe.com/xap/1.0/sType/ManifestItem#"; // "stMfs:"
-
-		var qualifiers = [ "filePath", "documentID", "instanceID" ]; // if documentID and instanceID are both 0, file is fully embedded (?)
+		property = "Manifest"; 
+		property_NS = "http://ns.adobe.com/xap/1.0/mm/"; // "xmpMM:"
+		qualifier_NS = "http://ns.adobe.com/xap/1.0/sType/ManifestItem#"; // "stMfs:"
+		qualifiers = [ "filePath", "documentID", "instanceID" ]; // if documentID and instanceID are both 0, file is fully embedded (?)
 
 		//  this will need to be adapted for custom structs
-		var arr = Pslib.getLeafNodesObj(xmp, property_NS, property, qualifier_NS, qualifiers);
+		var manifestArr = Pslib.getLeafNodesArr(xmp, property_NS, property, qualifier_NS, qualifiers);
+		for(var i = 0; i < manifestArr.length; i++)
+		{
+			arr.push(manifestArr[i]);
+		}
 
 		return arr;
 	}
@@ -2188,7 +2191,7 @@ Pslib.getDocTextLayers = function( xmp )
 		var qualifier_NS = property_NS; // "photoshop:"
 		var qualifiers = [ "LayerName", "LayerText" ];
 	
-		var arr = Pslib.getLeafNodesObj(xmp, property_NS, property, qualifier_NS, qualifiers);
+		var arr = Pslib.getLeafNodesArr(xmp, property_NS, property, qualifier_NS, qualifiers);
 	
 		return arr;
 	}
