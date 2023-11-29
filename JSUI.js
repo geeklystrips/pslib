@@ -66,7 +66,7 @@ if(typeof JSUI !== "object")
 }
 
 // version
-JSUI.version = "0.985";
+JSUI.version = "0.986";
 
 // do some of the stuff differently depending on $.level and software version
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -6264,7 +6264,7 @@ String.prototype.zeroPad = function(num)
 // remove special characters that will cause problem in a file system context
 String.prototype.toFileSystemSafeName = function(replaceStr)
 {
-	return this.replace(/[\s:\/\\*\?\!\"\<\>\|]/g, replaceStr ? replaceStr : "_");
+	return this.replace(/[\s:\/\\*\?\!\"\'\<\>\|]/g, replaceStr ? replaceStr : "_");
 };
 
 // get name without extension
@@ -6426,9 +6426,9 @@ String.prototype.addRemoveExtensionSuffix = function( str )
 // must FileObj.toString(), returns File object
 String.prototype.swapFileObjectFileExtension = function( newExtStr )
 {
+	if(!newExtStr) return;
 	var originalStr = this;
 	var newStr = originalStr;
-	var originalExt = originalStr.getFileExtension(); // ".ext"
 
 	newStr = this.trim();
 	var match = newStr.match(/\.[^\\.]+$/);

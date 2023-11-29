@@ -131,7 +131,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version, used in tool window titles. Maybe.
-Pslib.version = 0.686;
+Pslib.version = 0.687;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -2661,7 +2661,8 @@ Pslib.getDocTextLayers = function( xmp )
 // *** need a property name converter routine 
 
     // // get advanced properties + 
-    // var packageObj = { 
+    // var packageObj = {
+	//		destination,						// export destination (default is relative)
     //     tags,                               // expected: bidimensional array
 	// 	   converter,						   // converter for tag names
     //     itemNameStr,                        // name of the placeholder item name, default "#"
@@ -2676,7 +2677,8 @@ Pslib.getDocTextLayers = function( xmp )
 	//		roundValues: true,					// width, height, x, y will be rounded
     //     writeSimpleProperties: true,        // writeSimpleProperties: writes one property for each artboard (mostly for debugging, but may actually be useful)
     //         qualifiersNamespace: undefined,   // dedicatedNamespace: if ordered array struct qualifiers are meant to use a separate namespace (undefined defaults to Pslib.SECONDARYXMPNAMESPACE)
-    //         simplePropertiesNamespace: undefined   // simplePropertiesNamespace: if simple properties are meant to use a separate namespace  (undefined defaults to Pslib.SECONDARYXMPNAMESPACE)
+    //         simplePropertiesNamespace: undefined,   // simplePropertiesNamespace: if simple properties are meant to use a separate namespace  (undefined defaults to Pslib.SECONDARYXMPNAMESPACE)
+	//		includeSVG: false					// includes SVG 
     // };
 Pslib.packageDocument = function( obj )
 {
@@ -2684,6 +2686,7 @@ Pslib.packageDocument = function( obj )
     if(!obj) obj = {};
     if(obj.embedCoords == undefined) obj.embedCoords = true;
     if(obj.roundValues == undefined) obj.roundValues = true;
+	if(!obj.extraStructFields) obj.extraStructFields = [ "id", "name", "width", "height", "x", "y" ];
 
 	// assuming target namespaces may not have been registered at the moment of launching 
 	// dealing with custom namespaces or not, keep track of registration status
@@ -2793,7 +2796,7 @@ Pslib.packageDocument = function( obj )
     var docNameNoExt = doc.name.getFileNameWithoutExtension();
 
     // this will be different if not saving to -assets
-    var assetsUri = docNameNoExt.getAssetsFolderLocation( undefined, undefined, true);
+    var assetsUri = obj.destination ? new Folder(obj.destination) : docNameNoExt.getAssetsFolderLocation( undefined, undefined, true);
 
     var xmp = Pslib.getXmp(doc, false);
 
@@ -2804,7 +2807,7 @@ Pslib.packageDocument = function( obj )
     }
 
     // must provide a way to specify file name & location
-    var mediaFileOutput = Pslib.documentToFile(); // default format is PNG
+    var mediaFileOutput = Pslib.documentToFile( { destination: assetsUri, includeSVG: obj.includeSVG } );
     
     // var docSpecs = Pslib.getDocumentSpecs();
     // var jsonAssetsObj = Pslib.artboardCollectionCoordsToJsonFile(undefined, docSpecs, true); // exports JSON file
@@ -3041,7 +3044,7 @@ Pslib.packageDocument = function( obj )
             {
                 var kname = obj.tags[a][0];
 				// EXCEPT if property name is already part of the tags array
-				if(kname == "id" || kname == "name" || kname == "page") continue;
+				if(kname == "id" || kname == "name" || kname == "page" || kname == "width" || kname == "height" || kname == "x" || kname == "y") continue;
 
 				// OR if not part of extraStructFields
 				if(obj.extraStructFields)
@@ -3109,7 +3112,17 @@ Pslib.packageDocument = function( obj )
 
         // var added = Pslib.addXmpPropertiesToFile(mediaFileOutput, new XMPMeta(), undefined, propertiesArr); // this works for a single asset file
         var added = Pslib.writeXMPtoMediaFile( mediaFileOutput, newXmp );
-        
+
+		if(obj.includeSVG)
+		{
+			// test for svg file, also write xmp 
+			var svgOutputFile = mediaFileOutput.toString().swapFileObjectFileExtension(".svg");
+			if(svgOutputFile.exists)
+			{
+				Pslib.writeXMPtoMediaFile( svgOutputFile, newXmp );
+			}        
+		}
+
         if(added)
         {
             // write packaged document xmp to file for debugging
@@ -7906,7 +7919,7 @@ Pslib.artboardFromFile = function( obj )
 
                 // add artboard
                 var itemBounds = item.visibleBounds;
-                JSUI.quickLog(itemBounds, item.typename);
+                // JSUI.quickLog(itemBounds, item.typename);
 
                 var x = Math.round(item.left);
                 var y = Math.round(item.top);
@@ -7942,12 +7955,119 @@ Pslib.artboardFromFile = function( obj )
 	{
         // place embedded files 
 
-        
+		if(obj.imgFile.exists)
+        {
+
+		}
+
 
     }
     return artboard;
 }
 
+Pslib.placeItem = function( obj )
+{
+	if(!app.documents.length) return;
+	var doc = app.activeDocument;
+
+	if( typeof obj == "string" )
+	{
+		obj = { imgFile: new File(obj) };
+	}
+	else if( obj instanceof File )
+	{
+		obj = { imgFile: obj };
+	}
+
+    if(!obj) obj = {};
+
+	if(!obj.imgFile)
+	{
+		// prompt user for image file
+		obj.imgFile = File.openDialog("Choose image file to embed", "*.png;*.svg;*.pdf;*.psd", false);
+
+        if(!obj.imgFile)
+		{ 
+			return; 
+		}
+	}
+
+	var placedItem;
+
+	if(Pslib.isPhotoshop)
+	{
+		var initialLayer = doc.activeLayer;
+
+		var desc412 = new ActionDescriptor();
+		desc412.putInteger( sTID('ID'), 46 );
+		desc412.putPath( sTID('null'), obj.imgFile );
+		desc412.putEnumerated( sTID('freeTransformCenterState'), sTID('quadCenterState'), sTID('QCSAverage') );
+			var desc413 = new ActionDescriptor();
+			desc413.putUnitDouble( sTID('horizontal'), sTID('pixelsUnit'), 0.000000 );
+			desc413.putUnitDouble( sTID('vertical'), sTID('pixelsUnit'), 0.000000 );
+		desc412.putObject( sTID('offset'), sTID('offset'), desc413 );
+			var desc414 = new ActionDescriptor();
+				var ref4 = new ActionReference();
+				ref4.putIdentifier( sTID('layer'), 46 );
+			desc414.putReference( sTID('to'), ref4 );
+		desc412.putObject( sTID('replaceLayer'), sTID('placeEvent'), desc414 );
+		executeAction( sTID('placeEvent'), desc412, DialogModes.NO );
+
+		var newLayer;
+		if(initialLayer != doc.activeLayer) newLayer = doc.activeLayer;
+
+		if(newLayer)
+		{
+			placedItem = newLayer;
+			// var coords = Pslib.getLayerObjectCoordinates(newLayer);
+			// artboard = Pslib.addNewArtboard( );
+		}
+	}
+	else if(Pslib.isIllustrator)
+	{
+		var extension = obj.imgFile.name.getFileExtension();
+
+		if(extension == ".svg")
+		{
+			// this places the content of the SVG in the middle of the screen
+			// zoom out first maybe?
+			placedItem = doc.groupItems.createFromFile(obj.imgFile);  
+			
+			// could also "open" SVG as doc and get artboard content instead
+		}
+		else if(extension == ".png")
+		{
+			placedItem = doc.placedItems.add();
+			placedItem.file = obj.imgFile; 
+			placedItem.embed(); 
+
+			Pslib.fitRasterObjectToPixelGrid(placedItem);
+		}
+
+		if(placedItem)
+		{
+			// position at integers
+
+			// add artboard
+			var itemBounds = placedItem.visibleBounds;
+			// JSUI.quickLog(itemBounds, placedItem.typename);
+
+			var x = Math.round(placedItem.left);
+			var y = Math.round(placedItem.top);
+
+			var w = placedItem.width;
+			var h = placedItem.height;
+			if(placedItem.typename == "RasterItem")
+			{
+				w = placedItem.boundingBox[2];
+				h = placedItem.boundingBox[1];
+			}
+
+			// if(!obj.rect) obj.rect = [ x, y, x+w, y-h ];
+		}
+	}
+	return placedItem;
+}
 
 Pslib.createNewDocument = function( templateUri )
 {
@@ -7990,38 +8110,52 @@ Pslib.createNewDocument = function( templateUri )
 // export entire document to single image (default ".png")
 // should also support SVG, PDF output for illustrator
 // options: 
+// 		- obj.destination  // absolute export location (string or folder object) 
 //    - obj.json
 //	  - obj.xmp
 // 		- .xmpDict (?)
 // 		- .converterArr 
+//
+// 	- obj.includeSVG
 //
 Pslib.documentToFile = function( obj )
 {
 	if(!app.documents.length) return;
 	if(!obj) obj = {};
 	var doc = app.activeDocument;
+	if(Pslib.isPhotoshop) obj.includeSVG = false;
 
+	// var extension = ".svg";
 	var extension = ".png";
 	var outputFile;
-
-	// // if destination file object provided, get format 
-	// if(obj.file)
-	// {
-	// 	extension = obj.file.getFileExtension();
-	// 	outputFile = obj.file;
-	// }
-	// else
-	// {
-	// 	outputFile = obj.file;
-	// }
+	var svgOutputFile;
 	
-	// automatically create -assets folder
-	//if(!obj.file) 
-	outputFile = new File( doc.name.getAssetsFolderLocation( undefined, false, true, true) + "/" + doc.name.getFileNameWithoutExtension() + extension );
+	var docNameNoExt = doc.name.getFileNameWithoutExtension();
+	var assetsUri;
+
+	// if provided with absolute file location 
+	if(obj.destination)
+	{
+		outputFile = new File(obj.destination + "/" + docNameNoExt + extension);
+		assetsUri = outputFile.parent;
+	}
+	else
+	{
+		outputFile = new File( doc.name.getAssetsFolderLocation( undefined, false, true, true) + "/" + docNameNoExt + extension );	
+		assetsUri = outputFile.parent;
+	}
+	
+	// if destination folder does not exist, but its parent does, create destination
+	if(!assetsUri.exists && assetsUri.parent.exists) assetsUri.create();
+
 	if(outputFile.exists) outputFile.remove();
 
-	var docNameNoExt = doc.name.getFileNameWithoutExtension();
-	var assetsUri = docNameNoExt.getAssetsFolderLocation( undefined, undefined, true); // create directory if not present
+	if(obj.includeSVG)
+	{
+		// svgOutputFile = outputFile.toString().swapFileObjectFileExtension(".svg"); // separate file object
+		svgOutputFile = new File(assetsUri + "/" + docNameNoExt + ".svg"); // separate file object
+		if(svgOutputFile.exists) svgOutputFile.remove();
+	}
 
 	var artboardsCount = Pslib.getArtboardsCount();
 	var tempRectangle;
@@ -8095,11 +8229,26 @@ Pslib.documentToFile = function( obj )
 		exportOptions.document = true;
 	
 		var formatType = ExportForScreensType.SE_PNG24;
-		var formatOptions = new ExportForScreensOptionsPNG24();
-
+		var formatOptions = obj.formatOptions ? obj.formatOptions : new ExportForScreensOptionsPNG24();
 		// ExportForScreensOptionsPNG24.scaleTypeValue (default 1.0)
+
+		// if(extension == ".svg")
+		// {
+		// 	formatType = ExportForScreensType.SE_SVG;
+		// 	formatOptions = obj.formatOptions ? obj.formatOptions : new ExportForScreensOptionsWebOptimizedSVG();
+		// 	formatOptions.fontType = obj.formatOptions ? obj.formatOptions.fontType : SVGFontType.OUTLINEFONT;
+		// }
 	
 		doc.exportForScreens(assetsUri, formatType, formatOptions, exportOptions, "");
+
+		if(obj.includeSVG)
+		{
+			formatType = ExportForScreensType.SE_SVG;
+			formatOptions = new ExportForScreensOptionsWebOptimizedSVG();
+			formatOptions.fontType = SVGFontType.OUTLINEFONT;
+
+			doc.exportForScreens(assetsUri, formatType, formatOptions, exportOptions, "");
+		}
 	
 		// check if document width/height smaller than artboard geometry
 		// output PNG may be smaller than artboard because of visible bounds
@@ -8148,10 +8297,8 @@ Pslib.documentToFile = function( obj )
 	{
 		// we can use this info to get a functional offset for image extraction
 		var docSpecs = Pslib.getDocumentSpecs();
-		// JSUI.quickLog(docSpecs);
 	
 		var docAssetsJson = Pslib.artboardCollectionCoordsToJsonFile(undefined, docSpecs);
-		// JSUI.quickLog(docAssetsJson);
 	}
 
 	if(obj.xmp)
@@ -8159,12 +8306,12 @@ Pslib.documentToFile = function( obj )
 		// include custom structure array
 
 	}
+
 	return outputFile;
-		
 }
 
 
-// select first art item found with on current artboard
+// select first art item found with provided name on current artboard
 Pslib.getArtboardItem = function( artboard, nameStr )
 {
 	if(!app.documents.length) return;
