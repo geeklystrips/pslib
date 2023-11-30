@@ -7949,7 +7949,6 @@ Pslib.artboardFromFile = function( obj )
             }
         }
 
-        
     }
 	else if(Pslib.isPhotoshop)
 	{
@@ -7959,7 +7958,6 @@ Pslib.artboardFromFile = function( obj )
         {
 
 		}
-
 
     }
     return artboard;
@@ -7978,13 +7976,26 @@ Pslib.placeItem = function( obj )
 	{
 		obj = { imgFile: obj };
 	}
+	else if(obj instanceof Array)
+	{
+		// if array, assume list of files, process recursively
+		var placedItems = [];
+		for(var i = 0; i < obj.length; i++)
+		{
+			placedItems.push( Pslib.placeItem( obj[i]) );
+		}
+		return placedItems;
+	}
 
     if(!obj) obj = {};
 
 	if(!obj.imgFile)
 	{
+		if(!obj.message) obj.message = "Select resource to embed";
+		if(!obj.filter) obj.filter = "PNG:*.png, Scalable Vector Graphics:*.svg, WebP:*.webp, Acrobat:*.pdf, Photoshop Document:*.psd|*.psb, TIFF:*.tif|*.tiff, GIF:*.gif, JPEG:*.jpg|*.jpeg, Any:*.*;";
+
 		// prompt user for image file
-		obj.imgFile = File.openDialog("Choose image file to embed", "*.png;*.svg;*.pdf;*.psd", false);
+		obj.imgFile = File.openDialog(obj.message, "*.png;*.svg;*.pdf;*.psd", false);
 
         if(!obj.imgFile)
 		{ 
