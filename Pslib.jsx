@@ -147,6 +147,7 @@ if(Pslib.isPhotoshop)
 	// these functions are often required when working with code obtained using the ScriptingListener plugin
 	cTID = function(s) {return app.charIDToTypeID(s);}
 	sTID = function(s) {return app.stringIDToTypeID(s);}
+	tSID = function(t) {return app.typeIDToStringID(t);}
 
 
 	// Pslib.optimizeScriptingListenerCode = function()
@@ -157,22 +158,11 @@ if(Pslib.isPhotoshop)
 	// 
 	function selectByID(id, add) {
 		Pslib.selectLayerByID(id, add);
-		// if (add == undefined) add = false;
-		// var desc1 = new ActionDescriptor();
-		// var ref1 = new ActionReference();
-		// ref1.putIdentifier(cTID('Lyr '), id);
-		// desc1.putReference(cTID('null'), ref1);
-		// if (add) desc1.putEnumerated(sTID("selectionModifier"), sTID("selectionModifierType"), sTID("addToSelection"));
-		// executeAction(cTID('slct'), desc1, DialogModes.NO);
 	};
 	
 	// from xbytor
 	function getActiveLayerID() {
 		Pslib.getActiveLayerID();
-		// var ref = new ActionReference();
-		// ref.putEnumerated(cTID('Lyr '), cTID('Ordn'), cTID('Trgt'));
-		// var ldesc = executeActionGet(ref);
-		// return ldesc.getInteger(cTID('LyrI'));
 	};
 
 	// sub-optimal (we can actually get this info without the layer being active)
@@ -191,10 +181,6 @@ if(Pslib.isPhotoshop)
 		bounds[1] = d.getUnitDoubleValue(sTID("left"));
 		bounds[2] = d.getUnitDoubleValue(sTID("right"));
 		bounds[3] = d.getUnitDoubleValue(sTID("bottom"));
-		// bounds[0] = d.getUnitDoubleValue(sTID("top")).as('px');
-		// bounds[1] = d.getUnitDoubleValue(sTID("left")).as('px');
-		// bounds[2] = d.getUnitDoubleValue(sTID("right")).as('px');
-		// bounds[3] = d.getUnitDoubleValue(sTID("bottom")).as('px');
 		return bounds;
 	}
 
@@ -3146,6 +3132,60 @@ Pslib.packageDocument = function( obj )
     }
 
     return mediaFileOutput;
+}
+
+// from array of qualifier values (strings), get array of 1-based integers for indexes in xmp array
+// typically for getting array item matches based on Photoshop layer unique IDs, but should also work for strings and booleans
+// Assumes valid structure here, no smart handling of duplicates or unresolved items
+Pslib.getXmpArrayIndexes = function( xmp, ns, name, qNs, qualifier, arr, count )
+{
+    if(!xmp) return;
+    if(!name) return;
+    if(!ns) ns = Pslib.XMPNAMESPACE;
+    if(name) name = "ManagedArtboards";
+    if(qNs) qNs = ns;
+    if(qualifier) qualifier = "id";
+    if(!arr) return;
+    if(count == undefined) count = xmp.doesPropertyExist(ns, name) ? xmp.countArrayItems(ns, name) : undefined;
+    if(count == undefined) return;
+
+    var indexesArr = [];
+
+    for(var i = 1; i < (count+1); i++)
+    {
+        var itemPath = name+"["+i+"]";
+        var hasItem = xmp.doesPropertyExist( ns, itemPath);
+        if(hasItem)
+        {
+            var qualValue = xmp.getQualifier(ns, itemPath, qNs, qualifier);
+            if(qualValue == undefined)
+            {
+                // if($.level) $.writeln("Qualifier "+qualifier+" not found on item "+i);
+            }
+            else
+            {
+                // if($.level) $.writeln("Qualifier "+qualifier+" found on "+itemPath);
+                qualValue = Pslib.autoTypeDataValue( decodeURI(qualValue.toString()), false, false );
+                
+                for(var j = 0; j < arr.length; j++)
+                {
+                    // this should get a match on numbers and booleans too
+                    if( arr[j].toString() == qualValue )
+                    {
+                        indexesArr.push(i);
+                        // if($.level) $.writeln("Item #"+i+" has value "+qualValue);
+                        break;
+                    }
+                    if( (j == (arr.length-1)) && (i == count+1))
+                    {
+                        // if($.level) $.writeln("No array item match for value "+arr[j]);
+                        indexesArr.push(undefined); // indexesArr should have same length as arr
+                    }
+                }
+            }
+        }
+    } 
+    return indexesArr;
 }
 
 // target one specific artboard in ordered array
@@ -8507,7 +8547,7 @@ Pslib.collapseAllGroups = function()
 
 	if(Pslib.isPhotoshop)
 	{
-        app.runMenuItem(stringIDToTypeID('collapseAllGroupsEvent'));
+        app.runMenuItem(sTID('collapseAllGroupsEvent'));
         collapsed = true;
     }
     // else if(Pslib.isIllustrator)
