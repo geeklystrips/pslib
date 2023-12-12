@@ -66,7 +66,7 @@ if(typeof JSUI !== "object")
 }
 
 // version
-JSUI.version = "0.986";
+JSUI.version = "0.987";
 
 // do some of the stuff differently depending on $.level and software version
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -1251,13 +1251,32 @@ JSUI.getScriptUIStates = function( obj )
 Object.prototype.Components = new Array(); 
 
 // generic close button
-Object.prototype.addCloseButton = function( labelStr )
+Object.prototype.addCloseButton = function( labelStr, nameStr )
 {
-	var labelStr = labelStr != undefined ? labelStr : "";
-	// var closeButton = this.addButton( { label: labelStr ? labelStr : "Close", name: "ok", width: 150, height: 32, alignment: "center" });
-	// var closeButton = this.addCustomButton( { label: labelStr ? labelStr : "Close", name: "ok", width: 150, height: 32, alignment: "center" });
-	var closeButton = this.addCustomButton( { label: labelStr ? labelStr : "Close", name: "ok", alignment: "center" });
-	// var closeButton = this.addCustomButton( { label: "Close Dialog", name: "ok", height: 32, width: 150 } );
+	var obj = {};
+	if(!labelStr) labelStr = "Close";
+	
+	if(typeof labelStr == "object")
+	{
+		obj = labelStr;
+		if(nameStr) obj.name = nameStr;
+	}
+	else
+	{
+		if(!nameStr) obj.name = "ok";
+		else obj.name = nameStr;
+	}
+	if(!obj.label) obj.label = "Close";
+	if(!obj.name) obj.name = "ok";
+	if(!obj.alignment) obj.alignment = "center";
+	if(!obj.width) 
+
+	// var closeButton = this.addCustomButton( { label: labelStr, name: nameStr, alignment: "center" });
+
+	var closeButton = this.addCustomButton( obj );
+	closeButton.alignment = obj.alignment;
+	closeButton.preferredSize.width = obj.width ? obj.width : 132;
+	closeButton.preferredSize.height = obj.height ? obj.height : 32;
 
 	return closeButton;
 };
@@ -3652,7 +3671,9 @@ Object.prototype.addVectorGraphicsButton = function ( obj )
     // containerGroup.alignChildren = ['fill', 'fill'];
     containerGroup.alignChildren = ['center', 'center'];
 
+	// { style: "toolbutton" } may be the issue with Windows version onhover
     var c = containerGroup.add('iconbutton', undefined, undefined, { name: obj.name, style: 'toolbutton'});
+
 	if(obj.helpTip) c.helpTip = obj.helpTip;
 
     c.size = [ obj.width, obj.height ];
@@ -3794,13 +3815,13 @@ Object.prototype.addVectorGraphicsButton = function ( obj )
 		// sanitize coords once, then reuse
 		iconVec = _coordsFromSvgPolygons(iconVec);
 
-			btn.coord = iconVec;
-			btn.iconColor = staticColor;
-			// btn.iconText = text;
-			btn.backgroundColor = btnBackgroundRGB;
-			// btn.textPen = btn.graphics.newPen (btn.graphics.PenType.SOLID_COLOR, staticColor, 1);
-			btn.artSize = size;
-			btn.onDraw = _customDraw;
+		btn.coord = iconVec;
+		btn.iconColor = staticColor;
+		// btn.iconText = text;
+		btn.backgroundColor = btnBackgroundRGB;
+		// btn.textPen = btn.graphics.newPen (btn.graphics.PenType.SOLID_COLOR, staticColor, 1);
+		btn.artSize = size;
+		btn.onDraw = _customDraw;
 
         if (hoverColor && !obj.simpleImage)
 		{
@@ -3895,7 +3916,7 @@ Object.prototype.addCustomButton = function( obj )
 		var obj = { label: obj };
 	}
 
-	if(!obj.width) obj.width = 150;
+	if(!obj.width) obj.width = 132;
 	if(!obj.height) obj.height = 32;
 	if(!obj.label) obj.label = "Close";
 
@@ -3905,41 +3926,144 @@ Object.prototype.addCustomButton = function( obj )
 
     if(obj.textHexValue == undefined) obj.textHexValue = "#ffffff";
 
-	function _drawTextString()
+	if(obj.strokeWidth == undefined) obj.strokeWidth = 0;
+	if(obj.strokeHexValue == undefined) obj.strokeHexValue = obj.textHexValue;
+
+	if(obj.roundedCorners == undefined) obj.roundedCorners = true;
+
+	function _drawButton()
 	{
+		var _width = this.size[0];
+		var _height = this.size[1]; // use height as reference diameter
+		var _diameter = _height;
+		var _radius = _diameter / 2;
+
+		// var _useCircle = false;
+
+		var textColor = JSUI.hexToRGB( obj.textHexValue );
+		var buttonColor = JSUI.hexToRGB( obj.hexValue );
+
+		// obj.textHexValue = JSUI.backgroundColor[0] > 0.5 ? "#3f3f3f" : "#c6c8c8";
+
 		this.graphics.drawOSControl();
-		this.graphics.rectPath(0, 0, this.size[0], this.size[1]);
-	// this.graphics.strokePath(this.graphics.newPen(this.graphics.PenType.SOLID_COLOR, [0, 0, 0], 2)); // experimental
+		// this.graphics.rectPath(0, 0, this.size[0], this.size[1]);
+		this.graphics.newPath ();
+
+		if(obj.roundedCorners)
+		{
+			// draw custom shape 
+			// if(_useCircle)
+			// {
+				// // from https://stackoverflow.com/questions/74929449/scriptui-custom-shape-button-with-ondraw
+				// function _halfCircle(
+				// 	r, //radius of the half circle
+				// 	segStart, //coordinates of the start of the segment
+				// 	angleStart, // angle of the start of the segment from the positive x axis
+				// 	numSegments //how many segments to draw
+				// )
+				// {
+				// 	var circle = {
+				// 		x: function(i, r){ return Math.cos(i) * r},
+				// 		y: function(i, r){ return Math.cos(i) * r}
+				// 	}
+
+				// 	// var g = this.graphics;
+				// 	// this.graphics.newPath();
+				// 	this.graphics.moveTo(segStart);
+
+				// 	var increment = Math.pi / numSegments; //Pi in radians is 180°
+				// 	var offset = angleStart * Math.pi / 180;
+
+				// 	for (var i = 0; i < numSegments; i++)
+				// 	{
+				// 		this.graphics.lineTo(
+				// 			circle.x(i * increment + offset, r) + segStart, 
+				// 			circle.y(i * increment + offset, r) + segStart
+				// 		);
+				// 	}
+				// }
+				// // halfCircle(340, [123,456], 123, 45);
+				// _halfCircle(_radius, [0, 0], 0, 10);
+			// }
+			// else
+			// {
+				this.graphics.moveTo (_radius, 0);
+				for (var i = 0; i < Math.PI; i += Math.PI / 100)
+				{
+					this.graphics.lineTo ((-_radius * Math.sin (i)) + _radius, (-_radius * Math.cos (i)) + _radius);
+				}
+				this.graphics.lineTo ((_width - _radius), _diameter);
+				for (var i = 0; i < Math.PI; i += Math.PI / 100)
+				{
+					this.graphics.lineTo ((_radius * Math.sin (i)) + (_width - _radius), (_radius * Math.cos (i)) + _radius);
+				}
+				this.graphics.lineTo (_radius, 0);
+			// }
+
+			this.graphics.fillPath(this.fillBrush);
+
+			if (this.text)
+			{
+				var strSize = this.graphics.measureString(this.text, this.graphics.font, _width);
+				var strW = strSize[0]; 
+				var strH = strSize[1]; 
+				
+				// this.graphics.drawString (this.text, (this.graphics.newPen (graphics.PenType.SOLID_COLOR, textColor, 1)), (this.size[0] - this.graphics.measureString (this.text, this.graphics.font, _buttonWidth)[0]) / 2, (_diameter - this.graphics.measureString (this.text, this.graphics.font, _diameter)[1]) / 2, this.graphics.font);
+				this.graphics.drawString (this.text, (this.graphics.newPen (this.graphics.PenType.SOLID_COLOR, textColor, 1)), (_width - strW) / 2, (_height - strH) /  1.75, this.graphics.font);
+			}
+		}
+		else
+		{
+			this.graphics.rectPath(0+obj.strokeWidth, 0+obj.strokeWidth, _width-(obj.strokeWidth*2), _height-(obj.strokeWidth*2));
+			// this.graphics.strokePath(this.graphics.newPen(this.graphics.PenType.SOLID_COLOR, [0, 0, 0], strokeWidth)); // black stroke
 	
-		this.graphics.fillPath(this.fillBrush);
-		if (this.text) {
+			if(obj.strokeWidth) this.graphics.strokePath(this.graphics.newPen(this.graphics.PenType.SOLID_COLOR, JSUI.hexToRGB(obj.strokeHexValue), obj.strokeWidth));
+			this.graphics.fillPath(this.fillBrush);
 	
-			var strSize = this.graphics.measureString(this.text, this.graphics.font, this.size[0]);
-			var strW = strSize[0]; 
-			var strH = strSize[1]; 
+			if (this.text)
+			{
+		
+				var strSize = this.graphics.measureString(this.text, this.graphics.font, _width);
+				var strW = strSize[0]; 
+				var strH = strSize[1]; 
+		
+				// this.graphics.drawString(
+				// 	this.text,
+				// 	this.textPen,
+				// 	(_width - strW) / 2,
+				// 	(_height - strH) / 1.75,
+				// 	this.graphics.font);
 	
-			this.graphics.drawString(
-				this.text,
-				this.textPen,
-				(this.size[0] - strW) / 2,
-				(this.size[1] - strH) / 1.75,
-				this.graphics.font);
+				this.graphics.drawString (
+					this.text, 
+					(this.graphics.newPen (this.graphics.PenType.SOLID_COLOR, textColor, 1)), 
+					(_width - strW) / 2, 
+					(_height - strH) / 1.75, 
+					this.graphics.font
+					);
+	
+			}
+		
 		}
 	}
 	
-	function _updateTextButtonOnHover(btn, buttonText, backgroundColor, textColor)
+	function _updateButton(btn, buttonText, backgroundColor, textColor)
 	{
 		btn.fillBrush = btn.graphics.newBrush(btn.graphics.BrushType.SOLID_COLOR, JSUI.hexToRGB(backgroundColor));
 		btn.text = buttonText;
 		btn.textPen = btn.graphics.newPen(btn.graphics.PenType.SOLID_COLOR, JSUI.hexToRGB(textColor), 1);
-		btn.onDraw = _drawTextString;
+		btn.graphics.font = ScriptUI.newFont (btn.graphics.font.name, "Bold", btn.graphics.font.size);
+
+		btn.onDraw = _drawButton;
 		return btn;
 	}
 
-	var c = this.add('button', undefined, obj.label ? obj.label : "Close", {name: obj.name ? obj.name : "ok"});
-	
-	c.preferredSize.width = obj.width ? obj.width : 150;
-	c.preferredSize.height = obj.height ? obj.height : 32;
+	// this forces "ok" behavior on ALL custom / CTA buttons unless they have an internal name specifically defined
+	// var c = this.add('button', undefined, obj.label ? obj.label : "Close", {name: obj.name ? obj.name : "ok"});
+	var c = this.add('button', undefined, obj.label ? obj.label : "Close", {name: obj.name ? obj.name : ( obj.label.toLowerCase().replace(/\s/g, "_") ) });
+
+	c.preferredSize.width = obj.width;
+	c.preferredSize.height = obj.height;
 	if(obj.alignment) c.alignment = obj.alignment;
 	if(obj.helpTip) c.helpTip = obj.helpTip;
 	if(obj.disabled) c.enabled = !obj.disabled;
@@ -3950,17 +4074,15 @@ Object.prototype.addCustomButton = function( obj )
     c.fillBrush = c.graphics.newBrush(c.graphics.BrushType.SOLID_COLOR, JSUI.hexToRGB(obj.hexValue));
     c.text = obj.label;
     c.textPen = c.graphics.newPen(c.graphics.PenType.SOLID_COLOR, JSUI.hexToRGB(obj.textHexValue), 1);
-    c.onDraw = _drawTextString;
+    c.onDraw = _drawButton;
 
-
-	// if (obj.hoverValue) {
-		try {
-			c.addEventListener("mouseover", function(){ _updateTextButtonOnHover(this, obj.label, obj.hoverValue, obj.textHexValue); });
-			c.addEventListener("mouseout", function(){ _updateTextButtonOnHover(this, obj.label, obj.hexValue, obj.textHexValue); });
-            c.addEventListener("mousedown", function(){ _updateTextButtonOnHover(this, obj.label, obj.downValue, obj.textHexValue); });
-		} catch (e) {
-		}
-	// }
+	try {
+		c.addEventListener("mouseover", function(){ _updateButton(this, obj.label, obj.hoverValue, obj.textHexValue); });
+		c.addEventListener("mouseout", function(){ _updateButton(this, obj.label, obj.hexValue, obj.textHexValue); });
+		c.addEventListener("mouseup", function(){ _updateButton(this, obj.label, obj.hexValue, obj.textHexValue); });
+		c.addEventListener("mousedown", function(){ _updateButton(this, obj.label, obj.downValue, obj.textHexValue); });
+	} catch (e) {
+	}
 
 	// manually assign new component to dialog's variable list
 	// if(obj.name != undefined) this.Components[obj.name] = c;
@@ -3970,6 +4092,7 @@ Object.prototype.addCustomButton = function( obj )
 		c.onClick = function()
 		{
 			obj.onClickFunction();
+			// closing window must be handled explicitely if onClickFunction is defined 
 		}
 	}
 	else if( obj.url != undefined)
@@ -3990,6 +4113,9 @@ Object.prototype.addCustomButton = function( obj )
 		// 	}
 		// }
 	}
+
+	// draw default state?
+	_updateButton(c, obj.label, obj.hexValue, obj.textHexValue);
 
 	return c;
 }
@@ -4167,7 +4293,7 @@ Object.prototype.addButton = function(imgNameStr, obj)
 		}
 	}
 	// if both arguments are provided and obj.imgFile is not specified, have JSUI.getScriptUIStates() look for "imgNameStr.png"
-	else if( typeof imgNameStr == "string" &&  typeof obj == "object")
+	else if( typeof imgNameStr == "string" && typeof obj == "object")
 	{
 		if( obj.imgFile == undefined )
 		{
