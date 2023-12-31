@@ -131,7 +131,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version, used in tool window titles. Maybe.
-Pslib.version = 0.687;
+Pslib.version = 0.688;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -2798,7 +2798,32 @@ Pslib.packageDocument = function( obj )
     // var docSpecs = Pslib.getDocumentSpecs();
     // var jsonAssetsObj = Pslib.artboardCollectionCoordsToJsonFile(undefined, docSpecs, true); // exports JSON file
     var jsonAssetsObjArr = Pslib.getArtboardCollectionCoordinates(); // only math, no tags here
+    // var jsonAssetsObjArr = [];
+	
+	if(obj.advanced)
+	{
+		if(Pslib.isPhotoshop)
+		{
+			// jsonAssetsObjArr = Pslib.getArtboardCollectionCoordinates();
+			jsonAssetsObjArr = Pslib.getAdvancedSpecs( jsonAssetsObjArr, { dictionary: Pslib.arrayToObj(obj.requiredQualifiers), converter: obj.converter });
+
+		}
+		else if(Pslib.isIllustrator)
+		{
+			// jsonAssetsObjArr = Pslib.getArtboardCollectionCoordinates();
+			
+		}
+	}
+	// else
+	// {
+	// 	jsonAssetsObjArr = Pslib.getArtboardCollectionCoordinates();
+	// }
+
     // var jsonAssetsTagArrays = [];
+
+	// obj.artboardObjArr = Pslib.getAdvancedSpecs(obj.artboardObjArr, { dictionary: Pslib.arrayToObj(obj.requiredQualifiers), converter: obj.converter });
+	// alert(obj.tags);
+	// alert(tags)
     
     // if nothing to work with, abort
     if(!jsonAssetsObjArr.length) return;
@@ -2868,6 +2893,49 @@ Pslib.packageDocument = function( obj )
                     }
                 }
             }
+
+			// from Pslib.getAdvancedSpecs()
+			// var keyValuePairs = Pslib.getXmpDictionary( layerObj, obj.dictionary, false, false, false, obj.namespace);
+			// // var keyValuePairs = Pslib.getXmpDictionary( layerObj, Pslib.assetKeyValuePairs, false, false, false, obj.namespace ? obj.namespace : Pslib.XMPNAMESPACE);
+			// // JSUI.quickLog(keyValuePairs, layerObj.name + " keyValuePairs "+(typeof keyValuePairs)+": ");
+
+			// if(obj.dictionary instanceof Array)
+			// {
+			// 	for(var j = 0; j < keyValuePairs.length; j++)
+			// 	{
+			// 		var pair = keyValuePairs[j];
+			// 		// if($.level) $.writeln("pair: " + pair );
+			// 		if(!pair) continue;
+
+			// 		var property = pair[0];
+			// 		var value = pair[1];
+
+			// 		if(property != undefined)
+			// 		{
+			// 			if(value != undefined)
+			// 			{
+			// 				// convert item property name to xmp qualifier here
+			// 				// converter: [ [ "layerProperty", "docArrayItemQualifier"] ]
+			// 				if(obj.converter != undefined)
+			// 				{
+			// 					if(obj.converter instanceof Array)
+			// 					{
+			// 						for(var k = 0; k < obj.converter.length; k++)
+			// 						{
+			// 							if(obj.converter[k][0] == property)
+			// 							{
+			// 								property = obj.converter[k][1];
+			// 							}
+			// 						}
+			// 					}
+			// 				}
+
+			// 				// if($.level) $.writeln(property +": " + value );
+			// 				specsObj[property] = value;
+			// 			}
+			// 		}
+			// 	}
+			// }
         }
 
         // restore selection
@@ -3042,6 +3110,11 @@ Pslib.packageDocument = function( obj )
 							var sfName = obj.extraStructFields[sf];
 							if(sfName)
 							{
+								// if(ab.name == "Icon_PS4-Cross" && sfName == "assetID")
+								// {
+								// 	// alert(tags);
+								// 	// alert((kname == sfName) + "  " + kname == sfName);
+								// }
 								if(kname == sfName) continue;
 							}
 						}
@@ -3919,6 +3992,65 @@ Pslib.documentHasBackgroundLayer = function()
 	}
 }
 
+// use this when 
+Pslib.getLowestLayerIndex = function()
+{
+    if(!app.documents.length) return;
+	if(Pslib.isPhotoshop)
+	{
+        return Pslib.documentHasBackgroundLayer() ? 0 : 1;
+    }
+}
+
+Pslib.getLayerCount = function()
+{
+    if(!app.documents.length) return;
+	if(Pslib.isPhotoshop)
+	{
+		var r = new ActionReference();
+		r.putProperty(sTID("property"), sTID('numberOfLayers'))
+		r.putEnumerated(sTID("document"), sTID("ordinal"), sTID("targetEnum"))
+		return executeActionGet(r).getInteger(sTID('numberOfLayers'));
+    }
+}
+
+// get array of integers for selected layer objects (layersets + artboards)
+// useful for restoring target layers after complex operations
+Pslib.getSelectedLayerObjectIDs = function()
+{
+    if(!app.documents.length) return;
+	if(Pslib.isPhotoshop)
+	{
+        if(Pslib.documentHasBackgroundLayer() && app.activeDocument.layers.length == 1) return [];
+
+        var lowestIndex = Pslib.getLowestLayerIndex();
+
+        var tLs;
+        var dsc;
+        var indx;
+        var slctd;
+        var ref = new ActionReference();
+
+        (ref = new ActionReference())
+        .putProperty(sTID('property'), tLs = sTID('targetLayers'))
+        ref.putEnumerated(sTID('document'), sTID('ordinal'), sTID('targetEnum'));
+
+        var cnt = (slctd = executeActionGet(ref).getList(tLs)).count; 
+        var arr = [];
+
+        for(i = 0; i < cnt; i++)
+        {
+            (ref = new ActionReference())
+            .putIndex(charIDToTypeID('Lyr '), indx = slctd
+            .getReference(i).getIndex() + lowestIndex), tSID
+            ((dsc = executeActionGet(ref)).getEnumerationValue
+            (sTID('layerSection'))).indexOf('Content') < 0 //&& dsc.getInteger(sTID('parentLayerID')) < 0
+            && arr.push(dsc.getInteger(sTID('layerID')));
+        }
+        return arr;
+    }
+}
+
 Pslib.getSpecsForSelectedArtboards = function(onlyIDs)
 {
 	if(Pslib.isPhotoshop)
@@ -4591,6 +4723,28 @@ Pslib.getLayerObjectCoordinates = function(layer)
 	}
 
 	return coords;
+}
+
+// https://community.adobe.com/t5/photoshop-ecosystem-discussions/in-a-script-calling-artlayer-translate-changes-artlayer-visible-from-false-to-true/m-p/10891243
+// translate photoshop Layer object via AM
+// does not affect visibility and smartobject transform values
+Pslib.layerTranslate = function( x, y )
+{
+    if(!app.documents.length) return;
+	if(Pslib.isPhotoshop)
+	{
+        var d = new ActionDescriptor();
+        var r = new ActionReference();
+        r.putEnumerated(sTID("layer"), sTID("ordinal"), sTID("targetEnum"));
+        d.putReference(sTID("null"), r);
+
+        var d1 = new ActionDescriptor();
+        d1.putUnitDouble(sTID("horizontal"), sTID("pixelsUnit"), x);
+        d1.putUnitDouble(sTID("vertical"),   sTID("pixelsUnit"), y);
+        d.putObject(sTID("to"), sTID("offset"), d1);
+
+        executeAction(sTID("move"), d, DialogModes.NO);
+    }
 }
 
 // quickly accessible basic info for all of a document's artboards
@@ -9755,8 +9909,7 @@ Pslib.addTextItem = function( obj )
             // var yt = rectCoords.y - tLayerCoords.y;
             var xt = rectCoords.x;
             var yt = rectCoords.y;
-            tlayer.translate(xt, yt);
-
+            tlayer.translate(xt, yt); //  update with Pslib.layerTranslate()
             // center text vertically using baseline shift
 
             // var tOrigin = textObj.position; // this will fail in some cases
@@ -9777,7 +9930,7 @@ Pslib.addTextItem = function( obj )
             textObj.width = new UnitValue(obj.width + " pixels");
             textObj.height = new UnitValue(obj.height + " pixels");
 
-            tlayer.translate(xt, yt);
+            tlayer.translate(xt, yt); // update with Pslib.layerTranslate()
         }
 
 
@@ -9900,7 +10053,7 @@ Pslib.getFillColor = function ( asColorObj )
 			{
 				var r = new ActionReference();
 				r.putEnumerated(cTID("Lyr "), cTID("Ordn"), cTID("Trgt"));
-				var d = executeActionGet(ref);
+				var d = executeActionGet(r);
 		
 				var l = d.getList(cTID('Adjs'));
 				var cd = l.getObjectValue(0);
@@ -10877,25 +11030,25 @@ Pslib.getArtboardBackgroundColor = function( asObj )
 }
 
 // bool is shape / solid fill
-Pslib.isShape = function( )
+Pslib.isShape = function( item )
 {
 	if(!app.documents.length) return false;
     var doc = app.activeDocument;
 
 	if(Pslib.isPhotoshop)
 	{
-		var layer = doc.activeLayer;
+		var layer = item ? item : doc.activeLayer;
 		if(!layer) return false;
 		var layerIsShape = layer.typename == "ArtLayer" ? (layer.kind == LayerKind.SOLIDFILL ? true : false) : false;
 		return layerIsShape;
 	}
 	else if(Pslib.isIllustrator)
 	{
-		var selection = doc.selection;
+		var selection = item ? [item] : doc.selection;
 		if(selection)
 		{
 			var item = selection[0];
-			return (item.typename == "PathItem")
+			return (item.typename == "PathItem");
 		}
 		return false;
 	}	
