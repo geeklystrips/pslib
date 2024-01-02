@@ -3880,12 +3880,16 @@ Pslib.selectLayerByID = function ( idInt, addToSelectionBool )
 	}
 }
 
-// useful for restoring layer selection Pslib.getSpecsForSelectedArtboards()
-// option to execute arbitrary function while looping, and at the end
-Pslib.selectArtboardsCollection = function ( arr, individualFunc, globalFunc )
+// Useful for restoring layer selection/targets after non-destructive operations 
+// Assumes no layer objects have been deleted in the process
+// Option to execute arbitrary function while looping, and at the end.
+// Will also group-select other types of layer objects
+// Automatically collapses artboards / groups
+Pslib.selectArtboardsCollection = function ( arr, individualFunc, globalFunc, autoCollapse )
 {
 	if(!app.documents.length) return;
 	if(!arr) return;
+	if(autoCollapse == undefined) autoCollapse = true;
 
 	if(Pslib.isPhotoshop)
 	{
@@ -3925,7 +3929,7 @@ Pslib.selectArtboardsCollection = function ( arr, individualFunc, globalFunc )
 			}
 		}
 
-		Pslib.collapseAllGroups();
+		if(autoCollapse) Pslib.collapseAllGroups();
 
 		return true;
 	}
@@ -4014,7 +4018,7 @@ Pslib.getLayerCount = function()
     }
 }
 
-// get array of integers for selected layer objects (layersets + artboards)
+// get simple array of integers for selected layer objects (layersets + artboards)
 // useful for restoring target layers after complex operations
 Pslib.getSelectedLayerObjectIDs = function()
 {
@@ -4022,30 +4026,32 @@ Pslib.getSelectedLayerObjectIDs = function()
 	if(Pslib.isPhotoshop)
 	{
         if(Pslib.documentHasBackgroundLayer() && app.activeDocument.layers.length == 1) return [];
+        var arr = [];
 
         var lowestIndex = Pslib.getLowestLayerIndex();
 
-        var tLs;
-        var dsc;
-        var indx;
-        var slctd;
-        var ref = new ActionReference();
+		// document reference: current target layers
+        var dref = new ActionReference();
+		dref.putProperty(sTID('property'), sTID('targetLayers'));
+        dref.putEnumerated(sTID('document'), sTID('ordinal'), sTID('targetEnum'));
 
-        (ref = new ActionReference())
-        .putProperty(sTID('property'), tLs = sTID('targetLayers'))
-        ref.putEnumerated(sTID('document'), sTID('ordinal'), sTID('targetEnum'));
+		var targets = executeActionGet(dref).getList(sTID('targetLayers'));
 
-        var cnt = (slctd = executeActionGet(ref).getList(tLs)).count; 
-        var arr = [];
-
-        for(i = 0; i < cnt; i++)
+		// loop through targets and get info for each
+        for(var i = 0; i < targets.count; i++)
         {
-            (ref = new ActionReference())
-            .putIndex(charIDToTypeID('Lyr '), indx = slctd
-            .getReference(i).getIndex() + lowestIndex), tSID
-            ((dsc = executeActionGet(ref)).getEnumerationValue
-            (sTID('layerSection'))).indexOf('Content') < 0 //&& dsc.getInteger(sTID('parentLayerID')) < 0
-            && arr.push(dsc.getInteger(sTID('layerID')));
+			// layer object reference
+            var lref = new ActionReference();
+			var stackIndex = targets.getReference(i).getIndex() + lowestIndex; // layer index in stack of layers
+			var desc; 
+
+			// layer descriptor
+            lref.putIndex(cTID('Lyr '), stackIndex );
+			desc = executeActionGet(lref);
+			var layerID = desc.getInteger(sTID('layerID'));
+
+			arr.push(layerID);
+			continue;
         }
         return arr;
     }
@@ -4125,8 +4131,6 @@ Pslib.getSpecsForSelectedArtboards = function(onlyIDs)
 						bottom: artboardRect.getDouble(sTID('bottom'))
 					};
 				
-				
-
 				artboards.push({ name: artboardName, index: i, id: artboardID, x: bounds.left, y: bounds.top, width: bounds.right - bounds.left, height: bounds.bottom - bounds.top });
 			}
 		}
@@ -4138,7 +4142,6 @@ Pslib.getSpecsForSelectedArtboards = function(onlyIDs)
 		var initialSelection = doc.selection;
 
 		var artboards = Pslib.getArtboardsFromSelectedItems();
-// alert("artboards: " + artboards.length);
 
 		var artboardsCoords = [];
 		var placeholder;
@@ -4151,7 +4154,6 @@ Pslib.getSpecsForSelectedArtboards = function(onlyIDs)
 			// coordsObj.index = artboardIndex;
 			doc.artboards.setActiveArtboardIndex(artboardIndex);
 			doc.selectObjectsOnActiveArtboard();
-// alert(doc.selection.length);
 
 			placeholder = Pslib.getArtboardItem(artboard, "#");
 			var specsObj = { name: artboard.name.toFileSystemSafeName(), id: (artboardIndex+1) };
@@ -4647,6 +4649,8 @@ Pslib.getArtboardIndexByName = function (nameStr, activateBool)
 // get simple artboard names array for matching / renaming
 Pslib.getArtboardNames = function( artboards )
 {
+	if(!app.documents.length) return [];
+
 	var artboardNames = [];
 	if(Pslib.isIllustrator)
 	{
@@ -4671,20 +4675,110 @@ Pslib.getArtboardNames = function( artboards )
 	return artboardNames;
 }
 
-// get Photoshop layer reference without selecting (can be an artlayer / group / artboard)
-Pslib.getLayerReferenceByID = function( id )
+// Photoshop only:
+// get usable layer reference from persistent layer ID, without having to select layer
+// target can be an art layer, a group of layers, an artboard or a frame
+// option to return basic coordinates object
+Pslib.getLayerReferenceByID = function( id, getCoordsObject, ignoreEffects )
 {
+	if(!app.documents.length) return;
     if(Pslib.isPhotoshop)
 	{
         var r = new ActionReference();    
         r.putIdentifier(sTID("layer"), id);
-        return executeActionGet(r);
+		var ref = executeActionGet(r);
+		var coords = {};
+
+		if(getCoordsObject)
+		{
+			coords.name = ref.getString(sTID("name"));
+			coords.id = id;
+
+			// this tells us whether we're dealing with an art layer of with a group/artboard/frame
+			var layerSection = ref.getEnumerationValue(sTID('layerSection'));
+			var contentIndex = tSID(layerSection).indexOf('Content');
+			var hasContent = contentIndex < 0;
+
+			// if reference object has no parent layer ID, it's nested at the top-level of the document
+			var parentID = ref.getInteger(sTID('parentLayerID'));
+			var isTopLevelLayerObject = parentID < 0; 
+			// JSUI.quickLog("parentID: " + parentID);
+			// JSUI.quickLog("isTopLevelLayerObject: " + isTopLevelLayerObject);
+
+			var isVisible = ref.getBoolean(cTID( "Vsbl" ));
+			if(!isVisible) coords.visible = isVisible; // only include info if layer object is hidden
+
+			// // determine if raster mask or vector mask is present 
+			// // this only works if mask "exists"
+			// var hasRasterMask = ref.getBoolean(sTID('userMaskEnabled'));  
+			// var hasVectorMask = ref.getBoolean(sTID('vectorMaskEnabled'));  
+			// if(hasRasterMask) coords.userMask = hasRasterMask;
+			// if(hasVectorMask) coords.vectorMask = hasVectorMask;
+
+
+
+
+
+			// prepare container for bounds
+			var rect;
+
+			// "art" layer: shape, smartobject, adjustment layer...
+			if(!hasContent && isTopLevelLayerObject)
+			{
+				rect = ignoreEffects ? ref.getObjectValue(sTID("boundsNoEffects")) : ref.getObjectValue(sTID("bounds"));
+
+				coords.x = rect.getDouble(sTID("left"));
+				coords.y = rect.getDouble(sTID("top"));
+				coords.width = rect.getDouble(sTID("right")) - coords.x;
+				coords.height = rect.getDouble(sTID("bottom")) - coords.y;
+				coords.type = "art layer";
+				coords.kind = Pslib.getLayerObjectType( ref );
+
+				// if shape layer or solid fill, get color 
+				if(coords.kind == "kVectorSheet" || coords.kind == "kSolidColorSheet")
+				{
+					var l = ref.getList(cTID('Adjs'));
+					var cd = l.getObjectValue(0);
+					var c = cd.getObjectValue(cTID('Clr '));
+			
+					var r = Math.round(c.getDouble(cTID('Rd  ')));
+					var g = Math.round(c.getDouble(cTID('Grn ')));
+					var b = Math.round(c.getDouble(cTID('Bl  ')));
+			
+					coords.hexValue = "#"+Pslib.RGBtoHex(r, g, b);
+				}
+
+			}
+
+			// "layerSection" abstraction: group, frame, artboard.
+			else if(hasContent)
+			{
+				var isArtboard = ref.getBoolean(sTID('artboardEnabled'));
+				var isFrame = ref.hasKey(sTID('framedGroup'));
+				// var isGroup = !isArtboard && !isFrame;
+
+				rect = isArtboard ? ref.getObjectValue(sTID("artboard")).getObjectValue(sTID("artboardRect")) : ( ignoreEffects ? ref.getObjectValue(sTID("boundsNoEffects")) : ref.getObjectValue(sTID("bounds"))); 
+
+				coords.x = rect.getDouble(sTID("left"));
+				coords.y = rect.getDouble(sTID("top"));
+				coords.width = rect.getDouble(sTID("right")) - coords.x;
+				coords.height = rect.getDouble(sTID("bottom")) - coords.y;
+
+				var type =  isArtboard ? "artboard" : (isFrame ? "frame" : "group");
+
+				coords.type = type;
+			}
+		}
+
+        return getCoordsObject ? coords : ref;
     }
 }
 
 // get Photoshop artboard reference without selecting (must be an artboard)
 Pslib.getArtboardReferenceByID = function( id )
 {
+	if(!app.documents.length) return;
+
     if(Pslib.isPhotoshop)
 	{
         var r = new ActionReference();    
@@ -4695,16 +4789,99 @@ Pslib.getArtboardReferenceByID = function( id )
     }
 }
 
-// get simple coordinates from layer object (assuming raster, no mask)
-Pslib.getLayerObjectCoordinates = function(layer)
+// WIP: from layer reference, determine type
+Pslib.getLayerObjectType = function( ref )
 {
+	if(!app.documents.length) return;
+	var doc = app.activeDocument;
+
+	if(Pslib.isPhotoshop)
+	{
+        if(!ref)
+        {
+            var layer = doc.activeLayer;
+            if(layer)
+            {
+                ref = Pslib.getLayerReferenceByID( layer.id, true );
+            }
+        }
+
+        var r = ref;
+
+        // if passed a number, assume sTID('layerKind') integer already processed
+        var kind = typeof r == "number" ? ref : r.getInteger(sTID('layerKind')); 
+        var kindStr = "";
+
+        if (kind == 0) {
+            kindStr = "kAnySheet";
+        }
+        else if (kind == 1) {
+            kindStr = "kPixelSheet";    // regular pixel layer
+        }
+        else if (kind == 2) {
+            // adjustment layers are a special case     
+            kindStr = tSID(r.getList(sTID('adjustment')).getObjectType(0));
+        }
+        else if (kind == 3) {
+            kindStr = "kTextSheet"; // text item
+        }
+        else if (kind == 4) {
+            kindStr = "kVectorSheet";   // shape layer -- not the same as solid fill
+        }
+        else if (kind == 5) {
+            kindStr = "kSmartObjectSheet";  // smart object
+        }
+        else if (kind == 6) {
+            kindStr = "kVideoSheet";
+        }
+        else if (kind == 7) {
+            kindStr = "kLayerGroupSheet";   // layer set
+        }
+        else if (kind == 8) {
+            kindStr = "k3DSheet";
+        }
+        else if (kind == 9) {
+            kindStr = "kGradientSheet";
+        }
+        else if (kind == 10) {
+            kindStr = "kPatternSheet";
+        }
+        else if (kind == 11) {
+            kindStr = "kSolidColorSheet";   // solid fill
+        }
+        else if (kind == 12) {
+            kindStr = "kBackgroundSheet";
+        }
+        else if (kind == 13) {
+            kindStr = "kHiddenSectionBounder";
+        }
+        else {
+            
+        }
+        return kindStr;
+    }
+}
+// get coordinates object for specific layer object or abstract layer object via ID
+Pslib.getLayerObjectCoordinates = function( layer )
+{
+	if(!app.documents.length) return;
+	var doc = app.activeDocument;
+
 	var coords = {};
 
 	if(Pslib.isPhotoshop)
 	{
-		if(!layer)
+		if(layer == undefined)
 		{
-			return coords;
+			layer = doc.activeLayer;
+			if(layer) return Pslib.getLayerReferenceByID( layer.id, true );
+			else return coords;
+		}
+
+		// if integer, assume layer ID
+		if(typeof layer == "number")
+		{
+			return Pslib.getLayerReferenceByID( layer, true );
 		}
 
 		coords.name = layer.name.trim();
@@ -4890,7 +5067,7 @@ Pslib.getDocumentSpecs = function( advanced )
 	return specs;
 }
 
-// basic get artboard bounds
+// basic get artboard bounds, formatted as Illustrator Rect object
 Pslib.getArtboardBounds = function( id )
 {
     if(Pslib.isPhotoshop)
@@ -4899,19 +5076,12 @@ Pslib.getArtboardBounds = function( id )
 
         if(r)
         {
-            // var name = r.getString(sTID ("name"));
-            // JSUI.quickLog(name);
-
             var d = r.getObjectValue(sTID("artboard")).getObjectValue(sTID("artboardRect"));
             var bounds = new Array();
             bounds[0] = d.getUnitDoubleValue(sTID("top"));
             bounds[1] = d.getUnitDoubleValue(sTID("left"));
             bounds[2] = d.getUnitDoubleValue(sTID("right"));
             bounds[3] = d.getUnitDoubleValue(sTID("bottom"));
-            // bounds[0] = d.getUnitDoubleValue(sTID("top")).as('px');
-            // bounds[1] = d.getUnitDoubleValue(sTID("left")).as('px');
-            // bounds[2] = d.getUnitDoubleValue(sTID("right")).as('px');
-            // bounds[3] = d.getUnitDoubleValue(sTID("bottom")).as('px');
 
             return bounds;
         }
