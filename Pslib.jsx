@@ -890,21 +890,29 @@ Pslib.getPropertiesArray = function (target, namespace, nsprefix)
 		var xmp;
 		var propsArray = [];
 		// var propsReport = "";
-		
-		// access metadata
-		try
+
+		if(Pslib.isPhotoshop && (typeof target == "number"))
 		{
-		   xmp = new XMPMeta( Pslib.isIllustrator ? target.XMPString : target.xmpMetadata.rawData );
-			// xmp = Pslib.getXmp(target);
-		//    if($.level) $.writeln("XMP Metadata successfully fetched from target \"" + target.name + "\"");
-		} catch( e ) 
+			xmp = Pslib.getXmpByID( target );
+		}
+		else
 		{
-			if(Pslib.isPhotoshop)
+			// access metadata
+			try
 			{
-				xmp = new XMPMeta();
+				xmp = new XMPMeta( Pslib.isIllustrator ? target.XMPString : target.xmpMetadata.rawData );
+				// xmp = Pslib.getXmp(target);
+			//    if($.level) $.writeln("XMP Metadata successfully fetched from target \"" + target.name + "\"");
+			} catch( e ) 
+			{
+				if(Pslib.isPhotoshop)
+				{
+					xmp = new XMPMeta();
+				}
+				// if($.level) $.writeln("XMP metadata could not be found for target \"" + target.name + "\".\nCreating new XMP metadata container.");
+				return null;
 			}
-			// if($.level) $.writeln("XMP metadata could not be found for target \"" + target.name + "\".\nCreating new XMP metadata container.");
-			return null;
+
 		}
 
 		if(Pslib.isInDesign)
@@ -1172,7 +1180,7 @@ Pslib.getXmpDictionary = function( target, obj, allowEmptyStringBool, typeCaseBo
         }
     }
 
-    // fetch XMP values
+    // fetch XMP values -- automatically handles getting XMP via layer ID
     var propertiesArr = Pslib.getXmpProperties( target, tempArr, namespace ? namespace : Pslib.XMPNAMESPACE );
 
 	if(propertiesArr != null)
@@ -1271,9 +1279,19 @@ Pslib.clearXmp = function (target)
 			return true;
 		}
 		
-		// if metadata found, replace by empty version
-		var emptyXmp = new XMPMeta();
-		if(Pslib.isPhotoshop) target.xmpMetadata.rawData = xmp.serialize();
+		if(Pslib.isPhotoshop)
+		{
+			// if metadata found, replace by empty packet
+			var emptyXmp = new XMPMeta();
+			if(typeof target == "number")
+			{
+				Pslib.setXmpByID(target, emptyXmp.serialize());
+			}
+			else
+			{
+				target.xmpMetadata.rawData = xmp.serialize();
+			}
+		}
 			
 		return true;
 	}
@@ -2945,8 +2963,9 @@ Pslib.packageDocument = function( obj )
             if(Pslib.isPhotoshop)
             {
                 // select artboard by id
-                var artboard = Pslib.selectLayerByID( asset.id, false );
-                tags = Pslib.getXmpProperties(artboard, obj.tags, obj.namespace);
+                // var artboard = Pslib.selectLayerByID( asset.id, false );
+                // tags = Pslib.getXmpProperties(artboard, obj.tags, obj.namespace);
+				tags = Pslib.getXmpProperties( asset.id, obj.tags, obj.namespace); // much faster!
 
                 // JSUI.quickLog(tags);
             }
