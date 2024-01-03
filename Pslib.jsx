@@ -131,7 +131,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version, used in tool window titles. Maybe.
-Pslib.version = 0.688;
+Pslib.version = 0.689;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -148,7 +148,6 @@ if(Pslib.isPhotoshop)
 	cTID = function(s) {return app.charIDToTypeID(s);}
 	sTID = function(s) {return app.stringIDToTypeID(s);}
 	tSID = function(t) {return app.typeIDToStringID(t);}
-
 
 	// Pslib.optimizeScriptingListenerCode = function()
 	// {
@@ -280,7 +279,7 @@ if(Pslib.isPhotoshop)
 
     	// get object-level XMP
 
-        var dictionary = Pslib.getXmpDictionary( layer, { assetID: null, source: null, hierarchy: null, specs: null, custom: null }, false, false, false, namespace ? namespace : Pslib.XMPNAMESPACE);
+        var dictionary = Pslib.getXmpDictionary( layer.id, { assetID: null, source: null, hierarchy: null, specs: null, custom: null }, false, false, false, namespace ? namespace : Pslib.XMPNAMESPACE);
       
        // no empty strings allowed and no null values
         // var dictionary = Pslib.getXmpDictionary( layer, ["assetID", "source", "hierarchy", "specs", "custom" ], false, false, false);
@@ -302,7 +301,7 @@ if(Pslib.isPhotoshop)
         }
 
 
-        if($.level) $.writeln("LayerID " + obj.index + ": " + obj.name + " (w:" + obj.width +" h:" + obj.height + ") (x:" + obj.x +" y:" + obj.y + ")" ); //"  rect: " + obj.artboardRect);
+        // if($.level) $.writeln("LayerID " + obj.index + ": " + obj.name + " (w:" + obj.width +" h:" + obj.height + ") (x:" + obj.x +" y:" + obj.y + ")" ); //"  rect: " + obj.artboardRect);
         return obj;
     }
 
@@ -340,6 +339,8 @@ else
 	// just use placeholders for the rest
 	cTID = function(){};
 	sTID = function(){};
+	tSID = function(){};
+
 	selectByID = function(){};
 	getActiveLayerID = function(){};
 	getArtboardBounds = function(){};
@@ -427,7 +428,7 @@ var XmpWhitespace = "                                                           
 Pslib.dark = [0, 0, 0];
 Pslib.light = [1.0, 1.0, 1.0];
 
-// if Photoshop-version specific colors (I have too much time on my hands!)
+// if Photoshop-version specific colors
 if(Pslib.isPsCS3)
 {
 	Pslib.dark = [0.18823529411765, 0.44705882352941, 0.72549019607843]; //3072b9
@@ -468,7 +469,7 @@ try
 }
 catch(e)
 {
-	// if ExternalObject.AdobeXMPScript not present, hardcode the namespace to exif
+	// if ExternalObject.AdobeXMPScript not present, hardcode namespace to exif
 	Pslib.XMPNAMESPACE = "http://ns.adobe.com/exif/1.0/";
 }
 
@@ -533,7 +534,16 @@ Pslib.getXmp = function (target, createNew)
 			}
 			else if(Pslib.isPhotoshop)
 			{
-				xmp = new XMPMeta(target.xmpMetadata.rawData );
+				// if given number as target instead of Document or Layer object, 
+				// assume Layer ID and use faster method
+				if(typeof target == "number") 
+				{
+					xmp = Pslib.getXmpByID( target );
+				}
+				else
+				{
+					xmp = new XMPMeta(target.xmpMetadata.rawData );
+				}
 			}
 			else if(Pslib.isIllustrator)
 			{
@@ -803,7 +813,15 @@ Pslib.getXmpProperties = function (target, propertiesArray, namespace)
 		// access metadata
 		try
 		{
-		//    xmp = new XMPMeta( Pslib.isIllustrator ? target.XMPString : target.xmpMetadata.rawData );
+			//
+			// manage target type here
+			// if(Pslib.isPhotoshop)
+			// {
+			// 	if(typeof target == "number")
+			// 	{
+					
+			// 	}
+			// }
 		   xmp = Pslib.getXmp(target);
 		   foundXMP = true;
 		//    if($.level) $.writeln("XMP Metadata successfully fetched from target \"" + target.name + "\"");
@@ -2643,6 +2661,89 @@ Pslib.getDocTextLayers = function( xmp )
         }
         return biDimArr;
     }
+
+// Much faster than layer XMP: piggyback onto Photoshop Generator plugin per-layer space
+// accessible via ID, no active selection required, use within a Pslib.getSelectedArtboardIDs() loop
+Pslib.setObjectData = function(id, jsonObj, PLUGIN_ID)
+{
+	if(!app.documents.length) return;
+
+	var doc = app.activeDocument;
+
+	if(Pslib.isPhotoshop)
+	{
+		var id = id ? id : doc.activeLayer.id;
+
+		if (id && jsonObj && PLUGIN_ID)
+		{
+			var jdesc = new ActionDescriptor()
+			jdesc.putString(sTID("json"), typeof jsonObj == "string" ? jsonObj : JSON.stringify(jsonObj));
+		
+			var ref = new ActionReference();
+			ref.putProperty(cTID("Prpr"), sTID("generatorSettings"));
+			ref.putIdentifier(cTID("Lyr "), id);
+		
+			var adesc = new ActionDescriptor();
+			adesc.putReference(cTID("null"), ref);
+			adesc.putObject(cTID("T   "), cTID("null"), jdesc);
+			adesc.putString(sTID("property"), PLUGIN_ID);
+			executeAction(cTID("setd"), adesc, DialogModes.NO);
+			return true;
+		}
+	}
+	else if(Pslib.isIllustrator)
+	{
+
+	}
+}
+
+Pslib.getObjectData = function(id, PLUGIN_ID)
+{
+	if(!app.documents.length) return;
+
+	var doc = app.activeDocument;
+
+	if(Pslib.isPhotoshop)
+	{
+		var id = id ? id : doc.activeLayer.id;
+
+		if (id && PLUGIN_ID)
+		{
+			var ref = new ActionReference();
+			ref.putProperty(cTID("Prpr"), sTID("generatorSettings"));
+			ref.putIdentifier(cTID("Lyr "), id); 
+		
+			var adesc = new ActionDescriptor();
+			adesc.putReference(cTID("null"), ref);
+			adesc.putString(sTID("property"), PLUGIN_ID);
+		
+			var desc = executeAction(cTID("getd"), adesc, DialogModes.NO);
+			if (desc)
+			{
+				var genSettings = sTID("generatorSettings");
+				if (desc.hasKey(genSettings))
+				{
+					var genData = desc.getObjectValue(genSettings);
+					var json = sTID("json");
+
+					if (genData.hasKey(json))
+					{
+						var jData = genData.getString(json);
+						if (jData)
+						{
+							return JSON.parse(jData);
+						}
+					}
+				}
+			}
+		}
+	} 
+	else if(Pslib.isIllustrator)
+	{
+		
+	}
+}
+
     
 // *** need a property name converter routine 
 
@@ -4386,7 +4487,8 @@ Pslib.getAdvancedSpecs = function( specsArr, obj )
 		{
 			var specsObj = specsArr[i];
 			// var layerObj = Pslib.isPhotoshop ? Pslib.selectLayerByID( specsObj.id, false ) : ;
-			var layerObj = Pslib.selectLayerByID( specsObj.id, false ); // illustrator purposefully returns undefined
+			// var layerObj = Pslib.selectLayerByID( specsObj.id, false ); // illustrator purposefully returns undefined
+			var layerObj;
 
 			if(obj.dictionary)
 			{
@@ -4394,7 +4496,7 @@ Pslib.getAdvancedSpecs = function( specsArr, obj )
 				// Pslib.isPhotoshop ? 
 				// if(Pslib.isIllustrator) Pslib.getArtboardCoordinates(originalArtboard)
 				// var keyValuePairs = Pslib.isPhotoshop ? Pslib.getXmpDictionary( layerObj, obj.dictionary, false, false, false, obj.namespace) : ( [ /* get artboard item tags */ ] );
-				var keyValuePairs = Pslib.getXmpDictionary( layerObj, obj.dictionary, false, false, false, obj.namespace);
+				var keyValuePairs = Pslib.getXmpDictionary( Pslib.isPhotoshop ? specsObj.id : layerObj, obj.dictionary, false, false, false, obj.namespace);
 				// var keyValuePairs = Pslib.getXmpDictionary( layerObj, Pslib.assetKeyValuePairs, false, false, false, obj.namespace ? obj.namespace : Pslib.XMPNAMESPACE);
 				// JSUI.quickLog(keyValuePairs, layerObj.name + " keyValuePairs "+(typeof keyValuePairs)+": ");
 
@@ -4509,7 +4611,7 @@ Pslib.getAdvancedSpecs = function( specsArr, obj )
 			// 	}
 			// }
 
-			Pslib.selectArtboardsCollection(specsArr);
+			// Pslib.selectArtboardsCollection(specsArr);
 		}
 		else if(Pslib.isIllustrator)
 		{
@@ -4715,10 +4817,6 @@ Pslib.getLayerReferenceByID = function( id, getCoordsObject, ignoreEffects )
 			// if(hasRasterMask) coords.userMask = hasRasterMask;
 			// if(hasVectorMask) coords.vectorMask = hasVectorMask;
 
-
-
-
-
 			// prepare container for bounds
 			var rect;
 
@@ -4861,6 +4959,69 @@ Pslib.getLayerObjectType = function( ref )
         return kindStr;
     }
 }
+
+
+Pslib.setXmpByID = function( id, xmpStr )
+{
+	if(!app.documents.length) return;
+	if(!xmpStr) return;
+
+	var doc = app.activeDocument;
+
+	if(Pslib.isPhotoshop)
+	{
+		var id = id ? id : doc.activeLayer.id;
+
+		// if instanceof Object, assume valid XMPMeta and serialize to string
+		if(xmpStr instanceof Object) xmpStr = xmpStr.serialize();
+		
+		var xmpDataKey = sTID( "XMPMetadataAsUTF8" );
+		var classLayer = cTID( 'Lyr ' );
+		var classDocument = cTID( 'Dcmn' );
+		var keyTarget = cTID( 'null' );
+		var keyTo = cTID( 'T   ' );
+		var eventSet = cTID( 'setd' );
+		var classProperty = cTID( "Prpr" );
+		var target = new ActionReference();
+		target.putProperty( classProperty, xmpDataKey );
+		target.putIdentifier( classLayer, id );
+		target.putIdentifier( classDocument, doc.id );
+		var desc = new ActionDescriptor();
+		desc.putReference( keyTarget, target );
+		var dataDesc = new ActionDescriptor();
+		dataDesc.putString( xmpDataKey, xmpStr );
+		desc.putObject( keyTo, xmpDataKey, dataDesc );
+		executeAction( eventSet, desc );
+	}
+}
+
+Pslib.getXmpByID = function( id )
+{
+	if(!app.documents.length) return;
+
+	var doc = app.activeDocument;
+	var id = id ? id : doc.activeLayer.id;
+
+	var ref = new ActionReference();
+	ref.putProperty( cTID( 'Prpr' ), sTID( "metadata" ) );
+	ref.putIdentifier(sTID("layer"), id);
+
+	var desc = executeActionGet(ref);
+	var xmpData;
+
+	try{
+		xmpData = desc.getObjectValue(sTID( "metadata" )).getString(sTID( "layerXMP" ));
+	}catch(e){}
+
+	// if(typeof xmpData !== "undefined")
+	if(typeof xmpData == "string")
+	{
+		xmpData = new XMPMeta(xmpData);
+	}
+
+	return xmpData;
+}
+
 // get coordinates object for specific layer object or abstract layer object via ID
 Pslib.getLayerObjectCoordinates = function( layer )
 {
