@@ -4997,7 +4997,7 @@ Pslib.getLayerObjectType = function( ref )
     }
 }
 
-
+// here's a way to set/get xmp by layer ID
 Pslib.setXmpByID = function( id, xmpStr )
 {
 	if(!app.documents.length) return;
@@ -5029,6 +5029,7 @@ Pslib.setXmpByID = function( id, xmpStr )
 		dataDesc.putString( xmpDataKey, xmpStr );
 		desc.putObject( keyTo, xmpDataKey, dataDesc );
 		executeAction( eventSet, desc );
+		return true;
 	}
 }
 
@@ -5037,27 +5038,61 @@ Pslib.getXmpByID = function( id )
 	if(!app.documents.length) return;
 
 	var doc = app.activeDocument;
-	var id = id ? id : doc.activeLayer.id;
 
-	var ref = new ActionReference();
-	ref.putProperty( cTID( 'Prpr' ), sTID( "metadata" ) );
-	ref.putIdentifier(sTID("layer"), id);
-
-	var desc = executeActionGet(ref);
-	var xmpData;
-
-	try{
-		xmpData = desc.getObjectValue(sTID( "metadata" )).getString(sTID( "layerXMP" ));
-	}catch(e){}
-
-	// if(typeof xmpData !== "undefined")
-	if(typeof xmpData == "string")
+	if(Pslib.isPhotoshop)
 	{
-		xmpData = new XMPMeta(xmpData);
-	}
+		var id = id ? id : doc.activeLayer.id;
 
-	return xmpData;
+		var ref = new ActionReference();
+		ref.putProperty( cTID( 'Prpr' ), sTID( "metadata" ) );
+		ref.putIdentifier(sTID("layer"), id);
+
+		var desc = executeActionGet(ref);
+		var xmpData;
+
+		try{
+			xmpData = desc.getObjectValue(sTID( "metadata" )).getString(sTID( "layerXMP" ));
+		}catch(e){}
+
+		// if(typeof xmpData !== "undefined")
+		if(typeof xmpData == "string")
+		{
+			xmpData = new XMPMeta(xmpData);
+		}
+
+		return xmpData;
+	}
 }
+
+Pslib.getLayerObjectTimeStamp = function ( layer, locale )
+{
+	if(!app.documents.length) return;
+
+	var doc = app.activeDocument;
+
+	if(Pslib.isPhotoshop)
+	{
+		if(layer == undefined)
+		{
+			layer = doc.activeLayer;
+		}
+
+		var ref = new ActionReference(); 
+		var metadataStrID = sTID("metadata");
+		ref.putProperty(cTID('Prpr'), metadataStrID);
+		ref.putIdentifier(sTID("layer"), (typeof layer == "number") ? layer : layer.id);
+		var desc = executeActionGet(ref);
+
+		if (desc.hasKey(metadataStrID)){
+				var descMetadata = desc.getObjectValue( metadataStrID );
+				var timeInSeconds = descMetadata.getDouble(sTID("layerTime"));
+				var d = new Date();
+				d.setTime(timeInSeconds*1000.0);
+				return locale ? d.toLocaleString() : timeInSeconds;
+		}
+	}
+}
+
 
 // get coordinates object for specific layer object or abstract layer object via ID
 Pslib.getLayerObjectCoordinates = function( layer )
