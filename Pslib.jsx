@@ -4803,6 +4803,7 @@ Pslib.getArtboardNames = function( artboards )
 Pslib.getLayerReferenceByID = function( id, getCoordsObject, ignoreEffects )
 {
 	if(!app.documents.length) return;
+	
     if(Pslib.isPhotoshop)
 	{
         var r = new ActionReference();    
@@ -4864,7 +4865,24 @@ Pslib.getLayerReferenceByID = function( id, getCoordsObject, ignoreEffects )
 			
 					coords.hexValue = "#"+Pslib.RGBtoHex(r, g, b);
 				}
+				else if(coords.kind == "kTextSheet")
+				{
 
+					var fontInfo = Pslib.getTextItemInfo( ref );
+
+					coords.text = fontInfo.text;
+					coords.font = fontInfo.font;
+					coords.size = fontInfo.size;
+					coords.hexValue = "#"+fontInfo.hexValue;
+
+					// coords.hexValue = "#"+Pslib.RGBtoHex(r, g, b);
+				}
+				// get smartobject specs + transform info
+				else if( coords.kind == "kSmartObjectSheet")
+				{
+					
+				}
+				
 			}
 
 			// "layerSection" abstraction: group, frame, artboard.
@@ -10158,7 +10176,8 @@ Pslib.deleteSelectedArtboardRectangles = function ( nameStr )
 }
 
 // add text item / rectangle background - target artboard or document geometry
-// 
+// resulting photoshop text layer may auto-nest into nearest artboard, we don't really have a workaround.
+//
 // var textObj = { text: "DOCUMENT", hex: "000000", background: true, entireDocument: true, backgroundHex: "FF0000", backgroundOpacity: 66 };
 // var textItem = Pslib.addTextItem( textObj );
 Pslib.addTextItem = function( obj )
@@ -10167,16 +10186,11 @@ Pslib.addTextItem = function( obj )
 
     if(!obj) obj = {};
     if(!obj.text) obj.text = "PLACEHOLDER";
-    // if(!obj.text) obj.font = "Arial";
-    // if(!obj.size) obj.size = 36;
     if(!obj.hex) obj.hex = "ffffff";
     if(!obj.width) obj.width = 350;
     if(!obj.height) obj.height = 42;
     if(obj.x == undefined) obj.x = 15;
     if(obj.y == undefined) obj.y = 15;
-
-    // if(!obj.arboard)
-    // obj.backgroundColor
 
     var doc = app.activeDocument;
 
@@ -10245,8 +10259,6 @@ Pslib.addTextItem = function( obj )
             // textItem.left = rectangle.left + ((rectangle.width - textItem.width) /2);
             // textItem.top = rectangle.top - ((rectangle.height - textItem.height) /2);
 
-
-
     textObj.width = new UnitValue(rectCoords.width + " pixels");
     textObj.height = new UnitValue(rectCoords.height + " pixels");
 
@@ -10254,7 +10266,7 @@ Pslib.addTextItem = function( obj )
             // textObj.position = [0,20];
             textObj.size = textSize;
 
-            var tLayerCoords = Pslib.getLayerObjectCoordinates(tlayer);
+            // var tLayerCoords = Pslib.getLayerObjectCoordinates(tlayer);
             // var xt = rectCoords.x - tLayerCoords.x;
             // var yt = rectCoords.y - tLayerCoords.y;
             var xt = rectCoords.x;
@@ -10283,13 +10295,7 @@ Pslib.addTextItem = function( obj )
             tlayer.translate(xt, yt); // update with Pslib.layerTranslate()
         }
 
-
         textItem = tlayer;
-
-
-        // move to container if provided
-
-        // create if not found
     }
     else if(Pslib.isIllustrator)
     {
@@ -10341,25 +10347,6 @@ Pslib.addTextItem = function( obj )
             }
         }
 
-        // if(obj.background)
-        // {
-        //     // deal with label / background item
-        //     if(obj.artboard)
-        //     {
-        //         rectangle = Pslib.addArtboardRectangle( { hex: obj.backgroundHex, opacity: obj.backgroundOpacity });
-        //     }
-        //     else if(obj.entireDocument)
-        //     {
-        //         rectangle = Pslib.addDocumentRectangle( { hex: obj.backgroundHex, opacity: obj.backgroundOpacity });
-        //     }
-
-        // }
-
-        // move to container if provided
-        // obj.container
-
-        // create if not found
-
         if(rectangle)
         {
             // attempt to determine text size based on target rectangle size
@@ -10375,14 +10362,146 @@ Pslib.addTextItem = function( obj )
             // doc.selection = textItem;
             // textItem.move(layer, ElementPlacement.PLACEATBEGINNING);
         }
-
-        // create group from created items
-
     }
 
     return textItem;
 }
 
+// get basic metrics for target text item
+Pslib.getTextItemInfo = function( item, advanced )
+{
+	if(!app.documents.length) return;
+
+	var doc = app.activeDocument;
+	var textItemInfo = {};
+
+	if(Pslib.isPhotoshop)
+	{
+		var desc;
+		if(!item)
+		{
+			var ref = new ActionReference();
+			ref.putEnumerated( sTID( "layer" ), cTID( "Ordn" ), cTID( "Trgt" ));
+			desc = executeActionGet( ref );
+		}
+		// intercept layer ID!
+		else if( typeof item == "number")
+		{
+			desc = Pslib.getLayerReferenceByID( item );
+		}
+		else
+		{
+			desc = item;
+		}
+
+		if(!desc) return [];
+
+		var list =  desc.getObjectValue(cTID("Txt "));
+		var tsr =  list.getList(cTID("Txtt"));
+
+		var textDesc = desc.getObjectValue(sTID('textKey'));
+		var str = textDesc.getString(sTID('textKey'));
+
+		textItemInfo.text = str;
+		var ranges = [];
+
+		for(var i = 0; i < tsr.count; i++)
+		{
+			var tsr0 =  tsr.getObjectValue(i);
+			var from = tsr0.getInteger(cTID("From"));
+			var to = tsr0.getInteger(cTID("T   "));
+			var range = [from,to];
+			
+			var style = tsr0.getObjectValue(cTID("TxtS"));
+			var font = style.getString(cTID("FntN" )); 
+			var fontPostscriptName = style.getString(sTID('fontPostScriptName'))
+
+			var size = style.getDouble(cTID("Sz  " ));
+			var color = style.getObjectValue(cTID('Clr ')); 
+
+			var textColor = new SolidColor;
+				textColor.rgb.red = color.getDouble(cTID('Rd  '));
+				textColor.rgb.green = color.getDouble(cTID('Grn '));
+				textColor.rgb.blue = color.getDouble(cTID('Bl  '));
+
+			var xScale = 1;
+			var yScale = 1;
+
+			// find out if text layer was scaled up or down, if it did adjust returned text size value
+			if(textDesc.hasKey(sTID('transform')))
+			{
+				var tdesc = textDesc.getObjectValue(sTID('transform'));
+				var xScale = tdesc.getDouble(sTID('xx'));
+				var yScale = tdesc.getDouble(sTID('yy'));
+			}
+
+			// get fast overall info
+			if(i == 0)
+			{
+				textItemInfo.font = font;
+				textItemInfo.size = size * xScale;
+				textItemInfo.color = "#"+textColor.rgb.hexValue;
+
+				// break loop here if the rest is not needed
+				if(!advanced) break;
+
+				textItemInfo.fontPostscriptName = fontPostscriptName;
+			}
+
+			ranges.push({ range: range, font: font, fontPostscriptName: fontPostscriptName, size: size * xScale, color: "#"+textColor.rgb.hexValue });
+		}
+		textItemInfo.ranges = ranges;
+	}
+	else if(Pslib.isIllustrator)
+	{
+		// if(!doc.selection) return;
+		if(!item) item = doc.selection[0];
+		if(!item) return textItemInfo;
+
+		if(item.typename == "TextFrame" || item.typename == "TextFrameItem" || item.typename == "LegacyTextItem" )
+		{
+			textItemInfo.x = item.left;
+			textItemInfo.y = item.top;
+			textItemInfo.width = item.width;
+			textItemInfo.height = item.height;
+
+			// if(item.name) textItemInfo.name = item.name;
+			textItemInfo.type = item.typename;
+			
+			if(item.typename == "TextFrameItem")
+			{
+				textItemInfo.textType = item.textType.toString(); // TextType.AREATEXT, TextType.POINTTEXT, TextType.PATHTEXT
+				textItemInfo.anchor = item.anchor;
+				textItemInfo.lines = item.lines.length;
+				// store .matrix ?
+			}
+
+			if(item.textRange.length > 0)
+			{
+				textItemInfo.text = item.contents;
+				// textItemInfo.font = 
+				if(item.textRange.paragraphs.length)
+				{
+					var par = item.textRange.paragraphs[0];
+					if(par.characters.length)
+					{
+						textItemInfo.font = item.textRange.characterAttributes.textFont.name;
+						textItemInfo.fontFamily = item.textRange.characterAttributes.textFont.family;
+						textItemInfo.fontStyle = item.textRange.characterAttributes.textFont.style;
+						textItemInfo.size = item.textRange.characterAttributes.size;
+
+						var c = par.fillColor;
+						if(c)
+						{
+							textItemInfo.color = "#"+Pslib.RGBtoHex(c.red, c.green, c.blue);
+						}
+					}
+				}
+			}
+		}
+	}
+	return textItemInfo;
+}
 
 // get RGB value of active object as hex string
 // overlaps with Pslib.getArtboardBackgroundColor() and Pslib.getShapeColor()
