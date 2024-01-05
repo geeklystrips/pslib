@@ -4857,12 +4857,14 @@ Pslib.getLayerReferenceByID = function( id, getCoordsObject, ignoreStyles, skipI
 				coords.y = rect.getDouble(sTID("top"));
 				coords.width = rect.getDouble(sTID("right")) - coords.x;
 				coords.height = rect.getDouble(sTID("bottom")) - coords.y;
-				coords.type = "art layer";
-				coords.kind = Pslib.getLayerObjectType( ref );
-
+				coords.type = "artlayer";
+				var artLayerObjectType = Pslib.getLayerObjectType( ref );
+				
 				// if shape layer or solid fill, get color 
-				if(coords.kind == "kVectorSheet" || coords.kind == "kSolidColorSheet")
+				if(artLayerObjectType == "kVectorSheet" || artLayerObjectType == "kSolidColorSheet")
 				{
+					coords.kind = artLayerObjectType == "kVectorSheet" ? "shape" : "solidfill";
+
 					var l = ref.getList(cTID('Adjs'));
 					var cd = l.getObjectValue(0);
 					var c = cd.getObjectValue(cTID('Clr '));
@@ -4873,8 +4875,10 @@ Pslib.getLayerReferenceByID = function( id, getCoordsObject, ignoreStyles, skipI
 			
 					coords.color = "#"+Pslib.RGBtoHex(r, g, b);
 				}
-				else if(coords.kind == "kTextSheet")
+				else if( artLayerObjectType == "kTextSheet")
 				{
+					coords.kind = "text";
+
 					var fontInfo = Pslib.getTextItemInfo( ref );
 
 					coords.text = fontInfo.text;
@@ -4883,50 +4887,99 @@ Pslib.getLayerReferenceByID = function( id, getCoordsObject, ignoreStyles, skipI
 					coords.color = "#"+fontInfo.color;
 				}
 				// get smartobject transform info
-				else if( coords.kind == "kSmartObjectSheet")
+				else if( artLayerObjectType == "kSmartObjectSheet")
 				{
-					// "contentType": "vectorData" 			// .PDF, .SVG, .AI (will open with Illustrator)
-					// "contentType": "rasterizeContent"	// .PNG, .PSB etc (opens a separate document)
-					var smartObjectRef = ref.getObjectValue(sTID('smartObject'));
-					var smartObjectType = tSID(smartObjectRef.getEnumerationValue(sTID('placed'))); 
-					
-					// get "placed" link here
-					
-					coords.contentType = smartObjectType;
+					coords.kind = "smartobject";
 
-					// if (smartObjectRef.hasKey(sTID("smartObject"))) {
-						// smartObjectRef = smartObjectRef.getObjectValue(sTID("smartObject"));
-					var isLinked = smartObjectRef.hasKey(sTID("link"));
-					if(isLinked)
+					var smartObjectRef = ref.getObjectValue(sTID('smartObject'));
+					// 'smartObject' == 1058 :: DescValueType.OBJECTTYPE has 5 properties
+						// ...placed(2813) = 2813 :: DescValueType.ENUMERATEDTYPE // 'vectorData' or 'rasterizeContent'
+						// ...documentID(1148150601) = uuid:UNIQUEID :: DescValueType.STRINGTYPE
+						// ...linked(1282304868) = true :: DescValueType.BOOLEANTYPE
+						// ...fileReference(1181314130) = Vector Smart Object.ai :: DescValueType.STRINGTYPE
+						// ...link(1282304800) = ccLibrariesElement(3030) :: DescValueType.OBJECTTYPE
+
+
+					var smartObjectContentType = tSID(smartObjectRef.getEnumerationValue(sTID('placed'))); 
+						// 'vectorData'   		.PDF, .SVG, .AI (will open with Illustrator)
+						// 'rasterizeContent'   .PNG, .PSB etc (opens a separate document)
+
+					var smartObjectLinked = smartObjectRef.getBoolean(sTID("linked"));
+					coords.contentType = smartObjectContentType;
+
+					var documentID = smartObjectRef.getString(sTID('documentID')); 
+					if(documentID) coords.documentID = documentID;
+
+					var fileReference = smartObjectRef.getString(sTID('fileReference')); 
+					if(fileReference) coords.fileReference = fileReference;
+
+					if(smartObjectLinked)
 					{
 						var linkType = smartObjectRef.getType(sTID("link"));
 						var linkPath;
+
+						// the type of data associated with this property 
 						if(linkType)
 						{
+							var link;
+							var elementReference;
+							var libraryName;
+							// var dateModified; // 5045, double
+							// var adobeStockId; // 5046, string
+							// var adobeStockLicenseState; // 5047, string
+
 							switch (linkType)
-							{
-								// element from user libraries
+							{		
+								// ccLibrariesElement == 3030
+								// element from user libraries, which requires extra attention 
 								case DescValueType.OBJECTTYPE:
-									// linkPath = smartObjectRef.getObject(sTID("link"));
-									linkPath = "CC LIBRARY ITEM";
+									linkPath = smartObjectRef.getObjectValue(sTID("link"));
+									if(linkPath)
+									{
+										// 'link'{ typename: "ActionDescriptor", count: 6 }
+										// ......elementReference(591752274) = cloud-asset://cc-api-storage.adobe.io/assets/adobe-libraries/UNIQUEID;node=UNIQUEID :: DescValueType.STRINGTYPE
+										// ......name(1315774496) = Vector Smart Object :: DescValueType.STRINGTYPE
+										// ......libraryName(5044) = My Library :: DescValueType.STRINGTYPE
+										// ......dateModified(5045) = 123456789000 :: DescValueType.DOUBLETYPE
+										// ......adobeStockId(5046) =  :: DescValueType.STRINGTYPE
+										// ......adobeStockLicenseState(5047) = 5047 :: DescValueType.ENUMERATEDTYPE
+									
+										elementReference = linkPath.getString(sTID('elementReference')); 
+										if(elementReference) link = elementReference;
+
+										libraryName = linkPath.getString(sTID('libraryName')); 
+
+										// dateModified = linkPath.getDouble(sTID('dateModified')); 
+										// adobeStockId = linkPath.getString(sTID('adobeStockId')); 
+										// adobeStockLicenseState = linkPath.getString(sTID('adobeStockLicenseState')); 
+
+									}									
 									break;
-								// link to local file
+
+								// alias is a link to a local file
 								case DescValueType.ALIASTYPE:
-									linkPath = smartObjectRef.getPath(sTID("link"));
+									link = smartObjectRef.getPath(sTID("link"));
 									break;
 								// unclear reference
 								case DescValueType.STRINGTYPE:
-									linkPath = smartObjectRef.getString(sTID("link"));
+									link = smartObjectRef.getString(sTID("link"));
 									break;
 								default:
 									break;
 							}
 
 							// var link = smartObjectRef.getPath(sTID("link"));
-							if(linkPath) coords.link = linkPath instanceof File ? linkPath.fsName : linkPath;
-						}
+							if(link) coords.link = link instanceof File ? link.fsName : link;
 
+							if(libraryName) coords.library = libraryName;
+
+							// if(dateModified) coords.dateModified = dateModified;
+							// if(adobeStockId) coords.adobeStockId = adobeStockId;
+							// if(adobeStockLicenseState) coords.adobeStockLicenseState = adobeStockLicenseState;
+						}
 					}
+
+					// extra information about smartobject size + position
 
 					var d = ref.getObjectValue(sTID("smartObjectMore")).getList(sTID("transform"));
 					// var d = ref.getObjectValue(sTID("smartObjectMore")).getList(sTID("nonAffineTransform"));
@@ -4958,6 +5011,12 @@ Pslib.getLayerReferenceByID = function( id, getCoordsObject, ignoreStyles, skipI
 					// // yield 45 everytime...? check with nonAffineTransform
 					// var angle = Math.atan(coords.height / coords.width) * 180.0 / Math.PI;
 					// coords.angle = angle;
+
+				}
+				else
+				{
+					// catch-all for other types 
+					coords.kind = artLayerObjectType;
 
 				}
 
