@@ -4799,11 +4799,17 @@ Pslib.getArtboardNames = function( artboards )
 // Photoshop only:
 // get usable layer reference from persistent layer ID, without having to select layer
 // target can be an art layer, a group of layers, an artboard or a frame
-// option to return basic coordinates object
-Pslib.getLayerReferenceByID = function( id, getCoordsObject, ignoreEffects )
+// option to return basic coordinates object, ignoring styles-related geometry and skipping invisible objects
+Pslib.getLayerReferenceByID = function( id, getCoordsObject, ignoreStyles, skipInvisible )
 {
 	if(!app.documents.length) return;
+
+	if(getCoordsObject == undefined) getCoordsObject = false;
+	if(ignoreStyles == undefined) ignoreStyles = false;
+	if(skipInvisible == undefined) skipInvisible = true;
 	
+	var doc = app.activeDocument;
+
     if(Pslib.isPhotoshop)
 	{
         var r = new ActionReference();    
@@ -4828,7 +4834,9 @@ Pslib.getLayerReferenceByID = function( id, getCoordsObject, ignoreEffects )
 			// JSUI.quickLog("isTopLevelLayerObject: " + isTopLevelLayerObject);
 
 			var isVisible = ref.getBoolean(cTID( "Vsbl" ));
-			if(!isVisible) coords.visible = isVisible; // only include info if layer object is hidden
+			if(!isVisible) coords.visible = isVisible; // only include visibility info if layer object is hidden?
+			// coords.visible = isVisible;
+			if(skipInvisible && !isVisible) return;
 
 			// // determine if raster mask or vector mask is present 
 			// // this only works if mask "exists"
@@ -4843,7 +4851,7 @@ Pslib.getLayerReferenceByID = function( id, getCoordsObject, ignoreEffects )
 			// "art" layer: shape, smartobject, adjustment layer...
 			if(!hasContent && isTopLevelLayerObject)
 			{
-				rect = ignoreEffects ? ref.getObjectValue(sTID("boundsNoEffects")) : ref.getObjectValue(sTID("bounds"));
+				rect = ignoreStyles ? ref.getObjectValue(sTID("boundsNoEffects")) : ref.getObjectValue(sTID("bounds"));
 
 				coords.x = rect.getDouble(sTID("left"));
 				coords.y = rect.getDouble(sTID("top"));
@@ -4863,36 +4871,109 @@ Pslib.getLayerReferenceByID = function( id, getCoordsObject, ignoreEffects )
 					var g = Math.round(c.getDouble(cTID('Grn ')));
 					var b = Math.round(c.getDouble(cTID('Bl  ')));
 			
-					coords.hexValue = "#"+Pslib.RGBtoHex(r, g, b);
+					coords.color = "#"+Pslib.RGBtoHex(r, g, b);
 				}
 				else if(coords.kind == "kTextSheet")
 				{
-
 					var fontInfo = Pslib.getTextItemInfo( ref );
 
 					coords.text = fontInfo.text;
 					coords.font = fontInfo.font;
 					coords.size = fontInfo.size;
-					coords.hexValue = "#"+fontInfo.hexValue;
-
-					// coords.hexValue = "#"+Pslib.RGBtoHex(r, g, b);
+					coords.color = "#"+fontInfo.color;
 				}
-				// get smartobject specs + transform info
+				// get smartobject transform info
 				else if( coords.kind == "kSmartObjectSheet")
 				{
+					// "contentType": "vectorData" 			// .PDF, .SVG, .AI (will open with Illustrator)
+					// "contentType": "rasterizeContent"	// .PNG, .PSB etc (opens a separate document)
+					var smartObjectRef = ref.getObjectValue(sTID('smartObject'));
+					var smartObjectType = tSID(smartObjectRef.getEnumerationValue(sTID('placed'))); 
 					
+					// get "placed" link here
+					
+					coords.contentType = smartObjectType;
+
+					// if (smartObjectRef.hasKey(sTID("smartObject"))) {
+						// smartObjectRef = smartObjectRef.getObjectValue(sTID("smartObject"));
+					var isLinked = smartObjectRef.hasKey(sTID("link"));
+					if(isLinked)
+					{
+						var linkType = smartObjectRef.getType(sTID("link"));
+						var linkPath;
+						if(linkType)
+						{
+							switch (linkType)
+							{
+								// element from user libraries
+								case DescValueType.OBJECTTYPE:
+									// linkPath = smartObjectRef.getObject(sTID("link"));
+									linkPath = "CC LIBRARY ITEM";
+									break;
+								// link to local file
+								case DescValueType.ALIASTYPE:
+									linkPath = smartObjectRef.getPath(sTID("link"));
+									break;
+								// unclear reference
+								case DescValueType.STRINGTYPE:
+									linkPath = smartObjectRef.getString(sTID("link"));
+									break;
+								default:
+									break;
+							}
+
+							// var link = smartObjectRef.getPath(sTID("link"));
+							if(linkPath) coords.link = linkPath instanceof File ? linkPath.fsName : linkPath;
+						}
+
+					}
+
+					var d = ref.getObjectValue(sTID("smartObjectMore")).getList(sTID("transform"));
+					// var d = ref.getObjectValue(sTID("smartObjectMore")).getList(sTID("nonAffineTransform"));
+		 
+					// Smartobject transform data is an array of 8 doubles, coordinates for each corner. 
+					// Rotation can be inferred from this, provided reverse-engineering of a complex warp object
+					// var warp = d.getObjectValue(sTID("warp"));
+					// var warpRotation = tSID(warp.getEnumerationValue(sTID("warpRotate"))); 
+
+					var x = [d.getDouble(0), d.getDouble(2), d.getDouble(4), d.getDouble(6)];
+					var y = [d.getDouble(1), d.getDouble(3), d.getDouble(5), d.getDouble(7)];
+				   
+					// current smartobject scaling state, INCLUDING borders of transparent pixels
+					var left = Math.min(x[0], Math.min(x[1], Math.min(x[2], x[3])));
+					var right = Math.max(x[0], Math.max(x[1], Math.max(x[2], x[3])));
+
+					var top = Math.min(y[0], Math.min(y[1], Math.min(y[2], y[3])));
+					var bottom = Math.max(y[0], Math.max(y[1], Math.max(y[2], y[3])));
+		 
+					// var rect = [ UnitValue(left,"px"), UnitValue(top,"px"), UnitValue(right,"px"), UnitValue(bottom,"px") ];
+					// var rect = [ left, top, right, bottom ]; // assuming pixels, may not be wise
+
+					coords.x = left;
+					coords.y = top;
+
+					coords.width = Math.abs(right - left);
+					coords.height = Math.abs(top - bottom);
+
+					// // yield 45 everytime...? check with nonAffineTransform
+					// var angle = Math.atan(coords.height / coords.width) * 180.0 / Math.PI;
+					// coords.angle = angle;
+
 				}
+
+				// for CSS, if handling some aspects of layer-based styles, do it here
+				// e.g. color overlay
 				
 			}
 
-			// "layerSection" abstraction: group, frame, artboard.
+			// "layerSection" container abstraction: group, frame, artboard.
 			else if(hasContent)
 			{
 				var isArtboard = ref.getBoolean(sTID('artboardEnabled'));
 				var isFrame = ref.hasKey(sTID('framedGroup'));
 				// var isGroup = !isArtboard && !isFrame;
 
-				rect = isArtboard ? ref.getObjectValue(sTID("artboard")).getObjectValue(sTID("artboardRect")) : ( ignoreEffects ? ref.getObjectValue(sTID("boundsNoEffects")) : ref.getObjectValue(sTID("bounds"))); 
+				rect = isArtboard ? ref.getObjectValue(sTID("artboard")).getObjectValue(sTID("artboardRect")) : ( ignoreStyles ? ref.getObjectValue(sTID("boundsNoEffects")) : ref.getObjectValue(sTID("bounds"))); 
 
 				coords.x = rect.getDouble(sTID("left"));
 				coords.y = rect.getDouble(sTID("top"));
@@ -4902,7 +4983,11 @@ Pslib.getLayerReferenceByID = function( id, getCoordsObject, ignoreEffects )
 				var type =  isArtboard ? "artboard" : (isFrame ? "frame" : "group");
 
 				coords.type = type;
+
+				// if handling container styles, do it here
+
 			}
+
 		}
 
         return getCoordsObject ? coords : ref;
@@ -5033,6 +5118,29 @@ Pslib.setXmpByID = function( id, xmpStr )
 	}
 }
 
+// replace embedded resource with 
+Pslib.convertPlacedToLinked = function( ref, file )
+{
+	if(!app.documents.length) return;
+
+	var doc = app.activeDocument;
+
+	if(Pslib.isPhotoshop)
+	{
+		if(typeof file == "string")
+		{
+			file = new File( file );
+		}
+		
+		if(!file.exists) return false;
+
+		var d = new ActionDescriptor();
+		d.putPath( cTID( "null" ), file );
+		executeAction( sTID( "placedLayerRelinkToFile" ), d, DialogModes.NO );
+		return true;
+	}
+}
+
 Pslib.getXmpByID = function( id )
 {
 	if(!app.documents.length) return;
@@ -5064,6 +5172,8 @@ Pslib.getXmpByID = function( id )
 	}
 }
 
+// Photoshop-only: get layer object modified date stamp
+// this information should be available whether or not XMP has been actively defined on the individual layer
 Pslib.getLayerObjectTimeStamp = function ( layer, locale )
 {
 	if(!app.documents.length) return;
@@ -5083,18 +5193,20 @@ Pslib.getLayerObjectTimeStamp = function ( layer, locale )
 		ref.putIdentifier(sTID("layer"), (typeof layer == "number") ? layer : layer.id);
 		var desc = executeActionGet(ref);
 
-		if (desc.hasKey(metadataStrID)){
-				var descMetadata = desc.getObjectValue( metadataStrID );
-				var timeInSeconds = descMetadata.getDouble(sTID("layerTime"));
-				var d = new Date();
-				d.setTime(timeInSeconds*1000.0);
-				return locale ? d.toLocaleString() : timeInSeconds;
+		if (desc.hasKey(metadataStrID))
+		{
+			var descMetadata = desc.getObjectValue( metadataStrID );
+			var timeInSeconds = descMetadata.getDouble(sTID("layerTime"));
+			var d = new Date();
+			d.setTime(timeInSeconds*1000.0);
+			return locale ? d.toLocaleString() : timeInSeconds;
 		}
 	}
 }
 
 
-// get coordinates object for specific layer object or abstract layer object via ID
+// get coordinates for specific layer object (auto-selects target, reselects initially active)
+// or abstract layer object via ID (without actively selecting object)
 Pslib.getLayerObjectCoordinates = function( layer )
 {
 	if(!app.documents.length) return;
@@ -5104,17 +5216,30 @@ Pslib.getLayerObjectCoordinates = function( layer )
 
 	if(Pslib.isPhotoshop)
 	{
+		var wasActive = false;
+		var initialActiveObject;
+
 		if(layer == undefined)
 		{
 			layer = doc.activeLayer;
+			wasActive = true;
+			initialActiveObject = layer;
+
 			if(layer) return Pslib.getLayerReferenceByID( layer.id, true );
 			else return coords;
 		}
 
-		// if integer, assume layer ID
+		// if integer, assume layer ID and use more efficient method
 		if(typeof layer == "number")
 		{
 			return Pslib.getLayerReferenceByID( layer, true );
+		}
+
+
+		if(doc.activeLayer != layer)
+		{
+			doc.activeLayer = layer;
+			wasActive = true;
 		}
 
 		coords.name = layer.name.trim();
@@ -5130,6 +5255,8 @@ Pslib.getLayerObjectCoordinates = function( layer )
 		coords.isSquare = coords.width == coords.height;
 		coords.isPortrait = coords.width < coords.height;
 		coords.isLandscape = coords.width > coords.height;
+
+		if(initialActiveObject && !wasActive) doc.activeLayer = initialActiveObject;
 	}
 
 	return coords;
