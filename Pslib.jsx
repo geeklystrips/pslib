@@ -92,6 +92,7 @@
 	- several undocumented functions
 	- experimenting with XMP ordered array to sync individual arbitrary tags/properties to document
 	- syncing is not fast enough to be associated with a document or selection event, it should be specifically invoked when needed
+	- Pslib.getLayerReferenceByID() can fetch complex information such as smartobject transform and XMP properties without actually selecting layer objects
 
 */
 
@@ -109,29 +110,23 @@ catch(e)
 	// if we have an error here, it's most likely because we didn't include the library in the preceding statements
 	// the current script might be part of an include by a script loaded beforehand
 
-	// $.level == 0 if the script is run by Photoshop, == 1 if run by ExtendScript ToolKit or Visual Studio Code
-	// if ESTK, then write to console for easier debugging
+	// $.level == 0 if the script is run by Photoshop, $.level > 0 if debugging Visual Studio Code
 	// if($.level) $.writeln("Pslib library object not found. Creating placeholder.");
 	
 	// errors are objects that can give you some information about what went wrong 
-	//$.writeln("typeof e.message: " + typeof e.message + "\n\ne:\n" + e + "\n\ne.message:\n" + e.message);
-	//if($.level) $.writeln(e);
-	
+	//if($.level) $.writeln("typeof e.message: " + typeof e.message + "\n\ne:\n" + e + "\n\ne.message:\n" + e.message);
+
 	// create Pslib as a persistent object 
-	// it will remain accessible across most scopes, which is useful when working with panels & actions
-	// 
-	Pslib = function(){};
 }
 */
-// do this the json way instead for perfs?
-// if undefined, no exception thrown / no interruption
+
+// if "undefined", no exception thrown / no interruption
 if (typeof Pslib !== "object") {
     Pslib = {};
-	// alert("Pslib object created");
 }
 
-// library version, used in tool window titles. Maybe.
-Pslib.version = 0.689;
+// library version
+Pslib.version = 0.681;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -209,7 +204,7 @@ if(Pslib.isPhotoshop)
 			}
 
 		}catch(e){
-			if($.level) $.writeln("EXCEPTION: ", e);
+			// if($.level) $.writeln("EXCEPTION: ", e);
 		}
 
 		return artboards;
@@ -236,7 +231,7 @@ if(Pslib.isPhotoshop)
 			}
 			catch(e)
 			{
-				if($.level) $.writeln("Error parsing generator.js");
+				// if($.level) $.writeln("Error parsing generator.js");
 			}
 		}
 		return baseDirectory;
@@ -265,7 +260,7 @@ if(Pslib.isPhotoshop)
         }
         catch(e)
         {
-            if($.level) $.writeln("Error getting specs for arboard " + layer.name + " \n\n" + e); 
+            // if($.level) $.writeln("Error getting specs for arboard " + layer.name + " \n\n" + e); 
 
             // force minimal specs / document W x H
             obj.x = 0;
@@ -480,13 +475,13 @@ Pslib.loadXMPLibrary = function()
    {
       try
 	{
-         if($.level) $.writeln("Loading XMP Script Library");
+        //  if($.level) $.writeln("Loading XMP Script Library");
          ExternalObject.AdobeXMPScript = new ExternalObject('lib:AdobeXMPScript');
 	  return true;
       }
 	catch (e)
 	{
-         if($.level) $.writeln("Error loading XMP Script Library\n" + e);
+        //  if($.level) $.writeln("Error loading XMP Script Library\n" + e);
          return false;
       }
    }
@@ -500,14 +495,14 @@ Pslib.unloadXMPLibrary = function()
    {
       try
       {
-	   if($.level) $.writeln("Unloading XMP Script Library");
+	//    if($.level) $.writeln("Unloading XMP Script Library");
          ExternalObject.AdobeXMPScript.unload();
          ExternalObject.AdobeXMPScript = undefined;
 	   return true;
       }
       catch(e)
       {
-         if($.level) $.writeln("Error unloading XMP Script Library\n" + e);
+        //  if($.level) $.writeln("Error unloading XMP Script Library\n" + e);
 		return false;
       }
    }
@@ -609,7 +604,7 @@ Pslib.getXmpProperty = function (target, property, namespace)
 			return value;
 		
 		} catch( e ) {
-			if($.level) $.writeln("XMP metadata could not be found for target \"" + target.name + "\"");
+			// if($.level) $.writeln("XMP metadata could not be found for target \"" + target.name + "\"");
 			return null;
 		}
 	}
@@ -642,7 +637,7 @@ Pslib.deleteXmpProperty = function (target, property, namespace)
 		}
 		catch( e )
 		{
-			if($.level) $.writeln("Metadata property could not be deleted from target \"" + target.name + "\"");
+			// if($.level) $.writeln("Metadata property could not be deleted from target \"" + target.name + "\"");
 			return false;
 		}
 	}
@@ -680,7 +675,7 @@ Pslib.deleteXmpProperties = function (target, propertiesArray, namespace)
 		}
 		catch( e )
 		{
-			if($.level) $.writeln("Metadata properties could not be removed from target \"" + target.name + "\"");
+			// if($.level) $.writeln("Metadata properties could not be removed from target \"" + target.name + "\"");
 			return false;
 		}
 	}
@@ -774,7 +769,7 @@ Pslib.setXmpProperties = function (target, propertiesArray, namespace)
 			catch( e )
 			{
 				var msg = "Could not place metadata property on provided target.\n[" + prop + ": " + val +  +"]  " + typeof val + "\n" + e;
-			   if($.level) $.writeln( msg );
+			//    if($.level) $.writeln( msg );
 			//    else alert(msg);
 			// alert(msg);
 			   return false;
@@ -827,7 +822,7 @@ Pslib.getXmpProperties = function (target, propertiesArray, namespace)
 		//    if($.level) $.writeln("XMP Metadata successfully fetched from target \"" + target.name + "\"");
 		} catch( e ) 
 		{
-			if($.level) $.writeln("XMP metadata could not be found for target \"" + target.name + "\".\nCreating new XMP metadata container.");
+			// if($.level) $.writeln("XMP metadata could not be found for target \"" + target.name + "\".\nCreating new XMP metadata container.");
 			xmp = new XMPMeta(  );
 		}
 	   
@@ -919,7 +914,7 @@ Pslib.getPropertiesArray = function (target, namespace, nsprefix)
 		{
 			if ( xmp === undefined )
 			{
-				if($.level) $.writeln("XMP metadata could not be found for target \"" + target.name + "\".\nCreating new XMP metadata container.");
+				// if($.level) $.writeln("XMP metadata could not be found for target \"" + target.name + "\".\nCreating new XMP metadata container.");
 				return null;
 			}
 		}
@@ -928,7 +923,7 @@ Pslib.getPropertiesArray = function (target, namespace, nsprefix)
 		var xmpIter = xmp.iterator(XMPConst.ITERATOR_JUST_CHILDREN, namespace ? namespace : Pslib.XMPNAMESPACE, "");
 		var next = xmpIter.next();
 
-		if($.level) $.writeln("\nGetting list of XMP properties for XMP namespace " + (nsprefix ? nsprefix : Pslib.XMPNAMESPACEPREFIX) + "\n");
+		// if($.level) $.writeln("\nGetting list of XMP properties for XMP namespace " + (nsprefix ? nsprefix : Pslib.XMPNAMESPACEPREFIX) + "\n");
 		while (next)
 		{
 			var propName = next.path.replace( (nsprefix ? nsprefix : Pslib.XMPNAMESPACEPREFIX), "" ); 
@@ -1004,7 +999,7 @@ Pslib.getAllNsPropertiesArray = function (xmp, namespace, asObj, sortByPropertyN
 		{
 			// try
 			// {
-				JSUI.quickLog(propName, "\n");
+				// JSUI.quickLog(propName, "\n");
 
 				// sanitize property names for JSON format
 				var linePropertiesArr = propValue.split(",");
@@ -1033,7 +1028,7 @@ Pslib.getAllNsPropertiesArray = function (xmp, namespace, asObj, sortByPropertyN
 					}
 
 					var propItem = linePropertiesArr[i];
-					JSUI.quickLog(i+": " + propItem);
+					// JSUI.quickLog(i+": " + propItem);
 					var itemArr = semiColumn ? propItem.split(" ") : propItem.split(":");
 
 					if(itemArr.length == 1 && !asObj)
@@ -1135,6 +1130,11 @@ Pslib.getXmpDictionary = function( target, obj, allowEmptyStringBool, typeCaseBo
     var allowNullBool = allowNullBool == undefined ? true : allowNullBool; // for cases where we don't want anything with a null value
     var tempArr = [];
     var dict = {};
+
+	// if(typeof target == "number")
+	// {
+
+	// }
 
     // if array, typename is object, but objects typically don't have a length property
     // if( typeof obj == "object" && obj.length != undefined)
@@ -1407,7 +1407,7 @@ Pslib.swapXmpNamespace = function( target, ns, prefix, newNs, newPrefix, silent 
 					for(var i = 0; i < conflicts.length; i++)
 					{
 						xmp.deleteProperty(ns, conflicts[i]);
-						JSUI.quickLog("deleted "+prefix+conflicts[i]);
+						// JSUI.quickLog("deleted "+prefix+conflicts[i]);
 					}
 				}
 				else
@@ -1416,7 +1416,7 @@ Pslib.swapXmpNamespace = function( target, ns, prefix, newNs, newPrefix, silent 
 					for(var i = 0; i < conflicts.length; i++)
 					{
 						xmp.deleteProperty(newNs, conflicts[i]);
-						JSUI.quickLog("deleted "+newPrefix+conflicts[i]);
+						// JSUI.quickLog("deleted "+newPrefix+conflicts[i]);
 					}
 				}
 
@@ -1454,7 +1454,7 @@ Pslib.swapXmpNamespace = function( target, ns, prefix, newNs, newPrefix, silent 
 				xmpStr = xmpStr.replace(closingTagMatch, '</'+newPrefix);
 			}
 
-			JSUI.quickLog(xmpStr);
+			// JSUI.quickLog(xmpStr);
 			xmp = new XMPMeta(xmpStr);
 			if(Pslib.isPhotoshop) target.xmpMetadata.rawData = xmp.serialize();
 			else if(Pslib.isIllustrator) target.XMPString = xmp.serialize();
@@ -1511,7 +1511,7 @@ Pslib.exportLayerMetadata = function (target, path, alertMsg)
 			{	
 				msg += "There doesn't seem to be any metadata attached to layer \"" + target.name + "\"";  
 			}
-			if($.level) $.writeln(msg + "\n" + e);
+			// if($.level) $.writeln(msg + "\n" + e);
 			else alert(msg + "\n" + e);
 			return false;
 		}
@@ -1523,24 +1523,24 @@ Pslib.exportLayerMetadata = function (target, path, alertMsg)
 
 		if(file.exists)
 		{
-			if($.level) $.writeln("\nFile already present. Prompting user for permission to replace.");
+			// if($.level) $.writeln("\nFile already present. Prompting user for permission to replace.");
 			// if file exists, present the user with the option to replace it
 			if(confirm ("Do you wish to overwrite this file?\n\n" + file.fsName, true, "Replace file?"))
 			{
 				try
 				{
-					if($.level) $.writeln("Removing file:\n" + file.fsName );
+					// if($.level) $.writeln("Removing file:\n" + file.fsName );
 					file.remove();	
 				}
 				catch(e)
 				{
-					if($.level) $.writeln("\nCould not remove file. Please verify that it is not open by a different process.");
+					// if($.level) $.writeln("\nCould not remove file. Please verify that it is not open by a different process.");
 					return false;
 				}
 			}
 			else
 			{
-				if($.level) $.writeln("User opted not to replace the file.");
+				// if($.level) $.writeln("User opted not to replace the file.");
 				return false;
 			}
 		}
@@ -1653,7 +1653,7 @@ Pslib.propertiesFromCSV = function(target, namespace, uri)
 				continue;
 			}		
 			var pair = pairs[i].split('\t');
-			if($.level) $.writeln("Adding: " + pair[0] + "," + pair[1]);
+			// if($.level) $.writeln("Adding: " + pair[0] + "," + pair[1]);
 			propertiesArray.push([pair[0], pair[1] ]);
 		}
 	}
@@ -2085,7 +2085,7 @@ Pslib.getOrderedArrayItems = function ( obj )
 
         var itemObj = { };
         var itemArr = [ ];
-        if($.level) $.writeln("\n"+obj.arrNameStr+"["+i+"]"); 
+        // if($.level) $.writeln("\n"+obj.arrNameStr+"["+i+"]"); 
         for(var j = 0; j < obj.arr.length; j++)
         {
             var qualifier = (obj.arr[j] instanceof Array) ? obj.arr[j][0] : obj.arr[j];
@@ -2098,7 +2098,7 @@ Pslib.getOrderedArrayItems = function ( obj )
             {
 				if( (value != "undefined") && (value != "null"))
 				{
-					if($.level) $.writeln("  "+qualifier+": " + value); // + "  " + (typeof value)); 
+					// if($.level) $.writeln("  "+qualifier+": " + value); // + "  " + (typeof value)); 
 
 					itemObj[qualifier] = value;
 					itemArr.push([ qualifier, value]);
@@ -2600,7 +2600,7 @@ Pslib.getDocTextLayers = function( xmp )
 						// if qualifier found, must be a Seq
 						if(qualifierExists)
 						{
-							JSUI.quickLog("Qualifier found: " + qualifierPath);
+							// JSUI.quickLog("Qualifier found: " + qualifierPath);
 							
 							// this is how you get details for Seq (ordered) array items
 
@@ -2791,6 +2791,7 @@ Pslib.packageDocument = function( obj )
     if(!obj) obj = {};
     if(obj.embedCoords == undefined) obj.embedCoords = true;
     if(obj.roundValues == undefined) obj.roundValues = true;
+    if(obj.reselectItems == undefined) obj.reselectItems = Pslib.isIllustrator ? true : false; // costly for Photoshop
 	if(!obj.extraStructFields) obj.extraStructFields = [ "id", "name", "width", "height", "x", "y" ];
 
 	// assuming target namespaces may not have been registered at the moment of launching 
@@ -3061,11 +3062,12 @@ Pslib.packageDocument = function( obj )
         // restore selection
         if(Pslib.isIllustrator)
         {
-            doc.selection = initialSelection;
+            if(obj.reselectItems) doc.selection = initialSelection;
         }
         else if(Pslib.isPhotoshop) 
         {
-            Pslib.selectArtboardsCollection(initialSelection);
+			// this is costly, only do it if specifically requested
+            if(obj.reselectItems) Pslib.selectArtboardsCollection(initialSelection);
         }
     }
 
@@ -3507,7 +3509,7 @@ Pslib.getXMPfromFile = function( filepath, type )
 			return; 
 		}
 
-        if($.level) $.writeln("Getting XMP data from " + f.fsName);
+        // if($.level) $.writeln("Getting XMP data from " + f.fsName);
 
         if (!ExternalObject.AdobeXMPScript) ExternalObject.AdobeXMPScript = new ExternalObject('lib:AdobeXMPScript')
 
@@ -3556,7 +3558,10 @@ Pslib.writeXMPtoMediaFile = function( filepath, xmp, type )
 		if(!xmp) return false;
 		if(filepath){ filepath = new File(filepath); }
         var f = filepath ? filepath : File.openDialog("Choose file to put XMP string to");
-        if(!f) { if($.level) $.writeln("Invalid file"); return; }
+        if(!f) { 
+			// if($.level) $.writeln("Invalid file"); 
+			return;
+		 }
 
         // if($.level) $.writeln("Embedding XMP data to " + f.fsName);
 		if (!ExternalObject.AdobeXMPScript) ExternalObject.AdobeXMPScript = new ExternalObject('lib:AdobeXMPScript')
@@ -3685,7 +3690,7 @@ Pslib.getAllTags = function( pageItem )
 				if(name == "BBAccumRotation") continue;
 				var value = tag.value;
 				tagsArr.push([ name, value ]);
-				if($.level) $.writeln( "\t"+ name + ": " + value );
+				// if($.level) $.writeln( "\t"+ name + ": " + value );
 			}
 		}
 	
@@ -3703,7 +3708,7 @@ Pslib.getTags = function( pageItem, tagsArr )
 			return
 		}
 	
-		if($.level) $.writeln( "\nGetting tags on " +  pageItem.typename + " " + pageItem.name);
+		// if($.level) $.writeln( "\nGetting tags on " +  pageItem.typename + " " + pageItem.name);
 
 		var harvestedTagsArr = [];
 		var tags = pageItem.tags;
@@ -3727,7 +3732,7 @@ Pslib.getTags = function( pageItem, tagsArr )
 						harvestedTagsArr.push([ name, value]);
 					}
 				}
-				if($.level) $.writeln( "\t"+ name + ": " + value );
+				// if($.level) $.writeln( "\t"+ name + ": " + value );
 			}
 		}
 	
@@ -3906,7 +3911,7 @@ Pslib.scanItemsForTags = function( items, filter )
 						if(name == "BBAccumRotation") continue; // skip this one
 						var value = tag.value;
 			
-						if($.level) $.writeln( "\t"+ name + ": " + value );
+						// if($.level) $.writeln( "\t"+ name + ": " + value );
 			
 						tagsArr.push([name, value]);
 						tagsObj[name] = value;
@@ -3949,6 +3954,8 @@ Pslib.isArtboard = function( layerObject )
 // should not be used without getting indexes within the same script operation
 Pslib.selectLayerByIndex = function ( indexInt, makeVisibleBool )
 {
+	if(!app.documents.length) return;
+	var doc = app.activeDocument;
 	if(Pslib.isPhotoshop)
 	{
 		if(makeVisibleBool == undefined) makeVisibleBool = false; 
@@ -3958,7 +3965,7 @@ Pslib.selectLayerByIndex = function ( indexInt, makeVisibleBool )
 		desc.putReference( cTID( "null" ), ref );   
 		desc.putBoolean( cTID( "MkVs" ), makeVisibleBool );   
 		executeAction( cTID( "slct" ), desc, DialogModes.NO ); 
-		return app.activeDocument.activeLayer;  
+		return doc.activeLayer;  
 	}
 }
 
@@ -3966,6 +3973,8 @@ Pslib.selectLayerByIndex = function ( indexInt, makeVisibleBool )
 // (value does not change, except if object is copied over to a different document)
 Pslib.getActiveLayerID = function ()
 {
+	if(!app.documents.length) return;
+	var doc = app.activeDocument;
 	if(Pslib.isPhotoshop)
 	{
 		var ref = new ActionReference();
@@ -3979,7 +3988,9 @@ Pslib.getActiveLayerID = function ()
 // this cannot be fixed through scripting, but a CTRL+click while collapsing one of the groups fixes all of them
 Pslib.selectLayerByID = function ( idInt, addToSelectionBool )
 {
+	if(!app.documents.length) return;
 	var doc = app.activeDocument;
+
 	if(Pslib.isPhotoshop)
 	{
 		var currentLayer = doc.activeLayer;
@@ -4063,6 +4074,8 @@ Pslib.selectArtboardsCollection = function ( arr, individualFunc, globalFunc, au
 // (can become invalid if layer groups are moved or deleted)
 Pslib.getSelectedLayerIndexes = function()
 {   
+	if(!app.documents.length) return;
+	var doc = app.activeDocument;
 	if(Pslib.isPhotoshop)
 	{
 		var selectedIndexes = new Array();
@@ -4078,7 +4091,7 @@ Pslib.getSelectedLayerIndexes = function()
 
 			// indexes are based differently if document has a background layer
 			try{   
-				app.activeDocument.backgroundLayer;   
+				doc.backgroundLayer;   
 			}catch(e){   
 				increment = 1; 
 			}   
@@ -4093,13 +4106,79 @@ Pslib.getSelectedLayerIndexes = function()
 			ref.putProperty( cTID("Prpr") , cTID( "ItmI" ));   
 			ref.putEnumerated( cTID("Lyr "), cTID("Ordn"), cTID("Trgt") );   
 			try{   
-				app.activeDocument.backgroundLayer;   
+				doc.backgroundLayer;   
 				increment = 1;
 			}catch(e){   
 			}   
 			selectedIndexes.push( executeActionGet(ref).getInteger(cTID( "ItmI" )) - increment); 
 		}   
 		return selectedIndexes;   
+	}
+}
+
+// workaround for issue with nested layers
+Pslib.getAllContainerIndexes = function()
+{   
+	if(!app.documents.length) return;
+	var doc = app.activeDocument;
+	if(Pslib.isPhotoshop)
+	{
+		var indexes = new Array();
+
+		// var ref = new ActionReference();   
+		// ref.putEnumerated( cTID("Dcmn"), cTID("Ordn"), cTID("Trgt") );   
+		// var desc = executeActionGet(ref);   
+
+		var r = new ActionReference();
+		r.putProperty(sTID("property"), sTID('hasBackgroundLayer'));
+		r.putEnumerated(sTID("document"), sTID("ordinal"), sTID("targetEnum"));
+		var from = executeActionGet(r).getBoolean(sTID('hasBackgroundLayer')) ? 0 : 1;
+		
+		var r = new ActionReference();
+		r.putProperty(sTID("property"), sTID('numberOfLayers'))
+		r.putEnumerated(sTID("document"), sTID("ordinal"), sTID("targetEnum"))
+		var desc = executeActionGet(r);
+		
+		var to = desc.getInteger(sTID('numberOfLayers'));
+
+		// var increment = Pslib.documentHasBackgroundLayer ? 0 : 1;
+		increment = from;
+
+		// if( desc.hasKey( sTID( 'targetLayers' ) ) )
+		if( desc.hasKey( sTID( 'numberOfLayers' ) ) )
+		{   
+			// desc = desc.getList( sTID( 'targetLayers' ));    
+			// var c = desc.count; 
+
+			var c = desc.getInteger( sTID( 'numberOfLayers' ));  
+
+			// indexes are based differently if document has a background layer
+			// try{   
+			// 	doc.backgroundLayer;   
+			// }catch(e){   
+			// 	increment = 1; 
+			// }   
+			// Pslib.documentHasBackgroundLayer ? 
+			for(var i = 0; i < c; i++)
+			{   
+				var index = desc.getReference( i ).getIndex() + increment;
+				indexes.push( index ); 
+				JSUI.quickLog( i+": " + index);
+			}   
+		}
+		// else
+		// {   
+		// 	var ref = new ActionReference();   
+		// 	ref.putProperty( cTID("Prpr") , cTID( "ItmI" ));   
+		// 	ref.putEnumerated( cTID("Lyr "), cTID("Ordn"), cTID("Trgt") );   
+		// 	try{   
+		// 		doc.backgroundLayer;   
+		// 		increment = 1;
+		// 	}catch(e){   
+		// 	}   
+		// 	indexes.push( executeActionGet(ref).getInteger(cTID( "ItmI" )) - increment); 
+		// }   
+		return indexes;   
 	}
 }
 
@@ -4450,7 +4529,7 @@ Pslib.getAllArtboards = function()
 		for(var i = 0; i < specs.length; i++)
 		{
 			// artboards.push(Pslib.getArtboardReferenceByID(specs[i].id));
-			if($.level) $.writeln(i+" ID: " + specs[i] );
+			// if($.level) $.writeln(i+" ID: " + specs[i] );
 			var artboardRef = Pslib.getArtboardReferenceByID(specs[i]);
 			artboards.push(artboardRef);
 		}
@@ -4800,24 +4879,86 @@ Pslib.getArtboardNames = function( artboards )
 // get usable layer reference from persistent layer ID, without having to select layer
 // target can be an art layer, a group of layers, an artboard or a frame
 // option to return basic coordinates object, ignoring styles-related geometry and skipping invisible objects
-Pslib.getLayerReferenceByID = function( id, getCoordsObject, ignoreStyles, skipInvisible )
+
+// scan for specific tags, or return all properties for given namespace
+// var coords = Pslib.getLayerReferenceByID( 128, { getCoordsObject: true, skipInvisible: false, tags: [["assetID", null], ["profile", null]] })
+// Pslib.getLayerReferenceByID = function( id, getCoordsObject, ignoreStyles, skipInvisible )
+
+// for best results, make sure custom namespace+nsprefix is registered prior to launching function
+// var obj = 
+// {
+	// getCoordsObject: false,			// default false, must be true for anything coordinates-related to be returned
+	// ignoreStyles: false,
+	// tags: [], 						// expected: bidimensional array
+	// converter: [],					// converter for tag/property names
+	// namespace: Pslib.XMPNAMESPACE,	// ns + nsprefix should be already registered at this point
+	// namespacePrefix: Pslib.XMPNAMESPACEPREFIX,
+	// getAllNsProperties: false,
+	// roundValues: false			// 
+// }
+
+
+Pslib.getLayerReferenceByID = function( id, obj )
 {
 	if(!app.documents.length) return;
+	if(!obj) obj = {};
 
-	if(getCoordsObject == undefined) getCoordsObject = false;
-	if(ignoreStyles == undefined) ignoreStyles = false;
-	if(skipInvisible == undefined) skipInvisible = true;
-	
+	if(obj.getCoordsObject == undefined) obj.getCoordsObject = false;
+	if(obj.ignoreStyles == undefined) obj.ignoreStyles = false;
+	if(obj.skipInvisible == undefined) obj.skipInvisible = true;
+	if(obj.getAllNsProperties == undefined) obj.getAllNsProperties = false;
+	// if(obj.roundValues == undefined) obj.roundValues = true;
+	if(obj.keepType == undefined) obj.keepType = false; // default removes coords.type property
+
+	var mustRegisterNameSpace = false;
+	// tags: ILST tag names, PSHP xmp property names
+	// bidimensional structure is assumed
+	if(!obj.tags)
+	{
+		obj.tags = [];
+	}
+
+	if(obj.tags.length || obj.getAllNsProperties)
+	{
+		if(!obj.namespace)
+		{
+			if(!obj.namespacePrefix) obj.namespacePrefix = Pslib.XMPNAMESPACEPREFIX;
+			obj.namespace = Pslib.XMPNAMESPACE;
+
+			// dump namespace collection to string (costly, avoid if possible)
+			var namespacesStr = XMPMeta.dumpNamespaces();
+			mustRegisterNameSpace = namespacesStr.match(obj.namespace) != null;
+
+			if(mustRegisterNameSpace)
+			{
+				XMPMeta.registerNamespace(obj.namespace, obj.namespacePrefix);
+			}
+		}
+	}
+
+    // at this point, if using dedicated namespace, we may not have a prefix defined (needed for console log & debugging)
+    if(!obj.namespacePrefix)
+    {
+        obj.namespacePrefix = XMPMeta.getNamespacePrefix(obj.namespace);
+    }
+
+
 	var doc = app.activeDocument;
+	var coords = {};
 
     if(Pslib.isPhotoshop)
 	{
+		// if no arguments provided, assume target is Document.activeLayer
+		if(id == undefined)
+		{
+			id = doc.activeLayer.id;
+		}
+
         var r = new ActionReference();    
         r.putIdentifier(sTID("layer"), id);
 		var ref = executeActionGet(r);
-		var coords = {};
 
-		if(getCoordsObject)
+		if(obj.getCoordsObject)
 		{
 			coords.name = ref.getString(sTID("name"));
 			coords.id = id;
@@ -4836,7 +4977,7 @@ Pslib.getLayerReferenceByID = function( id, getCoordsObject, ignoreStyles, skipI
 			var isVisible = ref.getBoolean(cTID( "Vsbl" ));
 			if(!isVisible) coords.visible = isVisible; // only include visibility info if layer object is hidden?
 			// coords.visible = isVisible;
-			if(skipInvisible && !isVisible) return;
+			if(obj.skipInvisible && !isVisible) return;
 
 			// // determine if raster mask or vector mask is present 
 			// // this only works if mask "exists"
@@ -4851,7 +4992,8 @@ Pslib.getLayerReferenceByID = function( id, getCoordsObject, ignoreStyles, skipI
 			// "art" layer: shape, smartobject, adjustment layer...
 			if(!hasContent && isTopLevelLayerObject)
 			{
-				rect = ignoreStyles ? ref.getObjectValue(sTID("boundsNoEffects")) : ref.getObjectValue(sTID("bounds"));
+				// also test with 'boundsNoMask'
+				rect = obj.ignoreStyles ? ref.getObjectValue(sTID("boundsNoEffects")) : ref.getObjectValue(sTID("bounds"));
 
 				coords.x = rect.getDouble(sTID("left"));
 				coords.y = rect.getDouble(sTID("top"));
@@ -5032,7 +5174,7 @@ Pslib.getLayerReferenceByID = function( id, getCoordsObject, ignoreStyles, skipI
 				var isFrame = ref.hasKey(sTID('framedGroup'));
 				// var isGroup = !isArtboard && !isFrame;
 
-				rect = isArtboard ? ref.getObjectValue(sTID("artboard")).getObjectValue(sTID("artboardRect")) : ( ignoreStyles ? ref.getObjectValue(sTID("boundsNoEffects")) : ref.getObjectValue(sTID("bounds"))); 
+				rect = isArtboard ? ref.getObjectValue(sTID("artboard")).getObjectValue(sTID("artboardRect")) : ( obj.ignoreStyles ? ref.getObjectValue(sTID("boundsNoEffects")) : ref.getObjectValue(sTID("bounds"))); 
 
 				coords.x = rect.getDouble(sTID("left"));
 				coords.y = rect.getDouble(sTID("top"));
@@ -5040,16 +5182,111 @@ Pslib.getLayerReferenceByID = function( id, getCoordsObject, ignoreStyles, skipI
 				coords.height = rect.getDouble(sTID("bottom")) - coords.y;
 
 				var type =  isArtboard ? "artboard" : (isFrame ? "frame" : "group");
-
 				coords.type = type;
 
 				// if handling container styles, do it here
 
 			}
 
+			// whichever layer object type, manage harvesting of its XMP properties here
+
+			var harvestedTags = [];
+
+			// conflict with obj.getAllNsProperties -- tags array must not be empty
+			if(obj.tags.length || ( obj.getAllNsProperties && obj.tags.length == 0))
+			{
+				// Pslib.getXmpByID( coords.id );
+				var xref = new ActionReference();
+				xref.putProperty( cTID( 'Prpr' ), sTID( "metadata" ) );
+				xref.putIdentifier(sTID("layer"), coords.id);
+				var xdesc = executeActionGet(xref);
+				var xmpData;
+				try{
+					xmpData = xdesc.getObjectValue(sTID( "metadata" )).getString(sTID( "layerXMP" ));
+				}catch(e){ 
+					// JSUI.quickLog("ERROR GETTING XMP FROM " + coords.id);
+				}
+		
+				if(typeof xmpData == "string")
+				{
+					// JSUI.quickLog("\n\n\n"+xmpData+"\n");
+					xmpData = new XMPMeta(xmpData);
+
+					// scan for tags
+					if(obj.getAllNsProperties)
+					{
+						var xmpIter = xmpData.iterator(XMPConst.ITERATOR_JUST_CHILDREN, obj.namespace, "");
+						var next = xmpIter.next();
+				
+						while (next)
+						{
+							var propName = next.path.replace( obj.namespacePrefix, "" ); 
+							var propValue = decodeURI(next);
+							propValue = Pslib.autoTypeDataValue(propValue, false, false); // empty string allowed, null not allowed 
+
+							harvestedTags.push([propName, propValue]);
+							next = xmpIter.next();
+						}
+
+					}
+					else
+					{
+						for(var xt = 0; xt < obj.tags.length; xt++)
+						{
+							var xtTag = obj.tags[xt];
+							if(xtTag.length > 1)
+							{
+								var propName = xtTag[0];
+								if(propName != undefined)
+								{
+									var propValue = xtTag[0];
+									if(propValue != undefined)
+									{
+										propValue = xmpData.getProperty(obj.namespace, propName);	
+										propValue = decodeURI(propValue);
+										propValue = Pslib.autoTypeDataValue(propValue, false, false); // empty string allowed, null not allowed 
+										harvestedTags.push([propName, propValue]);
+									}
+								}
+							}
+						}
+					}
+				}
+
+				if(harvestedTags.length)
+				{
+					var convertedTags = [];
+
+					// convert tag names if required
+					if(obj.converter)
+					{
+						convertedTags = harvestedTags.convertTags(obj.converter);
+						harvestedTags = convertedTags;
+					}
+
+					// now inject tags into object
+					for(var ht = 0; ht < harvestedTags.length; ht++)
+					{
+						var htag = harvestedTags[ht];
+						if(htag != undefined)
+						{
+							var pname = htag[0];
+							var pvalue = htag[1];
+							if(pvalue != undefined && pvalue != null && pvalue != "undefined")
+							{
+								coords[pname] = pvalue;
+							}
+						}
+					}
+				}
+			}
+
+			// remove "type" property from resulting coordinates object
+			if(!obj.keepType) coords.type = undefined;
+
 		}
 
-        return getCoordsObject ? coords : ref;
+        return obj.getCoordsObject ? coords : ref;
     }
 }
 
