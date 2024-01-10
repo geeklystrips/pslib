@@ -126,7 +126,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.681;
+Pslib.version = 0.682;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -4116,70 +4116,85 @@ Pslib.getSelectedLayerIndexes = function()
 	}
 }
 
-// workaround for issue with nested layers
-Pslib.getAllContainerIndexes = function()
+// workaround for issue with nested items: 
+// get collection of top-level containers (artboards + groups)
+// TODO: should have a way to compare array against selected items or arbitrary IDs list
+Pslib.getContainerReferences = function( getIDs, getIndices )
 {   
 	if(!app.documents.length) return;
+	if(getIDs == undefined) var getIDs = true;
+	if(getIndices == undefined) var getIndices = false;
+
 	var doc = app.activeDocument;
+
+	var references = [];
+
 	if(Pslib.isPhotoshop)
 	{
-		var indexes = new Array();
+		var layerCount = Pslib.getLayerCount();
+		var increment = Pslib.getIndexIncrement();
+		var artboardCount = Pslib.getArtboardsCount();
 
-		// var ref = new ActionReference();   
-		// ref.putEnumerated( cTID("Dcmn"), cTID("Ordn"), cTID("Trgt") );   
-		// var desc = executeActionGet(ref);   
+		// var increment = Pslib.documentHasBackgroundLayer() ? 0 : 1;
+		// var increment = Pslib.documentHasBackgroundLayer() ? 1 : 0;
 
-		var r = new ActionReference();
-		r.putProperty(sTID("property"), sTID('hasBackgroundLayer'));
-		r.putEnumerated(sTID("document"), sTID("ordinal"), sTID("targetEnum"));
-		var from = executeActionGet(r).getBoolean(sTID('hasBackgroundLayer')) ? 0 : 1;
-		
-		var r = new ActionReference();
-		r.putProperty(sTID("property"), sTID('numberOfLayers'))
-		r.putEnumerated(sTID("document"), sTID("ordinal"), sTID("targetEnum"))
-		var desc = executeActionGet(r);
-		
-		var to = desc.getInteger(sTID('numberOfLayers'));
+		// weird stuff here!
+		if(!increment && !artboardCount) increment++;
 
-		// var increment = Pslib.documentHasBackgroundLayer ? 0 : 1;
-		increment = from;
-
-		// if( desc.hasKey( sTID( 'targetLayers' ) ) )
-		if( desc.hasKey( sTID( 'numberOfLayers' ) ) )
+		for(var i = 0; i < layerCount; i++)
 		{   
-			// desc = desc.getList( sTID( 'targetLayers' ));    
-			// var c = desc.count; 
+			var layerIndex = i+increment;
 
-			var c = desc.getInteger( sTID( 'numberOfLayers' ));  
+			var r = new ActionReference();
+			r.putIndex(cTID('Lyr '), layerIndex);
+			var ref = executeActionGet(r);
 
-			// indexes are based differently if document has a background layer
-			// try{   
-			// 	doc.backgroundLayer;   
-			// }catch(e){   
-			// 	increment = 1; 
-			// }   
-			// Pslib.documentHasBackgroundLayer ? 
-			for(var i = 0; i < c; i++)
-			{   
-				var index = desc.getReference( i ).getIndex() + increment;
-				indexes.push( index ); 
-				JSUI.quickLog( i+": " + index);
-			}   
-		}
-		// else
-		// {   
-		// 	var ref = new ActionReference();   
-		// 	ref.putProperty( cTID("Prpr") , cTID( "ItmI" ));   
-		// 	ref.putEnumerated( cTID("Lyr "), cTID("Ordn"), cTID("Trgt") );   
-		// 	try{   
-		// 		doc.backgroundLayer;   
-		// 		increment = 1;
-		// 	}catch(e){   
-		// 	}   
-		// 	indexes.push( executeActionGet(ref).getInteger(cTID( "ItmI" )) - increment); 
-		// }   
-		return indexes;   
+			// this tells us whether we're dealing with an art layer of with a group/artboard/frame
+			var layerSection = ref.getEnumerationValue(sTID('layerSection'));
+			var contentIndex = tSID(layerSection).indexOf('Content');
+			var hasContent = contentIndex < 0;
+
+			// if reference object has no parent layer ID, it's nested at the top-level of the document
+			var parentID = ref.getInteger(sTID('parentLayerID'));
+			var isTopLevelLayerObject = parentID < 0; 
+
+			// "regular" layer
+			if(!hasContent && isTopLevelLayerObject)
+			{
+
+			}
+			// container
+			else if(hasContent && isTopLevelLayerObject)
+			{
+				var isArtboard = ref.getBoolean(sTID('artboardEnabled'));
+				var isFrame = ref.hasKey(sTID('framedGroup'));
+				var isGroup = !isArtboard && !isFrame;
+
+				if( isArtboard || isGroup )
+				{
+					if(getIDs)
+					{
+						var id = ref.getInteger(sTID('layerID'));
+						references.push(id);
+					}
+					else if(getIndices)
+					{
+						references.push(layerIndex);
+					}
+					else
+					{
+						references.push(ref);
+					}
+				}
+			}
+		} 
 	}
+	else if(Pslib.isIllustrator)
+	{
+
+	}
+
+	return references; 
 }
 
 Pslib.documentHasBackgroundLayer = function()
@@ -4195,8 +4210,8 @@ Pslib.documentHasBackgroundLayer = function()
 	}
 }
 
-// use this when 
-Pslib.getLowestLayerIndex = function()
+// use this when working with layer indexes AND artboards
+Pslib.getIndexIncrement = function()
 {
     if(!app.documents.length) return;
 	if(Pslib.isPhotoshop)
@@ -4216,6 +4231,23 @@ Pslib.getLayerCount = function()
 		return executeActionGet(r).getInteger(sTID('numberOfLayers'));
     }
 }
+
+// get list of current targets (option to get only integer)
+Pslib.getTargets = function( countOnly )
+{
+    if(!app.documents.length) return;
+	if(Pslib.isPhotoshop)
+	{
+        var r = new ActionReference();
+		r.putProperty(sTID('property'), sTID('targetLayers'));
+        r.putEnumerated(sTID('document'), sTID('ordinal'), sTID('targetEnum'));
+
+		var targets = executeActionGet(r).getList(sTID('targetLayers'));
+		return countOnly ? targets.count : targets;
+    }
+}
+
+
 
 // get simple array of integers for selected layer objects (layersets + artboards)
 // useful for restoring target layers after complex operations
@@ -4894,7 +4926,8 @@ Pslib.getArtboardNames = function( artboards )
 	// namespace: Pslib.XMPNAMESPACE,	// ns + nsprefix should be already registered at this point
 	// namespacePrefix: Pslib.XMPNAMESPACEPREFIX,
 	// getAllNsProperties: false,
-	// roundValues: false			// 
+	// // roundValues: false,			// 
+	// tagsAsArray: false
 // }
 
 
@@ -4941,7 +4974,6 @@ Pslib.getLayerReferenceByID = function( id, obj )
     {
         obj.namespacePrefix = XMPMeta.getNamespacePrefix(obj.namespace);
     }
-
 
 	var doc = app.activeDocument;
 	var coords = {};
@@ -5264,20 +5296,28 @@ Pslib.getLayerReferenceByID = function( id, obj )
 						harvestedTags = convertedTags;
 					}
 
-					// now inject tags into object
-					for(var ht = 0; ht < harvestedTags.length; ht++)
+					if(obj.tagsAsArray)
 					{
-						var htag = harvestedTags[ht];
-						if(htag != undefined)
+						coords.tags = harvestedTags;
+					}
+					else
+					{
+						// inject tags into object
+						for(var ht = 0; ht < harvestedTags.length; ht++)
 						{
-							var pname = htag[0];
-							var pvalue = htag[1];
-							if(pvalue != undefined && pvalue != null && pvalue != "undefined")
+							var htag = harvestedTags[ht];
+							if(htag != undefined)
 							{
-								coords[pname] = pvalue;
+								var pname = htag[0];
+								var pvalue = htag[1];
+								if(pvalue != undefined && pvalue != null && pvalue != "undefined")
+								{
+									coords[pname] = pvalue;
+								}
 							}
 						}
 					}
+
 				}
 			}
 
