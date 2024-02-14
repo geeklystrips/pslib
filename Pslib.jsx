@@ -5260,16 +5260,19 @@ Pslib.getLayerReferenceByID = function( id, obj )
 			// coords.visible = isVisible;
 			if(obj.skipInvisible && !isVisible) return;
 
-			// determine if raster mask or vector mask is present 
-			coords.rasterMask = ref.hasKey(sTID('userMaskEnabled')) ? ref.getBoolean(sTID('userMaskEnabled')) : false;  
-			if(coords.rasterMask)
+			// determine if raster mask and/or vector mask is present 
+			var hasRasterMask = ref.hasKey(sTID('userMaskEnabled')) ? ref.getBoolean(sTID('userMaskEnabled')) : false;  
+			
+			if(hasRasterMask)
 			{
-			   coords.rasterMaskEnabled = ref.hasKey(sTID('userMaskEnabled')) ? ref.getBoolean(sTID('userMaskEnabled')) : false;  
+				coords.rasterMask = true;
+			  	coords.rasterMaskEnabled = ref.hasKey(sTID('userMaskEnabled')) ? ref.getBoolean(sTID('userMaskEnabled')) : false;  
 			}
-
-			coords.vectorMask = ref.hasKey(sTID('vectorMaskEnabled')) ? ref.getBoolean(sTID('vectorMaskEnabled')) : false;  
-			if(coords.vectorMask)
+			
+			var hasVectorMask = ref.hasKey(sTID('vectorMaskEnabled')) ? ref.getBoolean(sTID('vectorMaskEnabled')) : false;  
+			if(hasVectorMask)
 			{
+				coords.vectorMask = true;
 				coords.vectorMaskEnabled =  ref.getBoolean(sTID('vectorMaskEnabled')); 
 				coords.vectorMaskEmpty = ref.hasKey(sTID('vectorMaskEmpty')) ? ref.getBoolean(sTID('vectorMaskEmpty')) : false; 
 
