@@ -3341,9 +3341,9 @@ Pslib.getXmpArrayIndexes = function( xmp, ns, name, qNs, qualifier, arr, count )
     if(!xmp) return;
     if(!name) return;
     if(!ns) ns = Pslib.XMPNAMESPACE;
-    if(name) name = "ManagedArtboards";
-    if(qNs) qNs = ns;
-    if(qualifier) qualifier = "id";
+    if(!name) name = "ManagedArtboards";
+    if(!qNs) qNs = ns;
+    if(!qualifier) qualifier = "id";
     if(!arr) return;
     if(count == undefined) count = xmp.doesPropertyExist(ns, name) ? xmp.countArrayItems(ns, name) : undefined;
     if(count == undefined) return;
@@ -5268,7 +5268,7 @@ Pslib.getLayerReferenceByID = function( id, obj )
 				coords.rasterMask = true;
 			  	coords.rasterMaskEnabled = ref.hasKey(sTID('userMaskEnabled')) ? ref.getBoolean(sTID('userMaskEnabled')) : false;  
 			}
-			
+
 			var hasVectorMask = ref.hasKey(sTID('vectorMaskEnabled')) ? ref.getBoolean(sTID('vectorMaskEnabled')) : false;  
 			if(hasVectorMask)
 			{
@@ -5327,7 +5327,7 @@ Pslib.getLayerReferenceByID = function( id, obj )
 					coords.text = fontInfo.text;
 					coords.font = fontInfo.font;
 					coords.size = fontInfo.size;
-					coords.color = "#"+fontInfo.color;
+					coords.color = fontInfo.color; // includes leading "#"
 				}
 				// get smartobject transform info
 				else if( artLayerObjectType == "kSmartObjectSheet")
