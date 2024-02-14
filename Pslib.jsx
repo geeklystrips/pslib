@@ -126,7 +126,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.683;
+Pslib.version = 0.684;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -1130,6 +1130,10 @@ Pslib.getXmpDictionary = function( target, obj, allowEmptyStringBool, typeCaseBo
     var allowNullBool = allowNullBool == undefined ? true : allowNullBool; // for cases where we don't want anything with a null value
     var tempArr = [];
     var dict = {};
+
+	// // allow XMP object?
+	// update .getXmpProperties target too
+	var isXmpMetaObj = false;
 
 	// if(typeof target == "number")
 	// {
@@ -3926,32 +3930,109 @@ Pslib.scanItemsForTags = function( items, filter )
 // artboard functions
 
 // check for artboard status
+// optimized for remote 
 Pslib.isArtboard = function( layerObject )
 {
 	if(!app.documents.length) return;
 
+	var doc = app.activeDocument;
+
 	if(Pslib.isPhotoshop)
 	{
-		var doc = app.activeDocument;
-		
-		if(!layerObject) layerObject = doc.activeLayer;
-
-
-		if(typeof layerObject == "number")
-		{
-
-		}
-
-		else if((typeof layerObject == "object") && layerObject != doc.activeLayer) doc.activeLayer = layerObject;
+		var id = -1;
+		var index = -1;
+		var desc;
 
 		var isArtboard = false;
-
-		// an artboard is a group/layerset internally
-		if(layerObject.typename == "LayerSet")
+		
+		if(!layerObject)
 		{
-			var ref = new ActionReference();
-			ref.putEnumerated(cTID("Lyr "), cTID("Ordn"), cTID("Trgt"));
-			isArtboard = executeActionGet(ref).getBoolean(sTID("artboardEnabled"));
+			id = doc.activeLayer.id;
+		}
+
+		if(id == undefined) return false;
+
+		var dtype = typeof layerObject;
+		if(dtype == "string")
+		{
+			// allow getting by name
+
+			// OR assume index as string
+			index = parseInt( layerObject );
+			desc = Pslib.getLayerDescriptorByIndex(index);
+		}
+
+		if(dtype == "number")
+		{
+			// assume ID, will get remote reference
+
+		}
+		else if((dtype == "object"))
+		{
+			var str = Pslib.getDescriptorKeyValues( layerObject );
+			// JSUI.quickLog(str);
+
+			if(layerObject == doc.activeLayer)
+			{
+				desc = Pslib.getLayerDescriptorByID(layerObject.id);
+			}
+			else if( layerObject instanceof Object)
+			{
+				// alert("Object is a layer!");
+				// JSUI.quickLog("typename: " + layerObject.typename );
+				var tname = layerObject.typename;
+
+				if(tname == "ActionDescriptor")
+				{
+					desc = layerObject;
+				}
+				else
+				{
+					// alert("is not remote layer!")
+					// last resort, do use active layer
+					var storedActiveLayer = doc.activeLayer;
+					doc.activeLayer = layerObject;
+					// assume active layer update was successful 
+					if(storedActiveLayer != doc.activeLayer)
+					{
+						id = doc.activeLayer;
+					}
+
+				}
+
+								 
+			}
+			// // 
+			// else if(layerObject != doc.activeLayer)
+			// {
+			// 	// alert( layerObject.typename );
+
+			// 	// if(t.typename == "LayerSet")
+
+
+			// }
+		}
+
+		// now if id is integer, treat as layer ID and get reference
+		if(desc == undefined && id > -1) 
+		{
+			desc = Pslib.getLayerDescriptorByID(id);
+		}
+		// var ltype = Pslib.getLayerObjectType( desc );
+
+		// cheap version with active layer
+		// // an artboard is internally a group/layerset 
+		// if(layerObject.typename == "LayerSet") // requires object to be active
+		// {
+		// 	// var ref = new ActionReference();
+		// 	// ref.putEnumerated(cTID('Lyr '), cTID('Ordn'), cTID('Trgt'));
+		// 	// isArtboard = executeActionGet(ref).getBoolean(sTID('artboardEnabled'));
+		// }
+		if(desc)
+		{
+			// if(!hasContent && isTopLevelLayerObject)
+
+			isArtboard = desc.getBoolean(sTID('artboardEnabled'));
 		}
 
 		return isArtboard;
@@ -4020,7 +4101,7 @@ Pslib.selectLayerByID = function ( idInt, addToSelectionBool )
 		var ref1 = new ActionReference();
 		ref1.putIdentifier(cTID('Lyr '), idInt);
 		desc1.putReference(cTID('null'), ref1);
-		if (addToSelectionBool) desc1.putEnumerated(sTID("selectionModifier"), sTID("selectionModifierType"), sTID("addToSelection"));
+		if (addToSelectionBool) desc1.putEnumerated(sTID('selectionModifier'), sTID('selectionModifierType'), sTID('addToSelection'));
 		executeAction(cTID('slct'), desc1, DialogModes.NO);
 		var selectedLayer = doc.activeLayer;
 
@@ -4104,7 +4185,7 @@ Pslib.getSelectedLayerIndexes = function()
 		var selectedIndexes = [];
 
 		var ref = new ActionReference();   
-		ref.putEnumerated( cTID("Dcmn"), cTID("Ordn"), cTID("Trgt") );   
+		ref.putEnumerated( cTID('Dcmn'), cTID('Ordn'), cTID('Trgt') );   
 		var desc = executeActionGet(ref); 
 
 		// var increment = Pslib.documentHasBackgroundLayer() ? 0 : 1; 
@@ -4121,16 +4202,6 @@ Pslib.getSelectedLayerIndexes = function()
 				selectedIndexes.push( desc.getReference(i).getIndex() + increment ); 
 			}   
 		}
-		// // this just pushes the active layer 
-		// else
-		// {   
-		// 	var ref = new ActionReference();   
-		// 	ref.putProperty( cTID("Prpr") , cTID( "ItmI" ));   
-		// 	ref.putEnumerated( cTID("Lyr "), cTID("Ordn"), cTID("Trgt") );
-		// 	var desc = executeActionGet(ref);
-
-		// 	selectedIndexes.push( desc.getInteger(cTID( "ItmI" )) - increment); 
-		// }   
 		return selectedIndexes;   
 	}
 }
@@ -4297,7 +4368,7 @@ Pslib.getContainers = function( obj )
 					else if(obj.getIndexes)
 					{
 						// get index from descriptor
-						containers.push( desc.getInteger(cTID( "ItmI" )));
+						containers.push( desc.getInteger(cTID('ItmI')));
 						idsList.push(id);
 					}
 					else if(obj.getDescriptors)
@@ -4329,7 +4400,10 @@ Pslib.getContainers = function( obj )
 	}
 	else if(Pslib.isIllustrator)
 	{
-
+		if(obj.selected && obj.getIndexes)
+		{
+			containers = Pslib.getArtboardIndexesFromSelectedItems();
+		}
 	}
 
 	return containers; 
@@ -4346,6 +4420,21 @@ Pslib.documentHasBackgroundLayer = function()
 		r.putEnumerated(sTID("document"), sTID("ordinal"), sTID("targetEnum"));
 		return executeActionGet(r).getBoolean(sTID('hasBackgroundLayer'));
 	}
+}
+
+Pslib.documentHasActiveSelection = function( )
+{
+    if(!app.documents.length) return;
+    var doc = app.activeDocument;
+
+    if(Pslib.isPhotoshop)
+	{
+        var ref = new ActionReference();
+        ref.putEnumerated( cTID("Dcmn"), cTID("Ordn"), cTID("Trgt") );
+        var desc = executeActionGet(ref);
+
+        return desc.hasKey(sTID("selection"));
+    }
 }
 
 // use this when working with layer indexes AND artboards OR a background layer present
@@ -4553,7 +4642,6 @@ Pslib.getSpecsForSelectedArtboards = function(onlyIDs)
 
 		if(initialSelection) doc.selection = initialSelection;
 
-		// JSUI.quickLog(artboardsCoords);
 		return artboardsCoords;
 	}
 }
@@ -4697,7 +4785,7 @@ Pslib.getAllArtboards = function()
 		// Document.artboards is not a typical Array, use this to work around
 		for(var i = 0; i < doc.artboards.length; i++)
 		{
-			artboards = doc.artboards[i];
+			artboards.push(doc.artboards[i]);
 		}
 	}
 	return artboards;
@@ -4714,6 +4802,7 @@ Pslib.getAllArtboardIDs = function()
 	return Pslib.getSpecsForAllArtboards(true);
 }
 
+// TO DEPRECATE IN FAVOR OF AM LAYER REF
 // get more complete data set for artboards collection 
 
 // typically used in conjunction with Pslib.getSpecsForSelectedArtboards()/Pslib.getSpecsForAllArtboards()
@@ -5066,14 +5155,12 @@ Pslib.getLayerDescriptorByID = function( id )
     }
 }
 
-
 // get usable layer reference from persistent layer ID, without having to select layer
 // target can be an art layer, a group of layers, an artboard or a frame
 // option to return basic coordinates object, ignoring styles-related geometry and skipping invisible objects
 
 // scan for specific tags, or return all properties for given namespace
 // var coords = Pslib.getLayerReferenceByID( 128, { getCoordsObject: true, skipInvisible: false, tags: [["assetID", null], ["profile", null]] })
-// Pslib.getLayerReferenceByID = function( id, getCoordsObject, ignoreStyles, skipInvisible )
 
 // for best results, make sure custom namespace+nsprefix is registered prior to launching function
 // var obj = 
@@ -5125,13 +5212,16 @@ Pslib.getLayerReferenceByID = function( id, obj )
 				XMPMeta.registerNamespace(obj.namespace, obj.namespacePrefix);
 			}
 		}
+
+		    // at this point, if using dedicated namespace, we may not have a prefix defined (needed for console log & debugging)
+			if(!obj.namespacePrefix)
+			{
+				// beware when XMPMeta does not exist!
+				obj.namespacePrefix = XMPMeta.getNamespacePrefix(obj.namespace);
+			}
 	}
 
-    // at this point, if using dedicated namespace, we may not have a prefix defined (needed for console log & debugging)
-    if(!obj.namespacePrefix)
-    {
-        obj.namespacePrefix = XMPMeta.getNamespacePrefix(obj.namespace);
-    }
+
 
 	var doc = app.activeDocument;
 	var coords = {};
@@ -5144,13 +5234,10 @@ Pslib.getLayerReferenceByID = function( id, obj )
 			id = doc.activeLayer.id;
 		}
 
-        var r = new ActionReference();    
-        r.putIdentifier(sTID("layer"), id);
-		var ref = executeActionGet(r);
-
-		// var index = ref.getInteger(cTID( "ItmI" ));
-		// alert( "id: " + id + "\nindex: "+ index);
-
+        // var r = new ActionReference();    
+        // r.putIdentifier(sTID("layer"), id);
+		// var ref = executeActionGet(r);
+		var ref = Pslib.getLayerDescriptorByID(id);
 
 		if(obj.getCoordsObject)
 		{
@@ -5173,12 +5260,29 @@ Pslib.getLayerReferenceByID = function( id, obj )
 			// coords.visible = isVisible;
 			if(obj.skipInvisible && !isVisible) return;
 
-			// // determine if raster mask or vector mask is present 
-			// // this only works if mask "exists"
-			// var hasRasterMask = ref.getBoolean(sTID('userMaskEnabled'));  
-			// var hasVectorMask = ref.getBoolean(sTID('vectorMaskEnabled'));  
-			// if(hasRasterMask) coords.userMask = hasRasterMask;
-			// if(hasVectorMask) coords.vectorMask = hasVectorMask;
+			// determine if raster mask or vector mask is present 
+			coords.rasterMask = ref.hasKey(sTID('userMaskEnabled')) ? ref.getBoolean(sTID('userMaskEnabled')) : false;  
+			if(coords.rasterMask)
+			{
+			   coords.rasterMaskEnabled = ref.hasKey(sTID('userMaskEnabled')) ? ref.getBoolean(sTID('userMaskEnabled')) : false;  
+			}
+
+			coords.vectorMask = ref.hasKey(sTID('vectorMaskEnabled')) ? ref.getBoolean(sTID('vectorMaskEnabled')) : false;  
+			if(coords.vectorMask)
+			{
+				coords.vectorMaskEnabled =  ref.getBoolean(sTID('vectorMaskEnabled')); 
+				coords.vectorMaskEmpty = ref.hasKey(sTID('vectorMaskEmpty')) ? ref.getBoolean(sTID('vectorMaskEmpty')) : false; 
+
+				if(ref.hasKey(sTID('pathBounds')))
+				{
+					var vectorBounds = ref.getObjectValue(sTID('pathBounds')).getObjectValue(sTID('pathBounds'));
+
+					coords.vectorMaskX = vectorBounds.getUnitDoubleValue(sTID('left'));
+					coords.vectorMaskY = vectorBounds.getUnitDoubleValue(sTID('top'));
+					coords.vectorMaskWidth = vectorBounds.getUnitDoubleValue(sTID('right')) - coords.vectorMaskX;
+					coords.vectorMaskHeight = vectorBounds.getUnitDoubleValue(sTID('bottom')) - coords.vectorMaskY;
+				}
+			}
 
 			// prepare container for bounds
 			var rect;
@@ -5358,15 +5462,54 @@ Pslib.getLayerReferenceByID = function( id, obj )
 
 				// for CSS, if handling some aspects of layer-based styles, do it here
 				// e.g. color overlay
-				
+
+				var colorOverlayHex;
+
+				var hasStylesKey = ref.hasKey(sTID('layerEffects'));
+				var stylesVisibleKey = ref.hasKey(sTID('layerFXVisible'));
+		
+				if(hasStylesKey && stylesVisibleKey)
+				{
+					var styles = ref.getObjectValue(sTID('layerEffects'));
+					var stylesVisible = ref.getBoolean(sTID('layerFXVisible')); 
+		
+					if(styles && stylesVisible)
+					{
+						var hasColorOverlayKey = styles.hasKey(sTID('solidFill'));
+						if(hasColorOverlayKey)
+						{
+							var col = styles.getObjectValue(sTID('solidFill'));
+							var isEnabled = col.getBoolean(sTID('enabled'));
+							if(isEnabled)
+							{
+								var c = col.getObjectValue(sTID('color')); 
+								
+								var color = new SolidColor;
+								color.rgb.red = c.getDouble(cTID('Rd  '));
+								color.rgb.green = c.getDouble(cTID('Grn '));
+								color.rgb.blue = c.getDouble(cTID('Bl  '));
+
+								colorOverlayHex = color.rgb.hexValue;
+
+								// this replaces a solid fill's value in the returned object  
+								if(colorOverlayHex != undefined) coords.color = "#"+colorOverlayHex;
+							}
+						}
+					}
+
+				}
+
 			}
 
 			// "layerSection" container abstraction: group, frame, artboard.
 			else if(hasContent)
 			{
+				// typename is "LayerSet"
+				var containerObjectType = ref.getInteger(sTID('layerKind')) == 7;
+
 				var isArtboard = ref.getBoolean(sTID('artboardEnabled'));
 				var isFrame = ref.hasKey(sTID('framedGroup'));
-				// var isGroup = !isArtboard && !isFrame;
+				var isGroup = !isArtboard && !isFrame;
 
 				rect = isArtboard ? ref.getObjectValue(sTID("artboard")).getObjectValue(sTID("artboardRect")) : ( obj.ignoreStyles ? ref.getObjectValue(sTID("boundsNoEffects")) : ref.getObjectValue(sTID("bounds"))); 
 
@@ -5374,6 +5517,12 @@ Pslib.getLayerReferenceByID = function( id, obj )
 				coords.y = rect.getDouble(sTID("top"));
 				coords.width = rect.getDouble(sTID("right")) - coords.x;
 				coords.height = rect.getDouble(sTID("bottom")) - coords.y;
+
+				// if group in a context which includes artboards, coordinates may be those of the parent document
+				if(isGroup)
+				{
+					// JSUI.quickLog( );
+				}
 
 				var type =  isArtboard ? "artboard" : (isFrame ? "frame" : "group");
 				coords.type = type;
@@ -5500,6 +5649,12 @@ Pslib.getDescriptorKeyValues = function(desc, lvl)
 
     var spacer = "";   
 
+	if(typeof desc == "number")
+	{
+		desc = Pslib.getLayerDescriptorByID(desc);
+		if(desc == undefined) return;
+	}
+			
     for(var ii = 0; ii < lvl; ii++)
     {
         spacer += "\t";
@@ -6014,14 +6169,28 @@ Pslib.getArtboardBounds = function( id )
 // photoshop expects integer for artboard ID
 Pslib.getArtboardCoordinates = function( artboard )
 {
+	if(!app.documents.length) return;
+	var doc = app.activeDocument;
+
 	if(Pslib.isIllustrator)
 	{
 		var index;
 		var page;
-		if(!artboard)
+
+		// if integer, assume working with index
+		if(typeof artboard == "number")
+		{
+			index = artboard;
+			page = index+1;
+			artboard = doc.artboards[index];
+			if(!artboard) return;
+		}
+
+		// can still be zero!
+		if(artboard == undefined)
 		{ 
 			var artboard = Pslib.getActiveArtboard();
-			index = app.activeDocument.artboards.getActiveArtboardIndex();
+			index = doc.artboards.getActiveArtboardIndex();
 			page = index+1;
 		}
 
@@ -6065,7 +6234,7 @@ Pslib.getArtboardCoordinates = function( artboard )
 
 		if(!artboard)
 		{ 
-			var layer = app.activeDocument.activeLayer;
+			var layer = doc.activeLayer;
 			if(!Pslib.isArtboard(layer))
 			{
 				return {};
@@ -7388,7 +7557,7 @@ Pslib.getItemsOverlapArtboard = function( itemsArr, artboard, getItems )
 
 // get collection of artboards for which selected items have an overlap with
 // tried using .splice on a copy of doc.artboards, illustrator does NOT like it
-Pslib.getArtboardsFromSelectedItems = function( itemsArr, getPagesBool )
+Pslib.getArtboardsFromSelectedItems = function( itemsArr, getPagesBool, getIndexesBool )
 {
 	if(Pslib.isIllustrator)
 	{
@@ -7413,7 +7582,7 @@ Pslib.getArtboardsFromSelectedItems = function( itemsArr, getPagesBool )
 				
 				if(artboardFound)
 				{
-					artboards.push(getPagesBool ? (j+1) : artboard );
+					artboards.push(getPagesBool ? (j+1) : ( getIndexesBool ? j : artboard)  );
 					break;
 				}
 			}
@@ -7422,6 +7591,17 @@ Pslib.getArtboardsFromSelectedItems = function( itemsArr, getPagesBool )
 		return artboards;
 	}
 }
+
+Pslib.getArtboardIndexesFromSelectedItems = function()
+{
+	return Pslib.getArtboardsFromSelectedItems( undefined, false, true);
+}
+
+Pslib.getArtboardPagesFromSelectedItems = function()
+{
+	return Pslib.getArtboardsFromSelectedItems( undefined, true, false);
+}
+
 
 Pslib.getViewCoordinates = function( view )
 {
@@ -10909,6 +11089,7 @@ Pslib.addTextItem = function( obj )
 
     var doc = app.activeDocument;
 
+	var tlayer;
     var textItem;
     var rectangle;
 
@@ -11645,6 +11826,93 @@ Pslib.selectionBoundsMatchesLayer = function ()
     }
 }
 
+// if marquee selection active, add as vector mask
+Pslib.addVectorMask = function( obj )
+{
+	if(!app.documents.length) return false;
+    var doc = app.activeDocument;
+
+    if(!obj) obj = {};
+
+	if(Pslib.isPhotoshop)
+	{
+        var hasSelection = Pslib.documentHasActiveSelection();
+
+        if(hasSelection)
+        {
+            var tempPath = Pslib.createPathFromSelection();
+
+            // target path
+            var desc = new ActionDescriptor();
+            var ref = new ActionReference();
+            ref.putClass( cTID( "Path" ) );
+            desc.putReference( cTID( "null" ), ref );
+
+            var maskRef = new ActionReference();
+            maskRef.putEnumerated( cTID( "Path" ), cTID( "Path" ), sTID( "vectorMask" ) );
+            desc.putReference( cTID( "At  " ), maskRef );
+            
+            // IF not artboard
+            // add path as vector mask to target object
+            
+            var pathRef = new ActionReference();
+            pathRef.putEnumerated( cTID( "Path" ), cTID( "Ordn" ), cTID( "Trgt" ) );
+            desc.putReference( cTID( "Usng" ), pathRef );
+            executeAction( cTID( "Mk  " ), desc, DialogModes.NO );
+
+            // delete reference path
+            // tempPath.remove();
+        }
+        else
+        {
+            // either warn user 
+            // alert("No active selection!\nUse marquee selection tool to define a rectangle.");
+
+            // 
+            // 
+        }
+
+        // decide if new mask is linked or not
+
+        // if temp path, delete
+    }
+}
+
+Pslib.createPathFromSelection = function( obj )
+{
+    if(!app.documents.length) return false;
+    var doc = app.activeDocument;
+
+    if(!obj) obj = {};
+    if(obj.tolerance == undefined) obj.tolerance = 2.0;
+
+    var pathItem;
+
+    if(Pslib.isPhotoshop)
+	{
+        // check for selection
+        var hasSelection = Pslib.documentHasActiveSelection();
+        if(hasSelection)
+        {
+            // create path
+            var desc = new ActionDescriptor();
+            var r = new ActionReference();
+            r.putClass( sTID('path') );
+            desc.putReference( sTID('null'), r );
+
+            var ref = new ActionReference();
+            ref.putProperty( sTID('selectionClass'), sTID('selection') );
+            desc.putReference( sTID('from'), ref );
+            desc.putUnitDouble( sTID('tolerance'), sTID('pixelsUnit'), obj.tolerance );
+        executeAction( sTID('make'), desc, DialogModes.NO );
+
+            if(doc.pathItems.length) pathItem = doc.pathItems[doc.pathItems.length-1];
+        }
+
+
+    }
+	return pathItem;
+}
 
 // RGB hex functions from JSUI
 
@@ -12114,6 +12382,9 @@ Pslib.getShapeColor = function( asObj )
 			var sc = new SolidColor();
 			sc.rgb.hexValue = hex;
 		}
+
+		// option to replace value with color overlay if present
+
 		return asObj ? sc : hex;
 	}
 	else if(Pslib.isIllustrator)
