@@ -126,7 +126,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.684;
+Pslib.version = 0.685;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -3927,6 +3927,62 @@ Pslib.scanItemsForTags = function( items, filter )
 	}
 }
 
+// container functions
+
+
+// photoshop LayerSet, illustrator GroupItem status
+Pslib.getIsGroup = function( id )
+{
+    if(!app.documents.length) return false;
+
+    var doc = app.activeDocument;
+	var isGroup = false;
+
+    if(Pslib.isPhotoshop)
+    {
+        if(id == undefined) id = doc.activeLayer.id;
+
+        if((typeof id) != "number")
+        {
+            return;
+        }
+
+        var desc = Pslib.getLayerDescriptorByID(id);
+
+        // container: artboard, group, frame
+        var isContainer = desc.getInteger(sTID('layerKind')) == 7;
+
+        if(isContainer)
+        {    
+            var isArtboard = desc.getBoolean(sTID('artboardEnabled'));
+            var isFrame = desc.hasKey(sTID('framedGroup'));
+            isGroup = !isArtboard && !isFrame;
+
+			// // avoid empty groups
+	        // var layerSectionEnum = desc.getEnumerationValue(sTID('layerSection'));
+			// var contentIndex = tSID(layerSectionEnum).indexOf('Content');
+            // var hasContent = contentIndex < 0;
+            // isGroup = isGroup && hasContent;
+        }
+
+    }
+    else if(Pslib.isIllustrator)
+    {
+		var item;
+
+        if((typeof id) != "number")
+        {
+			var selection = doc.selection;
+			if(selection)
+			{
+				item = selection[0];
+				isGroup = (item.typename == "GroupItem");
+			}
+        }
+    }
+	return isGroup;
+}
+
 // artboard functions
 
 // check for artboard status
@@ -4236,8 +4292,10 @@ Pslib.getAllLayerIndexes = function()
 // get collection of IDs, indexes or descriptors for top-level containers (artboards + groups)
 
 // var obj = {
+	// selected: false, 
 	// getIDs: true, 
-	// getIndexes: true,
+	// getIndexes: false,
+	// getDescriptors: false,
 	// groups: true,
 	// artboards: true,
 	// frames: false,
@@ -4262,6 +4320,7 @@ Pslib.getContainers = function( obj )
 
 	// selection
 	if(obj.selected == undefined) obj.selected = false;
+
 
 	var doc = app.activeDocument;
 
@@ -5130,7 +5189,7 @@ Pslib.getArtboardNames = function( artboards )
 Pslib.getLayerDescriptorByIndex = function( index )
 {
     if(!app.documents.length) return;
-	var doc = app.activeDocument;
+	// var doc = app.activeDocument;
 
 	if(Pslib.isPhotoshop)
 	{
@@ -5144,7 +5203,7 @@ Pslib.getLayerDescriptorByIndex = function( index )
 Pslib.getLayerDescriptorByID = function( id )
 {
 	if(!app.documents.length) return;
-	var doc = app.activeDocument;
+	// var doc = app.activeDocument;
 
 	if(Pslib.isPhotoshop)
 	{
@@ -6778,6 +6837,170 @@ Pslib.scaleArtboardArtworkPercent = function (scaleX, scaleY, anchor)
 Pslib.scaleArtboardArtworkPixels = function (width, height, anchor)
 {
     return Pslib.scaleArtboardArtwork(width, height, anchor, false);
+}
+
+
+// // resize content of group object using its vector mask as reference
+// var advCoords = Pslib.getLayerReferenceByID(id, { getCoordsObject: true});
+// var isGroup = Pslib.getIsGroup(id);
+// if(isGroup && advCoords.vectorMaskEnabled && !advCoords.vectorMaskEmpty)
+// {
+    // var newW = advCoords.width.getNextMultOf(100);
+    // var newH = advCoords.height.getNextMultOf(100);
+    // Pslib.resizeVectorMask(id, { width: newW, height: newH, anchor: 7 });
+// }
+
+// // example of wrapper for incrementing to next powers of 2
+// Pslib.incrementVectorMaskPow2 = function( id, anchor )
+// {
+//     if(Pslib.isPhotoshop)
+//     {
+//         // resize content of group object using its vector mask as reference
+//         var advCoords = Pslib.getLayerReferenceByID(id, { getCoordsObject: true});
+//         var isGroup = Pslib.getIsGroup(id);
+//         if(isGroup && advCoords.vectorMaskEnabled && !advCoords.vectorMaskEmpty)
+//         {
+//             var newW = advCoords.vectorMaskWidth.getNextPow2();
+//             var newH = advCoords.vectorMaskHeight.getNextPow2();
+//             Pslib.resizeVectorMask(id, { width: newW, height: newH, anchor : anchor ? anchor : 7});
+//         }
+//     }
+// }
+
+// resize vector mask to 256*256, anchored center (default anchor value is 7 for top left)
+// Pslib.resizeVectorMask(id, { width: 256, height: 256, anchor: 5 });
+Pslib.resizeVectorMask = function( id, obj )
+{
+    if(!obj) return false;
+    if(!app.documents.length) return false;
+    if(!(obj.width || obj.height)) return false;
+    if(obj.anchor == undefined) obj.anchor = 7;
+
+    var doc = app.activeDocument;
+	var resized = false;
+
+    if(Pslib.isPhotoshop)
+    {
+        // could check if group, mask etc
+
+        // this should be adjusted for layer groups
+        // var desc = Pslib.getLayerReferenceByID( id );
+
+        // var hasVectorMask = desc.hasKey(sTID('hasVectorMask')) ? desc.getBoolean(sTID('hasVectorMask')) : false;  
+        // var vectorMaskEnabled = desc.hasKey(sTID('vectorMaskEnabled')) ? desc.getBoolean(sTID('vectorMaskEnabled')) : false;  
+        // var vectorMaskEmpty = desc.hasKey(sTID('vectorMaskEmpty')) ? desc.getBoolean(sTID('vectorMaskEmpty')) : false; 
+        
+        // var isGroup = Pslib.getIsGroup(id);
+
+        var specs = Pslib.getLayerReferenceByID( id, { getCoordsObject: true });
+
+        if( !specs.vectorMask || (!specs.vectorMaskEnabled || specs.vectorMaskEmpty)) return;
+
+        var wDelta = obj.width - specs.width;
+        var hDelta = obj.height - specs.height;
+
+        // delta offsets: extra pixel goes at the bottom and on the right if odd delta is divided by two
+        var wDelta1stHalf = (wDelta % 2 == 0) ? wDelta/2 : Math.floor(wDelta/2);
+        var hDelta1stHalf = (wDelta % 2 == 0) ? hDelta/2 : Math.floor(hDelta/2);
+
+        // anchors / pivot reference
+        //	7	8	9
+        //	4	5	6
+        //	1	2	3
+
+        var xOffset = 0;
+        var yOffset = 0;
+
+        switch(obj.anchor)
+        {
+            case 7 : { 
+                xOffset += wDelta1stHalf;
+                yOffset += hDelta1stHalf; 
+                break; 
+            }
+            case 8 : { 
+                yOffset += hDelta1stHalf; 
+                break; }
+            case 9 : { 
+                xOffset -= wDelta1stHalf; 
+                yOffset += hDelta1stHalf;
+                break; }
+
+            case 4 : { 
+                xOffset += wDelta1stHalf;
+                break; }
+            case 5 : { 
+                // leave as is
+                break; }
+            case 6 : { 
+                xOffset -= wDelta1stHalf; 
+                break; }
+
+            case 1 : { 
+                xOffset += wDelta1stHalf;
+                yOffset += hDelta1stHalf;
+                break; }
+            case 2 : { 
+                yOffset += hDelta1stHalf; 
+                break; }
+            case 3 : { 
+                xOffset -= wDelta1stHalf;
+                yOffset += hDelta1stHalf;
+                break; }
+
+            default : { break; }
+        }
+
+        var newW = obj.width;
+        var newH = obj.height;
+
+        var xScale = (newW / specs.width) * 100;
+        var yScale = (newH / specs.height) * 100;
+
+        // make sure mask is active / selected?
+
+        resized = Pslib.resizeShape(id, xOffset, yOffset, xScale, yScale);
+    }
+	return resized;
+}
+
+// resize shape item (typical usecase is a mask used for bounds)
+Pslib.resizeShape = function( id, xPixels, yPixels, xScale, yScale )
+{
+    if(!app.documents.length) return;
+
+    if(Pslib.isPhotoshop)
+    {
+		if(typeof id == "number")
+		{
+			var desc = Pslib.getLayerDescriptorByID(id);
+		}
+		// if not working with specific layer ID, use active layer as reference
+		else
+		{
+			var desc = new ActionDescriptor();
+			var ref = new ActionReference();
+			ref.putEnumerated( sTID('layer'), sTID('ordinal'), sTID('targetEnum') );
+			desc.putReference( sTID('null'), ref );
+		}
+
+		if(!desc) return false;
+
+        desc.putEnumerated( sTID('freeTransformCenterState'), sTID('quadCenterState'), sTID('QCSAverage') );
+    
+        var offsetDesc = new ActionDescriptor();
+        offsetDesc.putUnitDouble( sTID('horizontal'), sTID('pixelsUnit'), xPixels );
+        offsetDesc.putUnitDouble( sTID('vertical'), sTID('pixelsUnit'), yPixels );
+        desc.putObject( sTID('offset'), sTID('offset'), offsetDesc );
+    
+        desc.putUnitDouble( sTID('width'), sTID('percentUnit'), xScale );
+        desc.putUnitDouble( sTID('height'), sTID('percentUnit'), yScale );
+        desc.putEnumerated( sTID('interfaceIconFrameDimmed'), sTID('interpolationType'), sTID('nearestNeighbor') );
+    
+        executeAction( sTID('transform'), desc, DialogModes.NO );
+
+        return true;
+    }
 }
 
 // get projected mips count, with optional target multiple
