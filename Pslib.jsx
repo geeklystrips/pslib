@@ -126,7 +126,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.685;
+Pslib.version = 0.686;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -2773,6 +2773,8 @@ Pslib.getObjectData = function(id, PLUGIN_ID)
     // var packageObj = {
 	//		destination,						// export destination (default is relative)
     //     tags,                               // expected: bidimensional array
+	//	   tagsNamespace,
+	//	   tagsNamespacePrefix,
 	// 	   converter,						   // converter for tag names
     //     itemNameStr,                        // name of the placeholder item name, default "#"
     //     sidecarDocXmp: true,                // sidecarDocXmp: saves sidecar XMP file next to source document (debug/review) 
@@ -2826,6 +2828,12 @@ Pslib.packageDocument = function( obj )
 		mustRegisterNameSpace = mustRegisterNameSpace ? true : namespacesStr.match(obj.qualifiersNamespace) != null;
 	}
 
+	if(!obj.tagsNamespace)
+	{
+		obj.tagsNamespace = Pslib.XMPNAMESPACE;
+		obj.tagsNamespacePrefix = Pslib.XMPNAMESPACEPREFIX;
+	}
+
     if(!obj.simplePropertiesNamespace)
     {
 		if(!obj.simplePropertiesNamespacePrefix) obj.simplePropertiesNamespacePrefix = Pslib.SECONDARYXMPNAMESPACEPREFIX;
@@ -2870,6 +2878,16 @@ Pslib.packageDocument = function( obj )
 				}
 				XMPMeta.registerNamespace(obj.qualifiersNamespace, obj.qualifiersNamespacePrefix);
 			}
+
+			if(obj.tagsNamespace)
+			{
+				if(!obj.tagsNamespacePrefix)
+				{
+					obj.tagsNamespacePrefix = XMPMeta.getNamespacePrefix(obj.tagsNamespace);
+				}
+				XMPMeta.registerNamespace(obj.tagsNamespace, obj.tagsNamespacePrefix);
+			}
+
 		}
 	}
 
@@ -2970,7 +2988,7 @@ Pslib.packageDocument = function( obj )
                 // select artboard by id
                 // var artboard = Pslib.selectLayerByID( asset.id, false );
                 // tags = Pslib.getXmpProperties(artboard, obj.tags, obj.namespace);
-				tags = Pslib.getXmpProperties( asset.id, obj.tags, obj.namespace); // much faster!
+				tags = Pslib.getXmpProperties( asset.id, obj.tags, obj.tagsNamespace ? obj.tagsNamespace : obj.namespace); // much faster!
 
                 // JSUI.quickLog(tags);
             }
@@ -3018,6 +3036,8 @@ Pslib.packageDocument = function( obj )
                     }
                 }
             }
+
+			// -- possibly handled with obj.tagsNamespace 
 
 			// from Pslib.getAdvancedSpecs()
 			// var keyValuePairs = Pslib.getXmpDictionary( layerObj, obj.dictionary, false, false, false, obj.namespace);
@@ -3236,11 +3256,6 @@ Pslib.packageDocument = function( obj )
 							var sfName = obj.extraStructFields[sf];
 							if(sfName)
 							{
-								// if(ab.name == "Icon_PS4-Cross" && sfName == "assetID")
-								// {
-								// 	// alert(tags);
-								// 	// alert((kname == sfName) + "  " + kname == sfName);
-								// }
 								if(kname == sfName) continue;
 							}
 						}
@@ -3704,18 +3719,42 @@ Pslib.getAllTags = function( pageItem )
 
 // illustrator: get array of specific tags 
 // tagsArr: [ ["name", "value"], ["name", "value"]]
-Pslib.getTags = function( pageItem, tagsArr )
+Pslib.getTags = function( item, tagsArr, namespace, converter)
 {
+	if(!app.documents.length) return;
+	if(!tagsArr) tagsArr = [];
+	if(!namespace) namespace = Pslib.XMPNAMESPACE;
+	if(!converter) converter = [];
+
+	var doc = app.activeDocument;
+
+	var harvestedTagsArr = [];
+
 	if(Pslib.isIllustrator)
 	{
-		if(!pageItem){
-			return
+		if(item == undefined)
+		{
+			if(doc.selection)
+			{
+				item = doc.selection[0];
+			}
+			else return;
+		}
+
+		if(item instanceof Array)
+		{
+			var tagsArrColl = [];
+			for(var i = 0; i < item.length; i++)
+			{
+				var tags = Pslib.getTags( item[i], tagsArr, namespace, converter);
+				tagsArrColl.push(tags);
+			}
+			return tagsArrColl;
 		}
 	
-		// if($.level) $.writeln( "\nGetting tags on " +  pageItem.typename + " " + pageItem.name);
+		// if($.level) $.writeln( "\nGetting tags on " +  item.typename + " " + item.name);
 
-		var harvestedTagsArr = [];
-		var tags = pageItem.tags;
+		var tags = item.tags;
 	
 		if(tags.length)
 		{    
@@ -3724,8 +3763,8 @@ Pslib.getTags = function( pageItem, tagsArr )
 				var tag = tags[i];
 	
 				var name = tag.name;
-				// you probably want to skip this one
-				// if(name == "BBAccumRotation") continue;
+				// you'll want to skip this one
+				if(name == "BBAccumRotation") continue;
 				var value = tag.value;
 	
 				// compare with provided array to match names
@@ -3739,9 +3778,47 @@ Pslib.getTags = function( pageItem, tagsArr )
 				// if($.level) $.writeln( "\t"+ name + ": " + value );
 			}
 		}
-	
-		return harvestedTagsArr;
 	}
+	else if(Pslib.isPhotoshop)
+	{
+		if(item == undefined) item = doc.activeLayer.id;
+
+		if(item instanceof Array)
+		{
+			var tagsArrColl = [];
+			for(var i = 0; i < item.length; i++)
+			{
+				var tags = Pslib.getTags( item[i], tagsArr, namespace, converter);
+				tagsArrColl.push(tags);
+			}
+			return tagsArrColl;
+		}
+
+        if((typeof item) != "number")
+        {
+            return;
+        }
+
+		if(tagsArr)
+		{
+			harvestedTagsArr = Pslib.getXmpProperties( item, tagsArr, namespace);
+		}
+		else
+		{
+			var xmp = Pslib.getXmpByID(id);
+			harvestedTagsArr = Pslib.getAllNsPropertiesArray(xmp, namespace, false, false);
+		}
+	}
+
+	if(converter.length)
+	{
+		if(harvestedTagsArr.length)
+		{
+			harvestedTagsArr = harvestedTagsArr.convertTags(converter);
+		}
+	}
+
+	return harvestedTagsArr;
 }
 
 // simple bidimensional array to object conversion
@@ -4302,6 +4379,9 @@ Pslib.getAllLayerIndexes = function()
 	// level: 1  //  2 means selection of nested groups is possible (parents for these should then be ignored)
 // }
 
+//  	advanced: false		// get object with details 
+// 	{ all: [], selected: [], active: [] }
+
 Pslib.getContainers = function( obj )
 {   
 	if(!app.documents.length) return;
@@ -4321,6 +4401,38 @@ Pslib.getContainers = function( obj )
 	// selection
 	if(obj.selected == undefined) obj.selected = false;
 
+	// get more complex object
+	if(obj.advanced)
+	{
+		var advObj = obj;
+		advObj.advanced = false;
+
+		advObj.selected = false;
+		var allItems = Pslib.getContainers( advObj );
+		
+		advObj.selected = true;
+		var selectedItems = Pslib.getContainers( advObj );
+
+		// for case where we need to know which array items are part of the selection  
+		// useful with operations on container collections
+		var activeItems = [];
+
+		for(var a = 0; a < allItems.length ; a++)
+		{  
+			var item = allItems[a];
+
+			for(var s = 0; s < selectedItems.length; s++)
+			{  
+				if(item == selectedItems[s])
+				{
+					activeItems.push(a);
+					continue;
+				}
+			}
+		}
+
+		return { all: allItems, selected: selectedItems, active: activeItems };
+	}
 
 	var doc = app.activeDocument;
 
@@ -4464,8 +4576,36 @@ Pslib.getContainers = function( obj )
 			containers = Pslib.getArtboardIndexesFromSelectedItems();
 		}
 	}
+	return containers;
+}
 
-	return containers; 
+// get list of xmp objects from array of layer ids
+Pslib.getXmpFromContainers = function( containersArr )
+{
+    if(!app.documents.length) return;
+
+	var xmpObjArr = [];
+
+	if(Pslib.isPhotoshop)
+	{
+		if(!containersArr) containersArr = Pslib.getContainers({ });
+
+		for(var i = 0; i < containersArr.length; i++)
+		{
+			var id = containersArr[i];
+
+			// fails if !ExternalObject.AdobeXMPScript
+			var xmp = Pslib.getXmpByID(id);
+			xmpObjArr.push(xmp);
+
+			// var desc = Pslib.getLayerDescriptorByID(id);
+			// var layerName = desc.getString(sTID("name"));
+
+			// JSUI.quickLog(id + ": " + layerName);
+		}
+	}
+
+    return xmpObjArr;
 }
 
 Pslib.documentHasBackgroundLayer = function()
@@ -5911,6 +6051,9 @@ Pslib.convertPlacedToLinked = function( ref, file )
 	}
 }
 
+// fast get XMPMeta object via layer ID (if array, returns array)
+// use this if function fails
+// // if (!ExternalObject.AdobeXMPScript) ExternalObject.AdobeXMPScript = new ExternalObject('lib:AdobeXMPScript');
 Pslib.getXmpByID = function( id )
 {
 	if(!app.documents.length) return;
@@ -5920,6 +6063,21 @@ Pslib.getXmpByID = function( id )
 	if(Pslib.isPhotoshop)
 	{
 		var id = id ? id : doc.activeLayer.id;
+
+		if(id instanceof Array)
+		{
+			var xmps = [];
+			for(var i = 0; i < id.length; i++)
+			{
+				var xmpData = Pslib.getXmpByID(id[i]);
+				xmps.push(xmpData);
+			}
+			return xmps;
+		}
+		else if((typeof id) != "number")
+		{
+			return;
+		}
 
 		var ref = new ActionReference();
 		ref.putProperty( cTID( 'Prpr' ), sTID( "metadata" ) );
@@ -5935,6 +6093,7 @@ Pslib.getXmpByID = function( id )
 		// if(typeof xmpData !== "undefined")
 		if(typeof xmpData == "string")
 		{
+			// fails if !ExternalObject.AdobeXMPScript
 			xmpData = new XMPMeta(xmpData);
 		}
 
@@ -9973,7 +10132,7 @@ Pslib.documentToFile = function( obj )
 			opts.PNG8 = false;
 			opts.transparency = 1;
 			opts.format = SaveDocumentType.PNG;
-
+			
 			// fails if no transparency!
 			try
 			{
