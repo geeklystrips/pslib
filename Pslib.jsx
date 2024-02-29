@@ -126,7 +126,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.686;
+Pslib.version = 0.687;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -452,7 +452,7 @@ else if(Pslib.isPsCCandAbove)
 try
 {
 	// load library
-	 if(ExternalObject.AdobeXMPScript != undefined)
+	if(ExternalObject.AdobeXMPScript == undefined)
 	{
 		ExternalObject.AdobeXMPScript = new ExternalObject('lib:AdobeXMPScript');
 	}
@@ -3038,49 +3038,6 @@ Pslib.packageDocument = function( obj )
             }
 
 			// -- possibly handled with obj.tagsNamespace 
-
-			// from Pslib.getAdvancedSpecs()
-			// var keyValuePairs = Pslib.getXmpDictionary( layerObj, obj.dictionary, false, false, false, obj.namespace);
-			// // var keyValuePairs = Pslib.getXmpDictionary( layerObj, Pslib.assetKeyValuePairs, false, false, false, obj.namespace ? obj.namespace : Pslib.XMPNAMESPACE);
-			// // JSUI.quickLog(keyValuePairs, layerObj.name + " keyValuePairs "+(typeof keyValuePairs)+": ");
-
-			// if(obj.dictionary instanceof Array)
-			// {
-			// 	for(var j = 0; j < keyValuePairs.length; j++)
-			// 	{
-			// 		var pair = keyValuePairs[j];
-			// 		// if($.level) $.writeln("pair: " + pair );
-			// 		if(!pair) continue;
-
-			// 		var property = pair[0];
-			// 		var value = pair[1];
-
-			// 		if(property != undefined)
-			// 		{
-			// 			if(value != undefined)
-			// 			{
-			// 				// convert item property name to xmp qualifier here
-			// 				// converter: [ [ "layerProperty", "docArrayItemQualifier"] ]
-			// 				if(obj.converter != undefined)
-			// 				{
-			// 					if(obj.converter instanceof Array)
-			// 					{
-			// 						for(var k = 0; k < obj.converter.length; k++)
-			// 						{
-			// 							if(obj.converter[k][0] == property)
-			// 							{
-			// 								property = obj.converter[k][1];
-			// 							}
-			// 						}
-			// 					}
-			// 				}
-
-			// 				// if($.level) $.writeln(property +": " + value );
-			// 				specsObj[property] = value;
-			// 			}
-			// 		}
-			// 	}
-			// }
         }
 
         // restore selection
@@ -3346,6 +3303,94 @@ Pslib.packageDocument = function( obj )
     }
 
     return mediaFileOutput;
+}
+
+// // simpler version of .packageDocument() with built-in support for groups, information about selected/active items 
+// // and more robust harvesting and conversion of tags --- assumes lib:AdobeXMPScript loaded
+    // if(ExternalObject.AdobeXMPScript == undefined) ExternalObject.AdobeXMPScript = new ExternalObject('lib:AdobeXMPScript');
+    // XMPMeta.registerNamespace(sourceNS, "src:");
+    // XMPMeta.registerNamespace(targetNS, "tgt:";
+    // XMPMeta.registerNamespace(targetQualNS, "qual:");
+
+Pslib.documentToXmpArrayImage = function( obj )
+{
+	if(!app.documents.length) return;
+	if(!obj) obj = {};
+
+	if(!obj.propertyName) obj.propertyName = "Containers";
+	
+	// if custom values for source namespace (containers XMP), target namespace (array property) and qualifier namespace are different,
+	// make sure they are registered prior to running this function
+	if(!obj.namespace) obj.namespace = Pslib.XMPNAMESPACE;
+	if(!obj.targetNamespace) obj.targetNamespace = obj.namespace;
+	if(!obj.targetQualifierNamespace) obj.targetQualifierNamespace = obj.targetNamespace;
+
+	if(!obj.expectedFields) obj.expectedFields = [ "id", "name", "width", "height", "x", "y" ];
+	if(!obj.tags) obj.tags = [];
+	if(!obj.converter) obj.converter = [];
+
+	var doc = app.activeDocument;
+
+	if(!obj.file) obj.file = new File( doc.name.getAssetsFolderLocation( undefined, false, true, true) + "/" + doc.name.getDocumentName() + ".png" );
+
+	if(ExternalObject.AdobeXMPScript == undefined) ExternalObject.AdobeXMPScript = new ExternalObject('lib:AdobeXMPScript');
+
+	var mediaFileOutput = Pslib.documentToFile( { destination: obj.file } );
+	var xmp = Pslib.getXMPfromFile(mediaFileOutput);
+
+	if(xmp == undefined)
+	{
+		alert("XMPMeta utils appear offline. Please try again.");
+		return;
+	}
+
+	var adv = Pslib.getContainers( { advanced: true} );
+
+	if(adv.all.length)
+	{
+		// selectedItems
+		// add xmp array property
+		if(adv.selected.length)
+		{
+			// adv = { all: allItems, selected: selectedItems, active: activeItems };
+			xmp.setProperty(obj.targetNamespace, obj.propertyName+"Selected", adv.selected.toString(), XMPConst.STRING);
+			if(Pslib.isPhotoshop) xmp.setProperty(obj.targetNamespace, obj.propertyName+"SelectedArrayIndexes", adv.active.toString(), XMPConst.STRING);
+		}
+
+		// add xmp array property
+		xmp.setProperty(obj.targetNamespace, obj.propertyName, null, XMPConst.ARRAY_IS_ORDERED);
+
+		for(var i = 0; i < adv.all.length; i++)
+		{
+			var id = adv.all[i];
+			var coords = Pslib.getLayerReferenceByID( id, { getCoordsObject: true, tags: obj.tags, namespace: obj.namespace, converter: obj.converter }); 
+			// JSUI.quickLog(coords, "\n"+i);
+
+			var fields = obj.expectedFields;
+			for(var j = 0; j < obj.tags.length; j++)
+			{
+				if(coords[obj.tags[j][0]] != undefined) fields.push( obj.tags[j][0] );
+			}
+
+			// add new array item, 1-based index as placeholder value
+			xmp.appendArrayItem(obj.targetNamespace, obj.propertyName, i+1);
+
+			for(var f = 0; f < fields.length; f++)
+			{  
+				var tqualifier = fields[f];
+				var tvalue = coords[tqualifier];
+
+				if(tvalue != undefined)
+				{
+					xmp.setQualifier(obj.targetNamespace, obj.propertyName+'['+(i+1)+']', obj.targetQualifierNamespace, tqualifier, tvalue);
+				}
+			}
+		}
+
+		// write modified object to PNG
+		var added = Pslib.writeXMPtoMediaFile( mediaFileOutput, xmp );
+		return added ? mediaFileOutput : undefined;
+	}   
 }
 
 // from array of qualifier values (strings), get array of 1-based integers for indexes in xmp array
@@ -4425,7 +4470,7 @@ Pslib.getContainers = function( obj )
 			{  
 				if(item == selectedItems[s])
 				{
-					activeItems.push(a);
+					activeItems.push(a+1);
 					continue;
 				}
 			}
@@ -9983,20 +10028,35 @@ Pslib.documentToFile = function( obj )
 	var outputFile;
 	var svgOutputFile;
 	
-	var docNameNoExt = doc.name.getFileNameWithoutExtension();
+	var docNameNoExt = doc.name.getDocumentName();
 	var assetsUri;
 
 	// if provided with absolute file location 
 	if(obj.destination)
 	{
-		outputFile = new File(obj.destination + "/" + docNameNoExt + extension);
-		assetsUri = outputFile.parent;
+		if(obj.destination instanceof File)
+		{
+			outputFile = obj.destination;
+			// assetsUri = outputFile.parent;
+		}
+		else if(typeof obj.destination == "string")
+		{
+			outputFile = new File(obj.destination);
+			// assetsUri = outputFile.parent;
+		}
+		else
+		{
+			outputFile = new File(obj.destination + "/" + docNameNoExt + extension);
+			// assetsUri = outputFile.parent;
+		}
 	}
 	else
 	{
 		outputFile = new File( doc.name.getAssetsFolderLocation( undefined, false, true, true) + "/" + docNameNoExt + extension );	
-		assetsUri = outputFile.parent;
+		// assetsUri = outputFile.parent;
 	}
+
+	assetsUri = outputFile.parent;
 	
 	// if destination folder does not exist, but its parent does, create destination
 	if(!assetsUri.exists && assetsUri.parent.exists) assetsUri.create();
