@@ -126,7 +126,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.687;
+Pslib.version = 0.688;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -3344,7 +3344,7 @@ Pslib.documentToXmpArrayImage = function( obj )
 		return;
 	}
 
-	var adv = Pslib.getContainers( { advanced: true} );
+	var adv = Pslib.getContainers( { advanced: true } );
 
 	if(adv.all.length)
 	{
@@ -4614,11 +4614,38 @@ Pslib.getContainers = function( obj )
 			}
 		}
 	}
+	// a container can be an artboard, OR a GroupItemm, OR a clipping mask
 	else if(Pslib.isIllustrator)
 	{
-		if(obj.selected && obj.getIndexes)
+		// .getIDs and .getIndexes are functionally the same in the illustrator context
+		// if(obj.getIDs == undefined) obj.getIDs = true;
+		// if(obj.getIndexes == undefined) obj.getIndexes = false;
+	
+		
+		// var coords = Pslib.getLayerReferenceByID( id, { getCoordsObject: true, tags: obj.tags, namespace: obj.namespace, converter: obj.converter }); 
+// 
+
+		if(obj.selected)
 		{
-			containers = Pslib.getArtboardIndexesFromSelectedItems();
+			var selection = doc.selection;
+
+			if(obj.artboards)
+			{
+				// these can be discriminated with artboard.parent.typename != "Layer"
+				containers = Pslib.getSelectedArtboardIDs();
+			}
+			if(obj.groups)
+			{
+				if(selection)
+				{
+
+				}
+			}
+
+		}
+		else
+		{
+			containers = Pslib.getAllArtboardIDs();
 		}
 	}
 	return containers;
@@ -5412,6 +5439,7 @@ Pslib.getLayerDescriptorByID = function( id )
 	// getCoordsObject: false,			// default false, must be true for anything coordinates-related to be returned
 	// ignoreStyles: false,
 	// tags: [], 						// expected: bidimensional array
+	// taggedItemNameStr: "#",			// illustrator only: name of tagged item in target container
 	// converter: [],					// converter for tag/property names
 	// namespace: Pslib.XMPNAMESPACE,	// ns + nsprefix should be already registered at this point
 	// namespacePrefix: Pslib.XMPNAMESPACEPREFIX,
@@ -5430,6 +5458,7 @@ Pslib.getLayerReferenceByID = function( id, obj )
 	if(obj.skipInvisible == undefined) obj.skipInvisible = true;
 	if(obj.getAllNsProperties == undefined) obj.getAllNsProperties = false;
 	// if(obj.roundValues == undefined) obj.roundValues = true;
+	if(obj.taggedItemNameStr == undefined) obj.taggedItemNameStr = "#";
 	if(obj.keepType == undefined) obj.keepType = false; // default removes coords.type property
 
 	var mustRegisterNameSpace = false;
@@ -5465,10 +5494,9 @@ Pslib.getLayerReferenceByID = function( id, obj )
 			}
 	}
 
-
-
 	var doc = app.activeDocument;
 	var coords = {};
+	var harvestedTags = [];
 
     if(Pslib.isPhotoshop)
 	{
@@ -5780,7 +5808,7 @@ Pslib.getLayerReferenceByID = function( id, obj )
 
 			// whichever layer object type, manage harvesting of its XMP properties here
 
-			var harvestedTags = [];
+			// var harvestedTags = [];
 
 			// conflict with obj.getAllNsProperties -- tags array must not be empty
 			if(obj.tags.length || ( obj.getAllNsProperties && obj.tags.length == 0))
@@ -5842,41 +5870,6 @@ Pslib.getLayerReferenceByID = function( id, obj )
 						}
 					}
 				}
-
-				if(harvestedTags.length)
-				{
-					var convertedTags = [];
-
-					// convert tag names if required
-					if(obj.converter)
-					{
-						convertedTags = harvestedTags.convertTags(obj.converter);
-						harvestedTags = convertedTags;
-					}
-
-					if(obj.tagsAsArray)
-					{
-						coords.tags = harvestedTags;
-					}
-					else
-					{
-						// inject tags into object
-						for(var ht = 0; ht < harvestedTags.length; ht++)
-						{
-							var htag = harvestedTags[ht];
-							if(htag != undefined)
-							{
-								var pname = htag[0];
-								var pvalue = htag[1];
-								if(pvalue != undefined && pvalue != null && pvalue != "undefined")
-								{
-									coords[pname] = pvalue;
-								}
-							}
-						}
-					}
-
-				}
 			}
 
 			// remove "type" property from resulting coordinates object
@@ -5884,8 +5877,195 @@ Pslib.getLayerReferenceByID = function( id, obj )
 
 		}
 
-        return obj.getCoordsObject ? coords : ref;
+        // return obj.getCoordsObject ? coords : ref;
     }
+	// for illustrator .getLayerReferenceByID refers to containers
+	else if(Pslib.isIllustrator)
+	{
+		// var itemNameStr = obj.taggedItemNameStr ? obj.taggedItemNameStr : "#";
+		var ref;
+		var isArtboard = false;
+		var isGroup = false;
+		var isClipped = false;
+
+		var selection = doc.selection; // restore selection later 
+
+		if(id == undefined)
+		{
+			id = doc.artboards.getActiveArtboardIndex();
+			ref = doc.artboards[id];
+			isArtboard = true;
+		}
+
+		// if passed anonymous or arbitrary PageItem, get artboard or group
+		if(typeof id == "object")
+		{
+			// GroupItem, CompoundPath and 
+			// geometricBounds visibleBounds controlBounds
+			if(id.typename == "GroupItem")
+			{
+				isGroup = true;
+				ref = id;
+			}
+			else if(id.typename == "PathItem" && id.clipped)
+			{
+				isClipped = true;
+				ref = id;
+			}
+			else
+			{
+				// ref = Pslib.getItemsOverlapArtboard();
+				ref = Pslib.getArtboardsFromSelectedItems( [id], false, false );
+				if(ref)
+				{
+					id = doc.artboards.getActiveArtboardIndex();
+					ref = doc.artboards[id];
+					isArtboard = true;
+				}
+			}
+
+
+			// else
+			// {
+			// 	// manage case of item positioned outside of an artboard's geometry
+			// 	return;
+			// }
+		}
+
+		if(obj.getCoordsObject)
+		{
+			if(isArtboard)
+			{
+				coords = Pslib.getArtboardCoordinates(ref);
+			}
+			else if(isGroup)
+			{
+				// adjust coordinates system if needed
+
+				coords.name = ref.name;
+
+				coords.id = "GroupItem";
+				coords.width = ref.width;
+				coords.height = ref.height;
+				coords.x = ref.left;
+				coords.y = ref.top;
+
+			}
+			else if(isClipped)
+			{
+				coords.name = ref.name;
+
+				coords.id = "Clipped";
+				coords.width = ref.width;
+				coords.height = ref.height;
+				coords.x = ref.left;
+				coords.y = ref.top;
+
+				coords.vectorMask = true;
+				coords.vectorMaskX = ref.left;
+				coords.vectorMaskY = ref.top;
+				coords.vectorMaskWidth = ref.width;
+				coords.vectorMaskHeight = ref.height;
+
+
+			}
+			
+			if(obj.tags.length)
+			{
+				var item;
+				
+				if(isArtboard)
+				{
+					item = Pslib.getArtboardItem(ref, obj.taggedItemNameStr);
+				}
+				else if(isGroup || isClipped)
+				{
+					var groupItems = item.pageItems;
+
+					for (var j = 0; j < groupItems.length; j++)
+					{
+						var subItem = groupItems[j];
+						if(subItem.typename == "PathItem")
+						{
+							if(subItem.name == obj.taggedItemNameStr)
+							{
+								item = subItem;
+								break;
+							}
+						}
+					}
+				}
+
+				if(item)
+				{
+					harvestedTags = Pslib.getTags( item, obj.tags, undefined, obj.converter);
+					if(selection) doc.selection = selection;
+				}
+			}
+		}
+
+		// if going after appearance and specific properties...
+		// coords.visible 
+		// coords.vectorMask
+			// coords.vectorMaskX = vectorBounds.getUnitDoubleValue(sTID('left'));
+			// coords.vectorMaskY = vectorBounds.getUnitDoubleValue(sTID('top'));
+			// coords.vectorMaskWidth = vectorBounds.getUnitDoubleValue(sTID('right')) - coords.vectorMaskX;
+			// coords.vectorMaskHeight = vectorBounds.getUnitDoubleValue(sTID('bottom')) - coords.vectorMaskY;
+
+			// coords.type
+
+			// if text item
+
+			// if shape or if tinted, get color
+				//  coords.color = "#"+colorOverlayHex;
+
+			// if CC library item
+			// coords.contentType
+			// coords.documentID = documentID;
+			// coords.fileReference 
+			// if linked
+
+			// remove "type" property from resulting coordinates object
+			// if(!obj.keepType) coords.type = undefined;
+
+		// return obj.getCoordsObject ? coords : ref;
+	}
+
+	if(harvestedTags.length)
+	{
+		var convertedTags = [];
+
+		// convert tag names if required
+		if(obj.converter)
+		{
+			convertedTags = harvestedTags.convertTags(obj.converter);
+			harvestedTags = convertedTags;
+		}
+
+		if(obj.tagsAsArray)
+		{
+			coords.tags = harvestedTags;
+		}
+		else
+		{
+			// inject tags into object
+			for(var ht = 0; ht < harvestedTags.length; ht++)
+			{
+				var htag = harvestedTags[ht];
+				if(htag != undefined)
+				{
+					var pname = htag[0];
+					var pvalue = htag[1];
+					if(pvalue != undefined && pvalue != null && pvalue != "undefined")
+					{
+						coords[pname] = pvalue;
+					}
+				}
+			}
+		}
+	}
+
+	return obj.getCoordsObject ? coords : ref;
 }
 
 // Advanced stuff: Reflect keys/properties from layer object descriptor
