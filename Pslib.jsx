@@ -3360,16 +3360,83 @@ Pslib.documentToXmpArrayImage = function( obj )
 		// add xmp array property
 		xmp.setProperty(obj.targetNamespace, obj.propertyName, null, XMPConst.ARRAY_IS_ORDERED);
 
+		// create array of fields to be used as qualifiers
+		var fields = obj.expectedFields;
+
+		// add custom tags as fields
+        for(var i = 0; i < obj.tags.length; i++)
+		{
+			var tagName = obj.tags[i][0];
+			fields.push( tagName );
+        }
+
+		// if converter provided, convert field names
+		if(obj.converter.length)
+		{
+			var convertedFields = [];
+			for(var i = 0; i < fields.length; i++)
+			{
+				var fieldName = fields[i];
+		
+				for(var j = 0; j < obj.converter.length; j++)
+				{
+					var match = obj.converter[j][0];
+					if(match != undefined)
+					{
+						if(match == fieldName)
+						{
+							var conv =  obj.converter[j][1];
+							if(conv != undefined) 
+							{
+								fieldName = conv;
+								break;
+							}
+						}
+					}
+				}
+				convertedFields.push(fieldName);
+			}
+			fields = convertedFields;
+		}
+
+		// now proceed with getting container infos and adding them as XMP array items
 		for(var i = 0; i < adv.all.length; i++)
 		{
 			var id = adv.all[i];
-			var coords = Pslib.getLayerReferenceByID( id, { getCoordsObject: true, tags: obj.tags, namespace: obj.namespace, converter: obj.converter }); 
-			// JSUI.quickLog(coords, "\n"+i);
+			var coords = Pslib.getLayerReferenceByID( id, { getCoordsObject: true, tags: obj.tags.length ? obj.tags : [], namespace: obj.namespace, converter: obj.converter }); 
+			// JSUI.quickLog(coords, "\n\n"+i);
 
-			var fields = obj.expectedFields;
-			for(var j = 0; j < obj.tags.length; j++)
+			// IF items from expected fields are meant to be converted
+			for(var j = 0; j < obj.expectedFields.length; j++)
 			{
-				if(coords[obj.tags[j][0]] != undefined) fields.push( obj.tags[j][0] );
+				var expectedField = obj.expectedFields[j];
+				if(expectedField != undefined)
+				{				
+					if(coords[expectedField] != undefined)
+					{
+						if(obj.converter.length)
+						{
+							for(var c = 0; c < obj.converter.length; c++)
+							{
+								var cmatch = obj.converter[c][0];
+								if(cmatch != undefined)
+								{
+									if(cmatch == fieldName)
+									{
+										var cconv =  obj.converter[c][1];
+										if(coords[cmatch] != undefined) 
+										{
+											coords[cconv] = coords[expectedField];
+											// chance to leave original or remove it with special condition
+											// coords[expectedField] = undefined;
+											break;
+										}
+									}
+								}
+							}
+						}
+					}
+				}
 			}
 
 			// add new array item, 1-based index as placeholder value
@@ -4632,7 +4699,8 @@ Pslib.getContainers = function( obj )
 			if(obj.artboards)
 			{
 				// these can be discriminated with artboard.parent.typename != "Layer"
-				containers = Pslib.getSelectedArtboardIDs();
+				// containers = Pslib.getSelectedArtboardIDs();
+				containers = Pslib.getArtboardsFromSelectedItems(selection, false, true);
 			}
 			if(obj.groups)
 			{
@@ -6451,7 +6519,7 @@ Pslib.getArtboardCollectionCoordinates = function()
 	}
 	else if(Pslib.isIllustrator)
 	{
-		var artboards = doc.artboards;
+		// var artboards = doc.artboards;
 		app.coordinateSystem = CoordinateSystem.ARTBOARDCOORDINATESYSTEM;
 		
 		// adjustment for illustrator
@@ -6460,9 +6528,9 @@ Pslib.getArtboardCollectionCoordinates = function()
 		var xOffset = -docSpecs.topLeft[0];
 		var yOffset = docSpecs.topLeft[1];
 
-		for(var i = 0; i < artboards.length; i++)
+		for(var i = 0; i < doc.artboards.length; i++)
 		{
-			var coords = Pslib.getArtboardCoordinates( artboards[i] );
+			var coords = Pslib.getArtboardCoordinates( doc.artboards[i] );
 			var page = i+1;
 			var obj = { name: coords.name, id: i, page: page, width: coords.width, height: coords.height, x: coords.x+xOffset, y: coords.y+yOffset };
 			artboardObjArr.push(obj);
@@ -6635,7 +6703,7 @@ Pslib.getArtboardCoordinates = function( artboard )
 		// can still be zero!
 		if(artboard == undefined)
 		{ 
-			var artboard = Pslib.getActiveArtboard();
+			artboard = Pslib.getActiveArtboard();
 			index = doc.artboards.getActiveArtboardIndex();
 			page = index+1;
 		}
