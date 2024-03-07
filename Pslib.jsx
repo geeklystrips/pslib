@@ -126,7 +126,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.689;
+Pslib.version = 0.690;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -940,6 +940,7 @@ Pslib.getPropertiesArray = function (target, namespace, nsprefix)
 // 		<stFnt:versionString>Version 2.106;PS 2.000;hotconv 1.0.70;makeotf.lib2.5.58329</stFnt:versionString>
 Pslib.getAllNsPropertiesArray = function (xmp, namespace, asObj, sortByPropertyName)
 {
+	// TODO: update for XMPMeta Object suppport
 	if(!xmp) xmp = Pslib.getXmp(app.activeDocument, false);
 	if(!xmp) return;
 	// if(!namespace) namespace = Pslib.SECONDARYXMPNAMESPACE;
@@ -3264,6 +3265,7 @@ Pslib.packageDocument = function( obj )
 	// xmp: new XMPMeta();				// opportunity to pass existing XMP object, default is a blank one
 	// exportImage: true,
 	// converterReplacesProperties: false,
+	// containers: {} // existing .getContainers object
 
 // option for using existing containers object -- Pslib.getContainers({ advanced: true})	
 Pslib.documentToXmpArrayImage = function( obj )
@@ -3321,9 +3323,9 @@ Pslib.documentToXmpArrayImage = function( obj )
 	xmp.setProperty(obj.targetNamespace, "DocumentWidth", docSpecs.width.toString(), XMPConst.STRING);
 	xmp.setProperty(obj.targetNamespace, "DocumentHeight", docSpecs.height.toString(), XMPConst.STRING);
 
-	var adv = Pslib.getContainers( { advanced: true } );
-
 	// adv = { all: allItems, selected: selectedItems, active: activeItems };
+	var adv = obj.containers ? obj.containers : Pslib.getContainers( { advanced: true } );
+
 	if(adv.all.length)
 	{
 		// add xmp array property
