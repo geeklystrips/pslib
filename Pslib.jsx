@@ -5992,7 +5992,7 @@ Pslib.getLayerReferenceByID = function( id, obj )
 		// if number, assume artboard index
 		if(typeof id == "number")
 		{
-			ref = doc.artboard[id];
+			ref = doc.artboards[id];
 			isArtboard = true;
 			index = id;
 		}
@@ -6063,7 +6063,6 @@ Pslib.getLayerReferenceByID = function( id, obj )
 				coords.height = ref.height;
 				coords.x = ref.left;
 				coords.y = ref.top;
-
 			}
 			else if(isClipped)
 			{
@@ -6080,8 +6079,6 @@ Pslib.getLayerReferenceByID = function( id, obj )
 				coords.vectorMaskY = ref.top;
 				coords.vectorMaskWidth = ref.width;
 				coords.vectorMaskHeight = ref.height;
-
-
 			}
 			
 			if(obj.tags.length)
