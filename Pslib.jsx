@@ -126,7 +126,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.690;
+Pslib.version = 0.691;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -3383,7 +3383,8 @@ Pslib.documentToXmpArrayImage = function( obj )
 		for(var i = 0; i < adv.all.length; i++)
 		{
 			var id = adv.all[i];
-			var coords = Pslib.getLayerReferenceByID( id, { getCoordsObject: true, tags: obj.tags.length ? obj.tags : [], namespace: obj.namespace, converter: obj.converter }); 
+			var coords = Pslib.getLayerReferenceByID( id, { getCoordsObject: true, tags: obj.tags.length ? obj.tags : [], namespace: obj.namespace, converter: obj.converter, docSpecs: docSpecs }); 
+			if(!coords) continue;
 
 			// IF items from expected fields are meant to be converted
 			for(var j = 0; j < obj.expectedFields.length; j++)
@@ -5538,6 +5539,7 @@ Pslib.getLayerDescriptorByID = function( id )
 	// getAllNsProperties: false,
 	// // roundValues: false,			// 
 	// tagsAsArray: false
+	// docSpecs: { } // document specs object for illustrator offsets
 // }
 
 Pslib.getLayerReferenceByID = function( id, obj )
@@ -6043,6 +6045,8 @@ Pslib.getLayerReferenceByID = function( id, obj )
 
 		if(obj.getCoordsObject)
 		{
+			if(!obj.docSpecs) obj.docSpecs = Pslib.getDocumentSpecs();
+
 			if(isArtboard)
 			{
 				coords = Pslib.getArtboardCoordinates(ref);
@@ -6052,6 +6056,8 @@ Pslib.getLayerReferenceByID = function( id, obj )
 				{
 					coords.id = index;
 					coords.index = index;
+					coords.x += (-obj.docSpecs.topLeft[0]);
+					coords.y += obj.docSpecs.topLeft[1];
 				}
 			}
 			else if(isGroup)
@@ -6065,6 +6071,9 @@ Pslib.getLayerReferenceByID = function( id, obj )
 				coords.height = ref.height;
 				coords.x = ref.left;
 				coords.y = ref.top;
+
+				coords.x += (-obj.docSpecs.topLeft[0]);
+				coords.y += obj.docSpecs.topLeft[1];
 			}
 			else if(isClipped)
 			{
@@ -6076,9 +6085,12 @@ Pslib.getLayerReferenceByID = function( id, obj )
 				coords.x = ref.left;
 				coords.y = ref.top;
 
+				coords.x += (-obj.docSpecs.topLeft[0]);
+				coords.y += obj.docSpecs.topLeft[1];
+
 				coords.vectorMask = true;
-				coords.vectorMaskX = ref.left;
-				coords.vectorMaskY = ref.top;
+				coords.vectorMaskX = coords.x;
+				coords.vectorMaskY = coords.y;
 				coords.vectorMaskWidth = ref.width;
 				coords.vectorMaskHeight = ref.height;
 			}
