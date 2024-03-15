@@ -126,7 +126,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.692;
+Pslib.version = 0.693;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -3266,6 +3266,7 @@ Pslib.packageDocument = function( obj )
 	// exportImage: true,
 	// converterReplacesProperties: false,
 	// containers: {} // existing .getContainers object
+	// docSpecs: Pslib.getDocumentSpecs() object for offset calculations
 	// filterExtension: true			// filter any extension from coords.name (default true) 
 	// filterExtension: ".png"			// filter specific extension 
 	// filterExtension: [".png", ".svg"] // filter multiple extensions 
@@ -3324,9 +3325,9 @@ Pslib.documentToXmpArrayImage = function( obj )
 	}
 
 	// add document W + H
-	var docSpecs = Pslib.getDocumentSpecs();
-	xmp.setProperty(obj.targetNamespace, "DocumentWidth", docSpecs.width.toString(), XMPConst.STRING);
-	xmp.setProperty(obj.targetNamespace, "DocumentHeight", docSpecs.height.toString(), XMPConst.STRING);
+	if(!obj.docSpecs) obj.docSpecs = Pslib.getDocumentSpecs();
+	xmp.setProperty(obj.targetNamespace, "DocumentWidth", obj.docSpecs.width.toString(), XMPConst.STRING);
+	xmp.setProperty(obj.targetNamespace, "DocumentHeight", obj.docSpecs.height.toString(), XMPConst.STRING);
 
 	// adv = { all: allItems, selected: selectedItems, active: activeItems };
 	var adv = obj.containers ? obj.containers : Pslib.getContainers( { advanced: true } );
@@ -3388,7 +3389,7 @@ Pslib.documentToXmpArrayImage = function( obj )
 		for(var i = 0; i < adv.all.length; i++)
 		{
 			var id = adv.all[i];
-			var coords = Pslib.getLayerReferenceByID( id, { getCoordsObject: true, tags: obj.tags.length ? obj.tags : [], namespace: obj.namespace, converter: obj.converter, docSpecs: docSpecs, filterExtension: obj.filterExtension }); 
+			var coords = Pslib.getLayerReferenceByID( id, { getCoordsObject: true, tags: obj.tags.length ? obj.tags : [], namespace: obj.namespace, converter: obj.converter, docSpecs: obj.docSpecs, filterExtension: obj.filterExtension }); 
 			if(!coords) continue;
 
 			// IF items from expected fields are meant to be converted
@@ -3447,6 +3448,7 @@ Pslib.documentToXmpArrayImage = function( obj )
 		rObj.converter = obj.converter;
 		rObj.fields = fields;
 		rObj.xmp = xmp; 
+		rObj.docSpecs = obj.docSpecs;
 
 		// write modified xmp object to media file container
 		if(obj.exportImage)
