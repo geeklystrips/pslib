@@ -126,7 +126,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.691;
+Pslib.version = 0.692;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -3266,6 +3266,9 @@ Pslib.packageDocument = function( obj )
 	// exportImage: true,
 	// converterReplacesProperties: false,
 	// containers: {} // existing .getContainers object
+	// filterExtension: true			// filter any extension from coords.name (default true) 
+	// filterExtension: ".png"			// filter specific extension 
+	// filterExtension: [".png", ".svg"] // filter multiple extensions 
 
 // option for using existing containers object -- Pslib.getContainers({ advanced: true})	
 Pslib.documentToXmpArrayImage = function( obj )
@@ -3286,6 +3289,7 @@ Pslib.documentToXmpArrayImage = function( obj )
 	if(!obj.targetQualifierNamespace) obj.targetQualifierNamespace = obj.targetNamespace;
 
 	if(!obj.expectedFields) obj.expectedFields = [ "id", "name", "width", "height", "x", "y" ];
+	if(obj.filterExtension == undefined) obj.filterExtension = true;
 	if(!obj.tags) obj.tags = [];
 	if(!obj.converter) obj.converter = [];
 	if(obj.converterReplacesProperties == undefined) obj.converterReplacesProperties = false;
@@ -3293,6 +3297,7 @@ Pslib.documentToXmpArrayImage = function( obj )
 	if(!obj.propertyNameSelected) obj.propertyNameSelected = obj.propertyName + "Selected";
 	if(!obj.propertyNameSelectedArrayIndexes) obj.propertyNameSelectedArrayIndexes = obj.propertyName + "SelectedArrayIndexes";
 
+	// safeguard
 	if(ExternalObject.AdobeXMPScript == undefined) ExternalObject.AdobeXMPScript = new ExternalObject('lib:AdobeXMPScript');
 
 	if(!obj.xmp)
@@ -3383,7 +3388,7 @@ Pslib.documentToXmpArrayImage = function( obj )
 		for(var i = 0; i < adv.all.length; i++)
 		{
 			var id = adv.all[i];
-			var coords = Pslib.getLayerReferenceByID( id, { getCoordsObject: true, tags: obj.tags.length ? obj.tags : [], namespace: obj.namespace, converter: obj.converter, docSpecs: docSpecs }); 
+			var coords = Pslib.getLayerReferenceByID( id, { getCoordsObject: true, tags: obj.tags.length ? obj.tags : [], namespace: obj.namespace, converter: obj.converter, docSpecs: docSpecs, filterExtension: obj.filterExtension }); 
 			if(!coords) continue;
 
 			// IF items from expected fields are meant to be converted
@@ -3441,7 +3446,7 @@ Pslib.documentToXmpArrayImage = function( obj )
 		rObj.tags = obj.tags;
 		rObj.converter = obj.converter;
 		rObj.fields = fields;
-		rObj.xmp = xmp; //.serialize();
+		rObj.xmp = xmp; 
 
 		// write modified xmp object to media file container
 		if(obj.exportImage)
@@ -5553,6 +5558,7 @@ Pslib.getLayerReferenceByID = function( id, obj )
 	if(obj.getAllNsProperties == undefined) obj.getAllNsProperties = false;
 	// if(obj.roundValues == undefined) obj.roundValues = true;
 	if(obj.taggedItemNameStr == undefined) obj.taggedItemNameStr = "#";
+	if(obj.filterExtension == undefined) obj.filterExtension = false;
 	if(obj.keepType == undefined) obj.keepType = false; // default removes coords.type property
 
 	var mustRegisterNameSpace = false;
@@ -5580,12 +5586,12 @@ Pslib.getLayerReferenceByID = function( id, obj )
 			}
 		}
 
-		    // at this point, if using dedicated namespace, we may not have a prefix defined (needed for console log & debugging)
-			if(!obj.namespacePrefix)
-			{
-				// beware when XMPMeta does not exist!
-				obj.namespacePrefix = XMPMeta.getNamespacePrefix(obj.namespace);
-			}
+		// at this point, if using dedicated namespace, we may not have a prefix defined (needed for console log & debugging)
+		if(!obj.namespacePrefix)
+		{
+			// beware when XMPMeta does not exist!
+			obj.namespacePrefix = XMPMeta.getNamespacePrefix(obj.namespace);
+		}
 	}
 
 	var doc = app.activeDocument;
@@ -5874,7 +5880,7 @@ Pslib.getLayerReferenceByID = function( id, obj )
 			else if(hasContent)
 			{
 				// typename is "LayerSet"
-				var containerObjectType = ref.getInteger(sTID('layerKind')) == 7;
+				// var containerObjectType = ref.getInteger(sTID('layerKind')) == 7;
 
 				var isArtboard = ref.getBoolean(sTID('artboardEnabled'));
 				var isFrame = ref.hasKey(sTID('framedGroup'));
@@ -6051,19 +6057,18 @@ Pslib.getLayerReferenceByID = function( id, obj )
 			{
 				coords = Pslib.getArtboardCoordinates(ref);
 
-				// adjustments for artboards
+				// adjustments for object coordinates to match visible bounds of illustrator artwork
 				if(Pslib.isIllustrator && ((typeof index) === "number"))
 				{
 					coords.id = index;
 					coords.index = index;
+
 					coords.x += (-obj.docSpecs.topLeft[0]);
-					coords.y += obj.docSpecs.topLeft[1];
+					coords.y += obj.docSpecs.topLeft[1];	
 				}
 			}
 			else if(isGroup)
 			{
-				// adjust coordinates system if needed
-
 				coords.name = ref.name;
 
 				coords.id = "GroupItem";
@@ -6154,6 +6159,44 @@ Pslib.getLayerReferenceByID = function( id, obj )
 			// if(!obj.keepType) coords.type = undefined;
 
 		// return obj.getCoordsObject ? coords : ref;
+	}
+
+
+	// extra step to filter out extensions typically used with Generator workflows
+	if(obj.filterExtension && coords.name)
+	{		
+		var ext = coords.name.getFileExtension();
+		if(ext)
+		{
+			if(typeof obj.filterExtension == "string")
+			{
+				if(ext == obj.filterExtension)
+				{
+					// JSUI.quickLog("filtering out extension " + ext);
+					coords.name = coords.name.replace(/\.[^\\.]+$/, "");
+				}
+			}
+			else if(obj.filterExtension instanceof Array)
+			{
+				for(var i = 0; i < obj.filterExtension.length; i++)
+				{
+					// JSUI.quickLog("filtering out extension array " + obj.filterExtension[i]);
+					if(obj.filterExtension[i] == ext)
+					{
+						JSUI.quickLog("\t "+i+ ":"+ ext);
+						coords.name = coords.name.replace(/\.[^\\.]+$/, "");
+						// break;
+					}
+				}
+			}
+			else
+			{
+				// JSUI.quickLog("filtering out ANY extension: " + ext);
+				coords.name = coords.name.replace(/\.[^\\.]+$/, "");
+			}
+
+		}
+
 	}
 
 	if(harvestedTags.length)
@@ -6595,26 +6638,6 @@ Pslib.getArtboardCollectionCoordinates = function()
 	}
 
 	return artboardObjArr;
-}
-
-// basic get full artboard collection coordinates
-Pslib.artboardCollectionCoordsToJsonFile = function( file, obj, advanced )
-{
-	if(!app.documents.length) return;
-	if(!obj) obj = {}
-    var doc = app.activeDocument;
-	var docNameNoExt = doc.name.getFileNameWithoutExtension();
-    var assetsUri = docNameNoExt.getAssetsFolderLocation( undefined, undefined, true); // create directory if not present
-
-	var artboardCoords = Pslib.getArtboardCollectionCoordinates();
-	// var coordsArr = advanced ? Pslib.getArtboardCollectionCoordinates() : 
-	obj.assets = artboardCoords;
-
-	var jsonFile = file ? file : new File(assetsUri + "/" + docNameNoExt + ".json");
-	var jsonStr = JSON.stringify(obj, null, "\t");
-	obj.exportedFile = Pslib.writeToFile(jsonFile, jsonStr);
-
-	return obj;
 }
 
 // get document bounds for artboard geometry offset calculations
