@@ -126,7 +126,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.693;
+Pslib.version = 0.694;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -12611,7 +12611,53 @@ Pslib.addVectorMask = function( obj )
 
 	if(Pslib.isPhotoshop)
 	{
+		// if document has active selection, assume we need it converted to 
         var hasSelection = Pslib.documentHasActiveSelection();
+		var createdSelection = false;
+		var createdMask = false;
+		if(!hasSelection || obj.bounds)
+		{
+			if(hasSelection && obj.bounds)
+			{
+				doc.selection.deselect();
+			}
+			// use provided bounds to select
+			
+			// if no selection active and/or no bounds provided, default to bounds of current layer object
+			// this should handle artboards automatically, 
+			var c = Pslib.getLayerObjectCoordinates( doc.activeLayer.id );
+			obj.bounds = [ [c.x, c.y], [c.x+c.width, c.y], [c.x+c.width, c.y+c.height], [c.x, c.y+c.height] ];
+			
+			var d = Pslib.getDocumentSpecs();
+
+			// if content of target does not have defined bounds (solidfill without a mask)
+			if(c.width == d.width && c.height == d.height)
+			{
+				// limit geometry to current document bounds
+				obj.bounds = [ [0, 0], [d.width, 0], [d.width, d.height], [0, d.height] ];
+
+				// if coordinates are not zero, increase canvas size to match projected selection before selection
+				if(c.x || c.y)
+				{
+					// alert("coords out of canvas bounds!");
+					// get delta 
+					// var newCW = d.width;
+					// var newCH = d.height;
+
+					// resize
+					// doc.resizeCanvas(newCW, newCH, AnchorPosition.TOPLEFT);
+				}
+			}
+			
+			// possibility of evaluating whether layer object is a group and not an artboard or an art layer
+
+
+			// compare with document canvas, if bounds are outside of them, this won't work
+
+			doc.selection.select( obj.bounds, SelectionType.REPLACE, 0, false);
+			hasSelection = true;
+			createdSelection = true;
+		}
 
         if(hasSelection)
         {
@@ -12627,29 +12673,35 @@ Pslib.addVectorMask = function( obj )
             maskRef.putEnumerated( cTID( "Path" ), cTID( "Path" ), sTID( "vectorMask" ) );
             desc.putReference( cTID( "At  " ), maskRef );
             
-            // IF not artboard
-            // add path as vector mask to target object
-            
+            // add path as vector mask to target container
             var pathRef = new ActionReference();
             pathRef.putEnumerated( cTID( "Path" ), cTID( "Ordn" ), cTID( "Trgt" ) );
             desc.putReference( cTID( "Usng" ), pathRef );
-            executeAction( cTID( "Mk  " ), desc, DialogModes.NO );
+			
+			// this typically fails at this point if we don't have a Work Path active
+			// or if content of target does not have defined bounds (solidfill without a mask)
+			try
+			{
+				executeAction( cTID( "Mk  " ), desc, DialogModes.NO );
+			}
+            catch(e)
+			{
+				if(createdSelection) doc.selection.deselect();
+				return;
+			}
 
-            // delete reference path
-            // tempPath.remove();
+			createdMask = true;
+
+			if(createdMask)
+			{
+				// delete temporary work path 
+				tempPath.remove();
+			}
+			// if a selection was created from provided bounds, get rid of it
+			if(createdSelection) doc.selection.deselect();
+
         }
-        else
-        {
-            // either warn user 
-            // alert("No active selection!\nUse marquee selection tool to define a rectangle.");
-
-            // 
-            // 
-        }
-
         // decide if new mask is linked or not
-
-        // if temp path, delete
     }
 }
 
