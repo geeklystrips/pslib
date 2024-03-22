@@ -126,7 +126,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.694;
+Pslib.version = 0.695;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -5501,7 +5501,6 @@ Pslib.getArtboardNames = function( artboards )
 Pslib.getLayerDescriptorByIndex = function( index )
 {
     if(!app.documents.length) return;
-	// var doc = app.activeDocument;
 
 	if(Pslib.isPhotoshop)
 	{
@@ -5515,14 +5514,30 @@ Pslib.getLayerDescriptorByIndex = function( index )
 Pslib.getLayerDescriptorByID = function( id )
 {
 	if(!app.documents.length) return;
-	// var doc = app.activeDocument;
 
 	if(Pslib.isPhotoshop)
 	{
 		var r = new ActionReference();    
-		r.putIdentifier(sTID("layer"), id);
+		r.putIdentifier(sTID('layer'), id);
 		var desc = executeActionGet(r);
         return desc;
+    }
+}
+
+// get remote target reference (typically for modifying properties without selecting)
+Pslib.getLayerTargetByID = function( id )
+{
+	if(!app.documents.length) return;
+
+	if(Pslib.isPhotoshop)
+	{
+		var r = new ActionReference();    
+		r.putIdentifier(sTID('layer'), id);
+
+		var t = new ActionDescriptor();
+		t.putReference( cTID('null'), r );
+
+        return t;
     }
 }
 
@@ -6424,11 +6439,42 @@ Pslib.setXmpByID = function( id, xmpStr )
 }
 
 // replace embedded resource with 
-Pslib.convertPlacedToLinked = function( ref, file )
+Pslib.convertLinkedToEmbedded = function( id, file )
 {
 	if(!app.documents.length) return;
+	// if(!file) return;
 
 	var doc = app.activeDocument;
+	if(id == undefined) id = doc.activeLayer.id;
+
+	if(Pslib.isPhotoshop)
+	{
+		if(typeof file == "string")
+		{
+			file = new File( file );
+		}
+		
+		// if(!file.exists) return false;
+
+		Pslib.selectLayerByID(id);
+
+		var d = new ActionDescriptor();
+		// d.putPath( cTID( "null" ), file );
+		executeAction( sTID('placedLayerConvertToEmbedded'), undefined, DialogModes.NO );
+
+		return true;
+	}
+}
+
+// replace embedded resource with 
+// reference won't work, need to have layer active
+Pslib.convertPlacedToLinked = function( id, file )
+{
+	if(!app.documents.length) return;
+	if(!file) return;
+
+	var doc = app.activeDocument;
+	if(id == undefined) id = doc.activeLayer.id;
 
 	if(Pslib.isPhotoshop)
 	{
@@ -6438,6 +6484,8 @@ Pslib.convertPlacedToLinked = function( ref, file )
 		}
 		
 		if(!file.exists) return false;
+
+		Pslib.selectLayerByID(id);
 
 		var d = new ActionDescriptor();
 		d.putPath( cTID( "null" ), file );
@@ -13406,8 +13454,8 @@ Pslib.setLayerColor = function(id, colorStr)
 {
 	if(Pslib.isPhotoshop)
 	{
-		if(!id) id = app.activeDocument.activeLayer.id;
-		else Pslib.selectLayerByID(id);
+		if(id == undefined) id = app.activeDocument.activeLayer.id;
+		if(!colorStr) colorStr = "None";
 
 		switch (colorStr.toLowerCase()){
 			case 'red': colorStr = 'Rd  '; break;
@@ -13420,15 +13468,13 @@ Pslib.setLayerColor = function(id, colorStr)
 			case 'none' : colorStr = 'None'; break;
 			default : colorStr = 'None'; break;
 		}
-		
-		var desc27 = new ActionDescriptor();
-		var ref3 = new ActionReference();
-		ref3.putEnumerated( cTID('Lyr '), cTID('Ordn'), cTID('Trgt') );
-		desc27.putReference( cTID('null'), ref3 );
-		var desc28 = new ActionDescriptor();
-		desc28.putEnumerated( cTID('Clr '), cTID('Clr '), cTID(colorStr) );
-		desc27.putObject( cTID('T   '), cTID('Lyr '), desc28 );
-		executeAction( cTID('setd'), desc27, DialogModes.NO );
+
+		var desc = Pslib.getLayerTargetByID(id);
+
+		var a = new ActionDescriptor();
+		a.putEnumerated( cTID('Clr '), cTID('Clr '), cTID(colorStr) );
+		desc.putObject( cTID('T   '), cTID('Lyr '), a );
+		executeAction( cTID('setd'), desc, DialogModes.NO );
 	}
 	else if(Pslib.isIllustrator)
 	{
