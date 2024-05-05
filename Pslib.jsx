@@ -126,7 +126,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.695;
+Pslib.version = 0.696;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -3744,7 +3744,6 @@ Pslib.writeXMPtoSidecarFile = function( filepath, xmp )
 	return Pslib.writeToFile(filepath, xmp.serialize());
 }
 
-// XMPFileObj.closeFile(closeFlags)
 Pslib.getXMPConstFileType = function(file)
 {
 	var type = XMPConst.UNKNOWN; 
@@ -3754,6 +3753,7 @@ Pslib.getXMPConstFileType = function(file)
 	switch(extension)
 	{
 		case ".psd" : { type = XMPConst.FILE_PHOTOSHOP; break; }
+		case ".psb" : { type = XMPConst.FILE_PHOTOSHOP; break; }
 		case ".ai" : { type = XMPConst.FILE_ILLUSTRATOR; break; }
 		case ".pdf" : { type = XMPConst.FILE_PDF; break; }
 		case ".png" : { type = XMPConst.FILE_PNG; break; }
@@ -6314,6 +6314,20 @@ Pslib.getDescriptorKeyValues = function(desc, lvl)
     return str;
 }
 
+// delete layer without selecting it
+Pslib.deleteLayerObjectByID = function(id)
+{
+    if(!app.documents.length) return;
+
+	if(Pslib.isPhotoshop)
+	{
+        var target = Pslib.getLayerTargetByID(id);
+        executeAction( cTID('Dlt '), target, DialogModes.NO );
+
+        return true;
+    }
+}
+
 // get Photoshop artboard reference without selecting (must be an artboard)
 Pslib.getArtboardReferenceByID = function( id )
 {
@@ -6442,7 +6456,6 @@ Pslib.setXmpByID = function( id, xmpStr )
 Pslib.convertLinkedToEmbedded = function( id, file )
 {
 	if(!app.documents.length) return;
-	// if(!file) return;
 
 	var doc = app.activeDocument;
 	if(id == undefined) id = doc.activeLayer.id;
@@ -6453,21 +6466,16 @@ Pslib.convertLinkedToEmbedded = function( id, file )
 		{
 			file = new File( file );
 		}
-		
-		// if(!file.exists) return false;
 
 		Pslib.selectLayerByID(id);
-
-		var d = new ActionDescriptor();
-		// d.putPath( cTID( "null" ), file );
 		executeAction( sTID('placedLayerConvertToEmbedded'), undefined, DialogModes.NO );
 
 		return true;
 	}
 }
 
-// replace embedded resource with 
-// reference won't work, need to have layer active
+// replace embedded resource with a "linked" file (linked file has to be present)
+// using a layer reference won't work, we need to have the layer active
 Pslib.convertPlacedToLinked = function( id, file )
 {
 	if(!app.documents.length) return;
@@ -8717,7 +8725,7 @@ Pslib.showHiddenLayers = function( layers )
 	return visibleLayers;
 }
 
-// restore hidden layers 
+// restore visibility for hidden layers 
 Pslib.restoreHiddenLayers = function( layers )
 {
 	if(!app.documents.length) { return false; }
@@ -8739,8 +8747,39 @@ Pslib.restoreHiddenLayers = function( layers )
 	return restoredHiddenLayers;
 }
 
-//
-//
+// delete hidden layers
+Pslib.deleteHiddenLayers = function()
+{
+    if(!app.documents.length) return;
+	var doc = app.activeDocument;
+	var deleted = false;
+
+	if(Pslib.isPhotoshop)
+	{
+		var desc = new ActionDescriptor();
+		var ref = new ActionReference();
+		ref.putEnumerated( cTID('Lyr '), cTID('Ordn'), sTID('hidden') );
+		desc.putReference( cTID('null'), ref );
+		try{ 
+			executeAction( cTID('Dlt '), desc, DialogModes.NO ); 
+			deleted = true;
+		}catch(e){ }
+	}
+	else if(Pslib.isIllustrator)
+	{
+		var hiddenLayers = Pslib.getHiddenLayers();
+
+		for(var i = 0; i < hiddenLayers.length; i++)
+		{
+			var layer = hiddenLayers[i];
+			layer.visible = true;
+			if(layer.locked) layer.locked = false;
+			layer.remove();
+		}
+		deleted = true;
+	}
+	return deleted;
+}
 
 // get list of both visible AND locked layers 
 Pslib.getVisibleAndLockedLayers = function( layers )
