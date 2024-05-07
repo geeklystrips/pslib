@@ -126,7 +126,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.696;
+Pslib.version = 0.697;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -5539,6 +5539,101 @@ Pslib.getLayerTargetByID = function( id )
 
         return t;
     }
+}
+
+Pslib.getLayerIndexByID = function( id )
+{
+	if(!app.documents.length) return;
+
+	if(Pslib.isPhotoshop)
+	{
+		var ref = new ActionReference();
+		ref.putProperty (sTID ('property'), sTID ('itemIndex'));
+		ref.putIdentifier( cTID('Lyr '), id ); 
+		var index = executeActionGet(ref).getInteger(sTID('itemIndex'));
+
+		return index;
+    }
+}
+
+Pslib.duplicateObjectsToArtboards = function( objectIDsArr, artboardIDsArr)
+{
+    if(!app.documents.length) return;
+
+	var doc = app.activeDocument;
+
+    if(objectIDsArr == undefined) objectIDsArr = [];
+    if(artboardIDsArr == undefined) artboardIDsArr = [];
+
+    var duplicatedObjects = [];
+
+	if(Pslib.isPhotoshop)
+	{
+        var targets = objectIDsArr.length ? objectIDsArr : Pslib.getSelectedLayerObjectIDs();
+        var targetCount = objectIDsArr.length;
+
+        var currentLayerID = doc.activeLayer.id;
+        var parentArboard = Pslib.selectParentArtboard();
+        if(!parentArboard)
+        {
+            JSUI.showInfo("Select an object located on an artboard, and try again.");
+            return duplicatedObjects;
+        }
+
+        var artboardIDs = artboardIDsArr.length ? artboardIDsArr : Pslib.getAllArtboardIDs(); 
+        var parentArtboardID = doc.activeLayer.id;
+
+        Pslib.selectLayerByID(currentLayerID, false);
+
+        var indexIncr = 0;
+
+        // loop through targets and get info for each
+        for(var i = 0; i < artboardIDs.length; i++)
+        {
+            var artboardID = artboardIDs[i];
+            if(artboardID == parentArtboardID) continue;
+
+            var duplicates = [];
+            for(var j = 0; j < targetCount; j++)
+            {
+                var targetID = targets[j];
+                if(!targetID) continue;
+
+                var ind = Pslib.getLayerIndexByID(artboardID)-1;
+
+                var d = new ActionDescriptor();
+                var r = new ActionReference();
+                r.putEnumerated(sTID('layer'), sTID('ordinal'), sTID('targetEnum'));
+                d.putReference(sTID('null'), r);
+
+                r = new ActionReference();
+                r.putIndex(sTID('layer'), ind);
+                indexIncr++;
+
+                d.putReference(sTID('to'), r);
+                d.putBoolean(sTID('duplicate'), true);
+                d.putBoolean(sTID('adjustment'), false);
+                d.putInteger(sTID('version'), 5);
+
+                var list = new ActionList();
+                list.putInteger(36);
+                d.putList(sTID('layerID'), list);
+
+                var dupeRef;
+                try{
+                    executeAction(sTID('move'), d, DialogModes.NO);
+                    dupeRef = Pslib.getLayerDescriptorByID(doc.activeLayer.id);
+                }catch(e){ }
+
+                if(dupeRef) duplicates.push(dupeRef);
+                Pslib.selectLayerByID(currentLayerID, false);
+            }
+
+            duplicatedObjects.push(duplicates);
+        }
+    }
+
+    return duplicatedObjects;
 }
 
 // get usable layer reference from persistent layer ID, without having to select layer
