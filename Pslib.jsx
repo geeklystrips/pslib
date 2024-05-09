@@ -126,7 +126,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.697;
+Pslib.version = 0.698;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -6511,6 +6511,355 @@ Pslib.getLayerObjectType = function( ref )
     }
 }
 
+
+// check if target is smartobject
+Pslib.isSmartObject = function( id )
+{
+	if(!app.documents.length) return;
+
+	var doc = app.activeDocument;
+
+	if(Pslib.isPhotoshop)
+	{
+		if(id == undefined) id = doc.activeLayer.id;
+
+		// check if smartobject via descriptor
+		var desc = Pslib.getLayerDescriptorByID(id);
+		if(desc)
+		{
+			var isSmartObject = desc.getInteger(sTID('layerKind')) == 5;
+			if(!isSmartObject){ return false; }
+			return desc;
+		}
+
+		return false;
+	}
+}
+
+// check if smartobject is raster
+Pslib.isRasterSmartObject = function( id )
+{
+	if(!app.documents.length) return;
+
+	var doc = app.activeDocument;
+
+	if(Pslib.isPhotoshop)
+	{
+		if(id == undefined) id = doc.activeLayer.id;
+		var desc = Pslib.isSmartObject(id);
+		if(desc)
+		{
+			var sref = desc.getObjectValue(sTID('smartObject'));
+			var stype = tSID(sref.getEnumerationValue(sTID('placed')));
+			return stype == 'rasterizeContent';
+		}
+		else return false;
+	}
+}
+
+// check if smartobject is vector artwork
+Pslib.isVectorSmartObject = function( id )
+{
+	if(!app.documents.length) return;
+
+	var doc = app.activeDocument;
+
+	if(Pslib.isPhotoshop)
+	{
+		if(id == undefined) id = doc.activeLayer.id;
+		var desc = Pslib.isSmartObject(id);
+		if(desc)
+		{
+			var sref = desc.getObjectValue(sTID('smartObject'));
+			var stype = tSID(sref.getEnumerationValue(sTID('placed')));
+			return stype == 'vectorData';
+		}
+		else return false;
+	}
+}
+
+
+// check smartobject or otherwise placed item for linked/emdedded status
+// returns original file link if present
+Pslib.isPlacedItem = function( id )
+{
+	if(!app.documents.length) return;
+
+	var doc = app.activeDocument;
+
+	if(Pslib.isPhotoshop)
+	{
+		if(id == undefined) id = doc.activeLayer.id;
+
+		var desc = Pslib.isSmartObject(id);
+		if(!desc)
+		{
+			return false;
+		}
+
+		var sref = desc.getObjectValue(sTID('smartObject'));
+
+		var smartObjectContentType = tSID(sref.getEnumerationValue(sTID('placed'))); 
+		// 'vectorData'   		.PDF, .SVG, .AI (will open with Illustrator)
+		// 'rasterizeContent'   .PNG, .PSB etc (opens as a separate document)
+
+		var documentID = sref.getString(sTID('documentID')); 
+		var isLinked = sref.getBoolean(sTID("linked"));
+		var fileReference = sref.getString(sTID('fileReference'));
+		if(fileReference) fileReference = new File(fileReference);
+
+		// JSUI.quickLog("fileReference: " + fileReference);
+		// JSUI.quickLog( isLinked ? "File is linked" : "File is embedded");
+
+		// is placed
+		if(isLinked)
+		{
+			var type = sref.getType(sTID("link"));
+			if(type)
+			{
+				var link, elementReference, libraryName;
+				switch (type)
+				{	
+					case DescValueType.OBJECTTYPE:
+					{
+						linkPath = sref.getObjectValue(sTID("link"));
+						if(linkPath)
+						{
+							elementReference = linkPath.getString(sTID('elementReference')); 
+							if(elementReference) link = elementReference;
+							libraryName = linkPath.getString(sTID('libraryName')); 
+						}	
+						break;
+					}
+					// alias is a link to a local file
+					case DescValueType.ALIASTYPE:
+					{
+						link = sref.getPath(sTID("link"));
+						link = new File(link);
+						// JSUI.quickLog("ALIASTYPE: " + link);
+						break;
+					}
+					case DescValueType.STRINGTYPE:
+					{
+						link = sref.getString(sTID("link"));
+						// JSUI.quickLog("STRINGTYPE: " + link);
+						break;
+					}
+					default:
+					{
+						break;
+					}
+				}
+				return link;
+			}
+		}
+		return fileReference ? new File(fileReference) : true;
+	}
+}
+
+// replace linked resource with embedded file
+Pslib.convertLinkedToEmbedded = function( id, file )
+{
+	if(!app.documents.length) return;
+
+	var doc = app.activeDocument;
+
+	if(Pslib.isPhotoshop)
+	{
+		if(id == undefined) id = doc.activeLayer.id;
+
+		// if(typeof file == "string")
+		// {
+		// 	file = new File( file );
+		// }
+
+		var isSmartObject = Pslib.isSmartObject(id);
+		if(!isSmartObject)
+		{
+			return false;
+		}
+
+		Pslib.selectLayerByID(id);
+
+		// prompts for file selection
+		try{
+			executeAction( sTID('placedLayerConvertToEmbedded'), undefined, DialogModes.NO );
+		}
+		catch(e)
+		{
+			// get filetype
+			var fileRef = Pslib.isPlacedItem(id);
+
+			alert("Original file reference could not be resolved.\n" + fileRef.fsName);
+			return false;
+		}
+
+		return true;
+	}
+}
+
+// replace embedded resource with a "linked" file (linked file has to resolve locally)
+// using a layer reference won't work, we need to have the layer active
+Pslib.convertPlacedToLinked = function( id, file )
+{
+	if(!app.documents.length) return;
+	if(!file) return;
+
+	var doc = app.activeDocument;
+
+	if(Pslib.isPhotoshop)
+	{
+		if(id == undefined) id = doc.activeLayer.id;
+
+		if(typeof file == "string")
+		{
+			file = new File( file );
+		}
+
+		var isSmartObject = Pslib.isSmartObject(id);
+		if(!isSmartObject)
+		{
+			return false;
+		}
+		
+		if(!file.exists) return false;
+
+		Pslib.selectLayerByID(id);
+
+		var d = new ActionDescriptor();
+		d.putPath( cTID( 'null' ), file );
+		executeAction( sTID( 'placedLayerRelinkToFile' ), d, DialogModes.NO );
+		return true;
+	}
+}
+
+// new SmartObject via copy
+Pslib.duplicatePlacedItem = function( id )
+{
+	if(!app.documents.length) return;
+
+	var doc = app.activeDocument;
+
+	if(Pslib.isPhotoshop)
+	{
+		if(id == undefined) id = doc.activeLayer.id;
+		
+		var desc = Pslib.isSmartObject(id);
+		if(!desc)
+		{
+			return false;
+		}
+
+		// 'placedLayerMakeCopy' will fail if object is linked
+		var sref = desc.getObjectValue(sTID('smartObject'));
+		var isLinked = sref.getBoolean(sTID('linked'));
+		if(isLinked)
+		{
+			return false;
+		}
+
+		Pslib.selectLayerByID(id);
+
+		var idplacedLayerMakeCopy = sTID( 'placedLayerMakeCopy' );
+		executeAction( idplacedLayerMakeCopy, undefined, DialogModes.NO );
+
+		var newLayerID = doc.activeLayer.id;
+
+		return newLayerID;
+	}
+}
+
+
+// export smartobject to file
+// location can be a File of Folder object (string means folder)
+Pslib.exportPlacedItem = function( id, location )
+{
+    if(!app.documents.length) return;
+
+	var doc = app.activeDocument;
+
+    var exportedFile;
+
+	if(Pslib.isPhotoshop)
+	{
+        if(id == undefined) id = doc.activeLayer.id;
+
+		var desc = Pslib.isSmartObject(id);
+		if(!desc)
+		{
+			return false;
+		}
+
+		// export will fail if object is linked
+		var sref = desc.getObjectValue(sTID('smartObject'));
+		var isLinked = sref.getBoolean(sTID('linked'));
+		if(isLinked)
+		{
+			return false;
+		}
+
+        var layername = desc.getString(sTID('name'));
+        var filename = layername;
+        var fileReference = sref.getString(sTID('fileReference'));
+
+        // infer type from file reference info
+        var contenttype = tSID(sref.getEnumerationValue(sTID('placed'))); 
+        var extension = "";
+
+        if(contenttype == 'vectorData') extension = ".ai"; 
+        else if(contenttype == 'rasterizeContent') extension = ".psb"; // if made from layers
+
+        // use embedded object filename (expect lots of "Vector Smart Object.ai")
+        if(fileReference)
+        {
+            var fileRefHasExtension = fileReference.hasFileExtension();
+            var refName = fileReference.getFileNameWithoutExtension();
+            var refExt = fileReference.getFileExtension();
+
+            filename = (refName ? refName : refName) + (fileRefHasExtension ? refExt : extension);  
+        }
+        else 
+        {
+            filename = layername + extension;
+        }
+
+        var file = new File(Folder.temp + "/" + filename);
+
+        if(location instanceof Folder)
+        {
+            file = new File(location + "/" + filename);
+        }
+        else if(typeof location == "string")
+        {
+            file = new File(location + "/" + filename);
+        }
+
+        // if a specific file object is provided
+        if(location instanceof File)
+        {
+            file = location;
+        }
+
+        try
+        {
+            if(!file.parent.exists) file.parent.create();
+            if(file.exists) file.remove();
+
+            var adesc = new ActionDescriptor();
+            adesc.putPath(sTID('null'), file );
+            executeAction(sTID('placedLayerExportContents'), adesc);
+    
+            exportedFile = file;
+        }
+        catch(e)
+        {  
+
+        }
+    }
+
+    return exportedFile;
+}
+
 // here's a way to set/get xmp by layer ID
 Pslib.setXmpByID = function( id, xmpStr )
 {
@@ -6547,55 +6896,6 @@ Pslib.setXmpByID = function( id, xmpStr )
 	}
 }
 
-// replace embedded resource with 
-Pslib.convertLinkedToEmbedded = function( id, file )
-{
-	if(!app.documents.length) return;
-
-	var doc = app.activeDocument;
-	if(id == undefined) id = doc.activeLayer.id;
-
-	if(Pslib.isPhotoshop)
-	{
-		if(typeof file == "string")
-		{
-			file = new File( file );
-		}
-
-		Pslib.selectLayerByID(id);
-		executeAction( sTID('placedLayerConvertToEmbedded'), undefined, DialogModes.NO );
-
-		return true;
-	}
-}
-
-// replace embedded resource with a "linked" file (linked file has to be present)
-// using a layer reference won't work, we need to have the layer active
-Pslib.convertPlacedToLinked = function( id, file )
-{
-	if(!app.documents.length) return;
-	if(!file) return;
-
-	var doc = app.activeDocument;
-	if(id == undefined) id = doc.activeLayer.id;
-
-	if(Pslib.isPhotoshop)
-	{
-		if(typeof file == "string")
-		{
-			file = new File( file );
-		}
-		
-		if(!file.exists) return false;
-
-		Pslib.selectLayerByID(id);
-
-		var d = new ActionDescriptor();
-		d.putPath( cTID( "null" ), file );
-		executeAction( sTID( "placedLayerRelinkToFile" ), d, DialogModes.NO );
-		return true;
-	}
-}
 
 // fast get XMPMeta object via layer ID (if array, returns array)
 // use this if function fails
@@ -6678,7 +6978,6 @@ Pslib.getLayerObjectTimeStamp = function ( layer, locale )
 		}
 	}
 }
-
 
 // get coordinates for specific layer object (auto-selects target, reselects initially active)
 // or abstract layer object via ID (without actively selecting object)
