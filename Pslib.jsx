@@ -126,7 +126,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.698;
+Pslib.version = 0.7;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -11209,7 +11209,35 @@ Pslib.getArtboardSpecsInfo = function( obj )
     return artboardSpecs;
 }
 
-// also need a function for ungrouping layersets / GroupItems
+Pslib.ungroupItems = function(id)
+{
+    if(!app.documents.length) return;
+
+    var doc = app.activeDocument;
+    var ungrouped = false;
+
+	if(Pslib.isPhotoshop)
+	{
+		var currentID = doc.activeLayer.id;
+		if(id == undefined) id = currentID;
+		if(Pslib.getIsGroup(id))
+		{
+			var selectionChanged = Pslib.selectLayerByID(id);
+			var target = Pslib.getLayerTargetByID(id);
+			try{ 
+				executeAction(  sTID( 'ungroupLayersEvent' ), target, DialogModes.NO ); 
+				ungrouped = true;
+			}catch(e){ }
+			if(selectionChanged) Pslib.selectLayerByID(currentID);
+		}
+    }
+    // else if(Pslib.isIllustrator)
+    // {
+
+    // }
+
+    return ungrouped;
+}
 
 Pslib.collapseAllGroups = function()
 {
