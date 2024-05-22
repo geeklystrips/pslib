@@ -66,7 +66,7 @@ if(typeof JSUI !== "object")
 }
 
 // version
-JSUI.version = "0.987";
+JSUI.version = "1.0.1";
 
 // do some of the stuff differently depending on $.level and software version
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -6038,7 +6038,8 @@ JSUI.quickLog = function(obj, arrDepthInt, msgStr)
 {
 	if($.level)
 	{
-		if(!obj) return;
+		// if(!obj) return;
+		if(obj == undefined) return;
 
 		if( msgStr == undefined && (typeof arrDepthInt == "string")) 
 		{
@@ -6605,17 +6606,24 @@ String.prototype.hasAdobeDarkSuffix = function()
 	return this.hasAtSymbolSuffix("@Dark");
 };
 
-// Lack of support for Set()/Array.filter() calls for hacks
-Array.prototype.indexOf = function(element)
+Array.prototype.indexOf = function(element, start)
 {
-	for(var i = 0; i < this.length; i++)
-	{
-		if(this[i] == element) return i;
-	}
+	// for(var i = 0; i < this.length; i++) { if(this[i] === element) return i; }
+	if(!this.length) return -1;
+	var i = 0;
+	var idxL = this.length-1;
+	if(start == undefined) var start = i;
+	start = start.clamp(-1, idxL);
+	if(start == -1) { for(var i = idxL; i > -1; i--) { if(this[i] === element) return i; } }
+	else { for(var i = start; i < this.length; i++) { if(this[i] === element) return i; } }
 	return -1;
 };
 
-// prototyping Array.map() functionality
+Array.prototype.lastIndexOf = function(element)
+{
+	return this.indexOf(element, -1);
+};
+
 Array.prototype.map = function(callback) {
     var arr = [];
     for (var i = 0; i < this.length; i++)
@@ -6623,7 +6631,32 @@ Array.prototype.map = function(callback) {
     return arr;
 };
 
-// ECMA3 limitations: from array of JSON objects, compile list of identical values and return a one of each
+Array.prototype.filter = function (fn)
+{
+    var filtered = [];
+    for (var i = 0; i < this.length; i++)
+    {
+        if(fn(this[i]))
+        {
+            filtered.push(this[i]);
+        }
+    }
+    return filtered;
+};
+
+// removes duplicates in array
+Array.prototype.getUnique = function()
+{
+	var unique = [];
+	for(var i = 0; i < this.length; i++)
+	{
+		var current = this[i];
+		if(unique.indexOf(current) == -1) unique.push(current);
+	}
+	return unique;
+};
+
+// from array of JSON objects, compile list of identical values and return a one of each
 Array.prototype.getUniqueValues = function( pname )
 {
 	if(!this.length) return this;
@@ -6670,18 +6703,6 @@ Array.prototype.getObjectPropertyDuplicates = function( pname )
 	}
 	return sets;
 }
-
-// removes duplicates in array
-Array.prototype.getUnique = function()
-{
-	var unique = [];
-	for(var i = 0; i < this.length; i++)
-	{
-		var current = this[i];
-		if(unique.indexOf(current) < 0) unique.push(current)
-	}
-	return unique;
-};
 
 // sort indexes
 Array.prototype.sortAscending = function()
@@ -6815,6 +6836,14 @@ String.prototype.toRangesStr = function()
 
 // Instant MATH, just add .prototype, teehee
 
+Number.prototype.clamp = function(min, max)
+{
+    var n = this.valueOf();
+    if(min == undefined || max == undefined) return n;
+	if(n < min) n = min;
+	if(n > max) n = max;
+	return n;
+};
 
 Number.prototype.isPowerOf2 = function()
 {
@@ -6958,6 +6987,51 @@ Number.prototype.getNextMult32 = function()
 	var n = this.valueOf();
 	return n.getNextMultOf(32);
 };
+
+function Dictionary( allowOverwrite )
+{
+	this.overwrite = allowOverwrite === true;
+	var __k = [];
+	var __v = [];
+	
+	this.put = function(key, value){
+		if(!this.overwrite || __k.indexOf(key) == -1){
+			__k.push(key);
+			__v.push(value);
+		}
+	}
+	
+    this.get = function(key){
+        var idx = __k.indexOf(key);
+		if(idx >= 0){
+            return __v[idx];
+		}
+        return null;
+	};
+    
+	this.remove = function(key){
+		var i = __k.indexOf(key);
+		if(i != -1){
+			__k.splice(i,1);
+			__v.splice(i,1);
+		}
+	}
+	
+	this.clearAll = function(value){
+		for(var i = 0; i < __v.length; i++){
+			if(__v[i] == value){
+				__k.splice(i,1);
+				__v.splice(i,1);
+			}
+		}
+	}
+	// .iterate(function(key, value){ });
+	this.iterate = function(func){
+		for(var i = 0; i < __k.length; i++){
+			func(__k[i], __v[i]);
+		}
+	}
+}
 
 // to be deprecated
 JSUI.isPower2 = function(n){ return n.isPowerOf2(); };
@@ -7273,7 +7347,7 @@ JSUI.openRecentFile = function ( showListBool, num )
 //
 
 
-/* set layer palette's object color */
+// set layer palette's object color 
 JSUI.setLayerObjectColor = function( color )
 {
 	if(JSUI.isPhotoshop)
