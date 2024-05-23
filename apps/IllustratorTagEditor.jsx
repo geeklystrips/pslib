@@ -3,58 +3,85 @@
 
     TODO
     - add color picker for placeholder color?
+    - function for getting entire list of tagged items, and which tags are present
 
+    - find out how to use .uuid property with artboards
+    - Document.getPageItemFromUuid (uuid: string) : PageItem 
 
-*/
+    Bugs:
+    - if selection active outside of artboard bounds, frequent false positive on PathItem
 
-#include "../Pslib.jsx";
+    */
+
 #include "../jsui.js";
+#include "../Pslib.jsx";
 
 #target illustrator;
 
-if(app.documents.length)
-{
-    Main();
-}
+Main( typeof uuid === "string" ? uuid : (typeof uuid === "number" ? uuid.toString() : undefined ) );
 
-function Main()
+function Main( uuid )
 {
-    var placeholderPatternStr = "#";
+    if(!app.documents.length) return;
     var doc = app.activeDocument;
+    if( uuid != undefined)
+    {
+        var item = doc.getPageItemFromUuid(uuid); // uuid is a STRING
+        if(!item) return false;
+        return showUI(item);
+    }
+
+    var placeholderPatternStr = "#";
+    var tags = 
     var selection = doc.selection;
+
+    // quick check for geometry match between selected items and active artboard 
 
     // store current artboard specs for comparison with selected objects
     var initialArtboardSelection = doc.artboards.getActiveArtboardIndex();
     var initialArtboard = doc.artboards[initialArtboardSelection];
     var initialArtboardCoords = Pslib.getArtboardCoordinates(initialArtboard);
 
+    var selectionMatchesActiveArtboard = false;
     var itemFound = false;
+    var item;
 
     if(selection.length)
     {
-        var item = selection[0];
-    
-        if(item.typename == "PathItem")
+        selectionMatchesActiveArtboard = Pslib.getItemsOverlapArtboard( selection, initialArtboard, false );
+
+        if(selectionMatchesActiveArtboard)
         {
-            itemFound = true;
-            showUI(item);
-        }
-        else if(item.typename == "GroupItem")
-        {
-            itemFound = getPlaceholderItem();
-            if(itemFound != undefined) Main(itemFound);
+            item = Pslib.getArtboardItem(initialArtboard, placeholderPatternStr, selection);
+            if(item) itemFound = true;
         }
         else
         {
-            itemFound = Pslib.getArtboardItem(initialArtboard, placeholderPatternStr);
-            if(itemFound) Main();
+            // if selected item is a PathItem with the target name, but is outside of artboard bounds
+            // attempt to get corresponding artboard match from item bounds
+            var artboardIndexes = Pslib.getArtboardsFromSelectedItems( selection, false, true ); // array of artboard indexes
+            var artboardLocated = false;
+            if(artboardIndexes.length)
+            {
+                doc.artboards.setActiveArtboardIndex(artboardIndexes[0]);
+                artboardLocated = true;
+            }
+
+            if(artboardLocated) 
+            {
+                item = Pslib.getArtboardItem(initialArtboard, placeholderPatternStr);
+                if(item) itemFound = true;
+              //  return itemFound ? Main(item) : false;
+            }
+
         }
     }
     else
     {
         // if no selection active, look for placeholder item, select it, and restart process
-        itemFound = Pslib.getArtboardItem(initialArtboard, placeholderPatternStr);
-        if(itemFound) Main();
+        item = Pslib.getArtboardItem(initialArtboard, placeholderPatternStr);
+        if(item) itemFound = true;
+        return itemFound ? Main(item) : false;
     }
 
     if (!itemFound)
@@ -68,12 +95,19 @@ function Main()
             var artboard = Pslib.getActiveArtboard();
             var indexNum = doc.artboards.getActiveArtboardIndex();
             var pageNum = indexNum+1;
-            var rectObj = { artboard: artboard, name: placeholderPatternStr, tags: [ ["name", artboard.name], ["index", indexNum], ["page", pageNum], ["assetID", ""] ], hex: undefined, opacity: undefined, layer: doc.layers.getByName("Placeholders"), sendToBack: true  };
 
-            var placeholder = Pslib.addArtboardRectangle( rectObj );
+            var layerRef;
+            try{layerRef = doc.layers.getByName("Placeholders")}catch(e){};
+
+            // var tags = [ ["name", artboard.name], ["index", indexNum], ["page", pageNum], ["assetID", ""] ];
+            var tags = [ ["assetID", ""] ]; // uuid conquers all
+
+            var rectObj = { artboard: artboard, name: placeholderPatternStr, tags: tags, hex: undefined, opacity: undefined, layer: layerRef, sendToBack: true  };
+
+            item = Pslib.addArtboardRectangle( rectObj );
  
-            doc.selection = placeholder;
-            Main();
+            doc.selection = item;
+            return Main(item);
         }
         else
         {        
@@ -82,58 +116,11 @@ function Main()
     }
 }
 
-// select first PathItem if found on current artboard
-function getPlaceholderItem()
-{
-    var placeholder;
-    var found = false;
-    var doc = app.activeDocument;
-    var selection = doc.selection;
-
-    if(selection.length)
-    {
-        for (var i = 0; i < selection.length; i++)
-        {
-            var item = selection[i];
-
-            // if artboard has only one item, and item is a group
-            if( i == 0 && selection.length == 1 && item.typename == "GroupItem")
-            {
-                // enter isolation mode
-                item.isIsolated = true;
-                var groupItems = item.pageItems;
-                for (var j = 0; j < groupItems.length; j++)
-                {
-                    var subItem = groupItems[j];
-                    if(subItem.name == placeholderPatternStr)
-                    {
-                        placeholder = subItem;
-                        found = true;
-                        doc.selection = subItem;
-                        break;
-                    }
-                }
-
-                // exit isolation mode
-                item.isIsolated = false;
-            }
-
-            else if(item.name == placeholderPatternStr)
-            {
-                placeholder = item;
-                found = true;
-                doc.selection = item;
-                break;
-            }
-        }
-    }
-    return placeholder;
-}
-
 function showUI(item)
 {
     var doc = app.activeDocument;
     var item = item;
+    var itemUuid = item.uuid;
     var artboard = Pslib.getActiveArtboard();
     var artboardIndex = doc.artboards.getActiveArtboardIndex();
     var artboardName = artboard ? artboard.name : "";
@@ -143,10 +130,12 @@ function showUI(item)
     // autoselect "assetID" tag if present
     for(var i = 0; i < tags.length; i++) { if(tags[i][0] == "assetID"){ listBoxSelection = i; break; } }
 
-    var win = new JSUI.createDialog( { title: "Illustrator Item Tag Editor", orientation: "column", margins: 15, spacing: 10, alignChildren: "fill", width: 0, height: 0, debugInfo:false } );
+    var win = new JSUI.createDialog( { title: "Tag Editor", orientation: "column", margins: 15, spacing: 10, alignChildren: "fill", width: 0, height: 0, debugInfo:false } );
 
     var documentLabel = win.addRow( { alignment: "center" });
-    var documentLabelStr = doc.name + "  [ Artboard " + (artboardIndex+1) + ": " + artboardName + " ]  " + item.typename + ":  " + item.name;
+
+    var documentLabelStr = doc.name + "  [ Artboard " + (artboardIndex+1) + ": " + artboardName + " ]  " + item.typename + " uuid " + itemUuid +":  " + item.name;
+
     documentLabel.addStaticText( { text: documentLabelStr, multiline: false, alignment: "left" } );
 
     var mainContainer = win.addRow( { spacing: 10 } );
@@ -177,7 +166,8 @@ function showUI(item)
             }
             tagValueEditText.text = value;
         }
-    };
+        return;
+    }
     
     tagsListbox.update = function()
     {
@@ -213,7 +203,8 @@ function showUI(item)
             }
             tagsListbox.onChange();
         }
-    };
+        return;
+    }
 
     /////
 
@@ -240,7 +231,8 @@ function showUI(item)
 
     var setremoveRow = setTagsPanel.addRow( { spacing: 10 });
     // var setTagsBtn = setremoveRow.addButton( { label: "Set" });
-    var setTagslbBtn = setremoveRow.addButton( { label: "Set" });
+    // var setTagslbBtn = setremoveRow.addButton( { label: "Set" });
+    var setTagslbBtn = setremoveRow.addCustomButton( { label: "Set", width: 75 });
     var removeTagsBtn = setremoveRow.addButton( { label: "Remove" });
 
     var advancedOptionsPanel = editColumn.addPanel( { label: "Advanced", orientation: "row", spacing: 10, alignment: "fill", margins: 15} );
@@ -257,6 +249,7 @@ function showUI(item)
             Pslib.setTags( item, [ [ name, value ] ] );
             tagsListbox.update();
         }
+        return;
     }
 
     removeTagsBtn.onClick = function ( )
@@ -270,21 +263,26 @@ function showUI(item)
             tagNameEditText.text = "";
             tagValueEditText.text = "";
         }
+        return;
     }
 
     clearAllTagsBtn.onClick = function()
     {
         Pslib.removeAllTags(item);
-        tagsListbox.update();      
+        tagsListbox.update();
+        return;
     } 
 
     autoTagBtn.onClick = function()
     {
         Pslib.setTags( item, [ ["name", artboardName], ["index", artboardIndex], ["page", artboardIndex+1], ["assetID", ""] ]);
         tagsListbox.update();
+        return;
     }
 
     tagValueEditText.active = true;
-    win.addCloseButton();
-    win.show();
+    // win.addCloseButton();
+    win.addButton({ label: "Close", name: "ok", alignment: "center"});
+
+    return win.show();
 }
