@@ -96,37 +96,14 @@
 
 */
 
-/*
-// using and adding functions to Pslib object -- whether or not the library has been loaded
-// this technique makes it easier to create and stabilize additional subfunctions separately before integrating them
-try
-{
-	// this will throw an exception if Pslib cannot be found
-	// a try/catch is necessary to achieve this, because a simple if(Pslib == undefined) will halt execution
-	var attempt = Pslib != undefined;
-}
-catch(e)
-{
-	// if we have an error here, it's most likely because we didn't include the library in the preceding statements
-	// the current script might be part of an include by a script loaded beforehand
 
-	// $.level == 0 if the script is run by Photoshop, $.level > 0 if debugging Visual Studio Code
-	// if($.level) $.writeln("Pslib library object not found. Creating placeholder.");
-	
-	// errors are objects that can give you some information about what went wrong 
-	//if($.level) $.writeln("typeof e.message: " + typeof e.message + "\n\ne:\n" + e + "\n\ne.message:\n" + e.message);
 
-	// create Pslib as a persistent object 
-}
-*/
-
-// if "undefined", no exception thrown / no interruption
 if (typeof Pslib !== "object") {
     Pslib = {};
 }
 
 // library version
-Pslib.version = 0.81;
+Pslib.version = 0.82;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -668,7 +645,7 @@ Pslib.deleteXmpProperties = function (target, propertiesArray, namespace)
 				xmp.deleteProperty(namespace ? namespace : Pslib.XMPNAMESPACE, propertiesArray[i][0]);
 			}
 
-			if(Pslib.isPhotoshop) target.xmpMetadata.rawData = xmp.serialize();
+			if(Pslib.isPhotoshop) { if(typeof target == "number") Pslib.setXmpByID(target, xmp.serialize()); else target.xmpMetadata.rawData = xmp.serialize(); }
 			else if(Pslib.isIllustrator) target.XMPString = xmp.serialize();
 				
 			return true;
@@ -773,7 +750,7 @@ Pslib.setXmpProperties = function (target, propertiesArray, namespace)
 		if(!isXmpMetaObj)
 		{
 			// apply and serialize
-			if(Pslib.isPhotoshop) target.xmpMetadata.rawData = xmp.serialize();
+			if(Pslib.isPhotoshop) { if(typeof target == "number") Pslib.setXmpByID(target, xmp.serialize()); else target.xmpMetadata.rawData = xmp.serialize(); }
 			else if(Pslib.isIllustrator) target.XMPString = xmp.serialize();
 			else if(Pslib.isInDesign) target.metadataPreferences = xmp.serialize();
 			// if($.level) $.writeln("Provided properties were successfully added to object \"" + target.name + "\"");
@@ -6297,7 +6274,7 @@ Pslib.getLayerReferenceByID = function( id, obj )
 					// JSUI.quickLog("filtering out extension array " + obj.filterExtension[i]);
 					if(obj.filterExtension[i] == ext)
 					{
-						JSUI.quickLog("\t "+i+ ":"+ ext);
+						// JSUI.quickLog("\t "+i+ ":"+ ext);
 						coords.name = coords.name.replace(/\.[^\\.]+$/, "");
 						// break;
 					}
