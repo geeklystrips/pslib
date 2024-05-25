@@ -103,7 +103,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.82;
+Pslib.version = 0.83;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -11036,11 +11036,6 @@ Pslib.getArtboardItem = function( artboard, nameStr, itemCollection )
 
 	if(Pslib.isPhotoshop)
 	{
-		// if(doc.activeLayer != artboard)
-		// {
-		// 	doc.activeLayer = artboard;
-		// }
-
 		var artboardLayers = artboard.layers;
 		if(artboardLayers)
 		{
@@ -11098,6 +11093,7 @@ Pslib.getArtboardItem = function( artboard, nameStr, itemCollection )
 				var match = _loopItems(item);
 				if(match)
 				{
+					targetItem = item;
 					break;
 				}
 			}
@@ -11147,6 +11143,124 @@ Pslib.getArtboardItem = function( artboard, nameStr, itemCollection )
 		}
 	}
 	return targetItem;
+}
+
+Pslib.getInfosForTaggedItems = function(itemCollection, pageItemType, nameStr, tagsArr, matchArtboards, artboardCollection, searchGroupItems)
+{
+    if(!app.documents.length) return;
+    var doc = app.activeDocument;
+
+    var itemInfos = [];
+
+    if(Pslib.isIllustrator)
+    {
+        if(itemCollection == undefined) itemCollection = doc.pageItems;
+
+        var doMatchType = false;
+        if(pageItemType == undefined) pageItemType = "PathItem";
+        if(pageItemType) doMatchType = true;
+    
+        if(nameStr == undefined) nameStr = "#";
+    
+        var getAllTags = false;
+        if(tagsArr == undefined) tagsArr = [];
+        if(tagsArr.length == 0) getAllTags = true;
+        
+        if(searchGroupItems == undefined) searchGroupItems = pageItemType != "GroupItem";
+    
+        // default target name is "#", an empty string is a wildcard for any name
+        var doMatchName = nameStr.length > 0; 
+    
+        if(itemCollection)
+        {
+            function _filterItems( item )
+            {
+                var targetItem;
+                if( item.typename == "GroupItem" && searchGroupItems)
+                {
+                    var groupItems = item.pageItems;
+                    for (var j = 0; j < groupItems.length; j++)
+                    {
+                        targetItem = _filterItems(groupItems[j]);
+                        if(targetItem) break;
+                    }
+                }
+    
+                if(doMatchType)
+                {
+                    if(item.typename != pageItemType) return;
+                }
+    
+                if(doMatchName)
+                {
+                    if(item.name != nameStr) return;
+                }
+                targetItem = item;
+    
+                return targetItem;
+            }
+    
+            // first pass: get items with tags
+            for (var i = 0; i < itemCollection.length; i++)
+            {
+                var item = itemCollection[i];
+                if( item.typename == "GroupItem" && searchGroupItems)
+                {
+                    var groupItems = item.pageItems;
+                    for (var j = 0; j < groupItems.length; j++)
+                    {
+                        targetItem = _filterItems(groupItems[j]);
+                        if(targetItem) break;
+                    }
+                }
+    
+                if(doMatchType)
+                {
+                    if(item.typename != pageItemType) continue;
+                }
+                var itemTags = getAllTags ? Pslib.getAllTags( item ) : Pslib.getTags( item, tagsArr );
+    
+                if(itemTags.length)
+                {
+                    var info = { uuid: item.uuid, tags: itemTags };
+                    itemInfos.push(info);
+                }
+            }
+    
+            // second pass, match tagged items to artboards
+            if(matchArtboards)
+            {
+                if(artboardCollection == undefined) artboardCollection = Pslib.getAllArtboards();
+                var collectionSameLength = artboardCollection.length == doc.artboards.length;
+                for (var i = 0; i < itemInfos.length; i++)
+                {
+                    var info = itemInfos[i];
+                    var item;
+                    if(info.uuid) item = doc.getPageItemFromUuid(uuid);
+                    if(!item) continue;
+    
+                    // this returns first artboard found matching item bounds 
+                    for (var a = 0; a < artboardCollection.length; a++)
+                    {
+                        var artboard = artboardCollection[a];
+                        var artboardMatch = Pslib.getItemsOverlapArtboard( [ item ], artboard, false );
+                        if(artboardMatch)
+                        {
+                            var artboardIndex = a;
+                            if(!collectionSameLength)
+                            {
+                                artboardIndex = Pslib.getArtboardIndex(artboard);
+                            }
+                            // update itemInfos array with artboard details
+                            itemInfos[i].index = artboardIndex;
+                            itemInfos[i].name =  doc.artboards[artboardIndex].name;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return itemInfos;
 }
 
 // 
@@ -13021,7 +13135,7 @@ Pslib.colorAllArtboardBackgrounds = function( hexStr, randomize )
 
 
 // get items with specific name from provided artboards collection
-Pslib.getArtboardItems = function( artboardsArr, nameStr )
+Pslib.getArtboardItems = function( artboardsArr, nameStr, itemCollection )
 {
 	if(!app.documents.length) return;
 	if(!nameStr) { nameStr = "#"; }
@@ -13033,9 +13147,9 @@ Pslib.getArtboardItems = function( artboardsArr, nameStr )
 	{
 		if(!artboardsArr) { artboardsArr = Pslib.getAllArtboards(); }
 
-		for(var j = 0; j < artboardsArr.length; j++)
+		for(var i = 0; i < artboardsArr.length; i++)
 		{
-			var targetItem = Pslib.getArtboardItem( artboardsArr[j], nameStr );
+			var targetItem = Pslib.getArtboardItem( artboardsArr[i], nameStr, itemCollection );
 			if(targetItem) artboardItems.push(targetItem);
 		}
 
@@ -13046,11 +13160,8 @@ Pslib.getArtboardItems = function( artboardsArr, nameStr )
 
 		for (var i = 0; i < artboardsArr.length; i++)
 		{
-			var item = Pslib.getArtboardItem( artboardsArr[i], nameStr );
-			if(item)
-			{
-				artboardItems.push(item);
-			}
+			var targetItem = Pslib.getArtboardItem( artboardsArr[i], nameStr, itemCollection );
+			if(targetItem) artboardItems.push(targetItem);
 		}
 	}
 	return artboardItems;
