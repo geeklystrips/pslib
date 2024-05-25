@@ -11222,8 +11222,21 @@ Pslib.getInfosForTaggedItems = function(itemCollection, pageItemType, nameStr, t
     
                 if(itemTags.length)
                 {
-                    var info = { uuid: item.uuid, tags: itemTags };
-                    itemInfos.push(info);
+					// filter empty tags
+                    var info = { uuid: item.uuid };
+					var filteredTags = [];
+
+					for (var t = 0; t < itemTags.length; t++)
+					{
+						var tag = itemTags[t];
+						if(tag[1]) { filteredTags.push([tag[0], tag[1]]); }
+					}
+
+					if(filteredTags.length)
+					{
+						info.tags = filteredTags;
+						itemInfos.push(info);
+					}
                 }
             }
     
@@ -11236,7 +11249,7 @@ Pslib.getInfosForTaggedItems = function(itemCollection, pageItemType, nameStr, t
                 {
                     var info = itemInfos[i];
                     var item;
-                    if(info.uuid) item = doc.getPageItemFromUuid(uuid);
+                    if(info.uuid) item = doc.getPageItemFromUuid(info.uuid);
                     if(!item) continue;
     
                     // this returns first artboard found matching item bounds 
