@@ -106,7 +106,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.84;
+Pslib.version = 0.85;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -6235,7 +6235,7 @@ Pslib.getLayerReferenceByID = function( id, obj )
 			isArtboard = true;
 			index = id;
 		}
-		// detext UUID format
+		// detect UUID int string 
 		else if(typeof id === "string")
 		{
 			if(!isNaN(parseInt(id))) 
@@ -6376,7 +6376,7 @@ Pslib.getLayerReferenceByID = function( id, obj )
 				// itemUUID = id.uuid;
 				// coords.uuid = itemUUID;
 
-				if(uuidStr.length) 
+				if(itemUUID.length) 
 				{
 					item = doc.getPageItemFromUuid(itemUUID);
 					// if(item) coords.uuid = item.uuid;
@@ -7515,6 +7515,7 @@ Pslib.getArtboardSpecs = function( artboard, uuidStr )
 	{
 		var isActive = false;
 		if(!artboard) { var artboard = Pslib.getActiveArtboard(); isActive = true; }
+		if(uuidStr == undefined) uuidStr = "";
 		var specs = Pslib.getArtboardCoordinates(artboard, true, uuidStr);
 
 		var doc = app.activeDocument;
@@ -11240,12 +11241,13 @@ Pslib.documentToFile = function( obj )
 // select first art item found with provided name on current artboard
 	// *** adapt for existing item list match / artboard bounds?
 	// *** itemCollection == existing PageItem or array of PageItem objects
-Pslib.getArtboardItem = function( artboard, nameStr, itemCollection )
+Pslib.getArtboardItem = function( artboard, nameStr, itemCollection, activate )
 {
 	if(!app.documents.length) return;
 
 	if(!nameStr) { var nameStr = "#"; }
 	if(!artboard) { var artboard = Pslib.getActiveArtboard(); }
+	if(activate == undefined) activate = true;
 	
 	var doc = app.activeDocument;
 	var targetItem;
@@ -11275,38 +11277,84 @@ Pslib.getArtboardItem = function( artboard, nameStr, itemCollection )
 	}
 	else if(Pslib.isIllustrator)
 	{
-		var found = false;
-
 		// if a collection of PageItems is provided, check if overlap with target artboard
 		if(itemCollection)
 		{
 			// recursive loop
-			function _loopItems( item )
+			function _loopItems( item, itemNameStr, tagNameStr, firstMatch )
 			{
+				if(!item) return;
+				if(itemNameStr == undefined) var itemNameStr = "#";
+				if(tagNameStr == undefined) var tagNameStr = "assetID";
 				var targetItem;
-				if(item.typename == "PathItem" && item.name == nameStr)
+				var matchedItems = [];
+				// think of solution for CompoundPath type
+				if(item.typename == "PathItem" && item.name == itemNameStr)
 				{
 					targetItem = item;
 				}
 				else if( item.typename == "GroupItem")
 				{
 					var groupItems = item.pageItems;
-					for (var j = 0; j < groupItems.length; j++)
+					// for (var j = 0; j < groupItems.length; j++)
+					for (var g = groupItems.length-1; g > -1; g--)
 					{
-						targetItem = _loopItems(groupItems[j]);
-						if(targetItem) break;
+						var targetGroupItem = _loopItems(groupItems[g], itemNameStr, tagNameStr, firstMatch);
+						if(targetGroupItem)
+						{ 
+							if(firstMatch) return targetGroupItem;
+							else matchedItems.push(targetGroupItem);
+						}
+					}
+					if(matchedItems.length == 1)
+					{
+						targetItem = matchedItems[0];
+						return targetItem;
+					}
+				}
+
+				// if multiple matches, target objects with tags
+				if((matchedItems.length > 1) && tagNameStr)
+				{
+					// for (var m = 0; m < matchedItems.length; m++)
+					for (var m = matchedItems.length-1; m > -1; m--)
+					{
+						var match = matchedItems[m];
+						var tags = match.tags;
+						if(tags.length)
+						{
+							for (var t = 0; t < tags.length; t++)
+							{
+								var tag = tags[t];
+								if(tag)
+								{
+									if(tag[0] == tagNameStr)
+									{
+										if(tag[1])
+										{
+											if(tag[1].length)
+											{
+												targetItem = match;
+												return targetItem;
+												// break;
+											}
+										}
+									}
+								}
+							}
+						}
 					}
 				}
 				return targetItem;
 			}
 
-			// from PageItems collection, find pathitem with specific name
+			// find pathitem with specific name
 			var pageItems = Pslib.getItemsOverlapArtboard( itemCollection, artboard, true );
 
 			for (var i = 0; i < pageItems.length; i++)
 			{
 				var item = pageItems[i];
-				var match = _loopItems(item);
+				var match = _loopItems(item, nameStr, tagNameStr, firstMatch);
 				if(match)
 				{
 					targetItem = item;
@@ -11316,7 +11364,9 @@ Pslib.getArtboardItem = function( artboard, nameStr, itemCollection )
 		}
 		else
 		{
-			// this is significantly longer to process + fires selection events (avoid when possible)
+			// attempt to find target by actively scanning content (avoid when possible)
+			// - this is significantly longer to process
+			// - selection triggers events that will affect 
 			doc.selectObjectsOnActiveArtboard();
 			var selection = doc.selection;
 		
@@ -11330,7 +11380,8 @@ Pslib.getArtboardItem = function( artboard, nameStr, itemCollection )
 					if( i == 0 && selection.length == 1 && item.typename == "GroupItem")
 					{
 						// enter isolation mode
-						item.isIsolated = true;
+						if(activate) item.isIsolated = true;
+
 						var groupItems = item.pageItems;
 						for (var j = 0; j < groupItems.length; j++)
 						{
@@ -11338,20 +11389,18 @@ Pslib.getArtboardItem = function( artboard, nameStr, itemCollection )
 							if(subItem.name == nameStr)
 							{
 								targetItem = subItem;
-								found = true;
-								doc.selection = subItem;
+								if(activate) doc.selection = subItem;
 								break;
 							}
 						}
 		
 						// exit isolation mode
-						item.isIsolated = false;
+						if(activate) item.isIsolated = false;
 					}
-					else if(item.name == nameStr)
+					else if(item.typename == "PathItem" && item.name == nameStr)
 					{
 						targetItem = item;
-						found = true;
-						doc.selection = item;
+						if(activate) doc.selection = item;
 						break;
 					}
 				}
@@ -11445,7 +11494,7 @@ Pslib.getInfosForTaggedItems = function(itemCollection, pageItemType, nameStr, t
 					for (var t = 0; t < itemTags.length; t++)
 					{
 						var tag = itemTags[t];
-						if(tag[1]) { 
+						if(tag[1].length) { 
 							var tagSet = [tag[0], tag[1]];
 							// if(tag[2] != undefined) tagSet.push(tag[2]);
 							filteredTags.push(tagSet); 

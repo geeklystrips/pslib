@@ -66,7 +66,7 @@ if(typeof JSUI !== "object")
 }
 
 // version
-JSUI.version = "1.0.1";
+JSUI.version = "1.0.3";
 
 // do some of the stuff differently depending on $.level and software version
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -6040,6 +6040,7 @@ JSUI.quickLog = function(obj, arrDepthInt, msgStr)
 	{
 		// if(!obj) return;
 		if(obj == undefined) return;
+		var resultStr = "";
 
 		if( msgStr == undefined && (typeof arrDepthInt == "string")) 
 		{
@@ -6047,24 +6048,41 @@ JSUI.quickLog = function(obj, arrDepthInt, msgStr)
 			arrDepthInt = 0;
 		}
 
-		if(obj == null)
+		// if(msgStr == undefined)
+		// {
+		// 	return;
+		// }
+
+		$.writeln(obj);
+		$.writeln(msgStr);
+
+		if(obj === 0)
 		{	
-			JSUI.quickLog("null", arrDepthInt, msgStr);
+			return JSUI.quickLog("0", arrDepthInt, msgStr);
 		}
 
-		if(arrDepthInt == undefined) arrDepthInt = 0;
+		if(obj === null)
+		{	
+			return JSUI.quickLog("null", arrDepthInt, msgStr);
+		}
+
+		if(arrDepthInt === undefined) arrDepthInt = 0;
 		var indent = "";
 		for(var i = 1; i < arrDepthInt; i++)
 		{
 			indent += "\t";
 		}
 
-		if(msgStr && (arrDepthInt == 0)) $.writeln( msgStr );
+		if(msgStr && (arrDepthInt === 0))
+		{ 
+			$.writeln( msgStr );
+			return msgStr;
+		}
 
 		if(obj instanceof Object)
 		{
 			if(JSUI.isObjectEmpty(obj)) { $.writeln(JSON.stringify(obj, null, "\t")); return; }
-			$.writeln(JSON.stringify(obj, null, "\t"));
+			else $.writeln(JSON.stringify(obj, null, "\t"));
 		}
 		else if(obj instanceof Array)
 		{
@@ -6074,20 +6092,30 @@ JSUI.quickLog = function(obj, arrDepthInt, msgStr)
 				var arrItem = obj[i];
 				if(arrItem instanceof Object || arrItem instanceof Array)
 				{
-					JSUI.quickLog(arrItem, arrDepthInt);
+					var arrStr = JSUI.quickLog(arrItem, arrDepthInt);
+					resultStr += arrStr;
 				}
 				else
 				{
-					$.writeln(indent+arrItem+ "    " + (typeof arrItem).toUpperCase());
+					var objStr = (indent+arrItem+ "    " + (typeof arrItem).toUpperCase());
+					$.writeln(objStr);
+					resultStr += objStr;
 				}
 			}
-			$.writeln(indent+"]");
+			var indentStr = (indent+"]");
+			$.writeln(indentStr);
+			resultStr += indentStr;
 		}
+		// assume string/number/boolean
 		else
 		{
-			$.writeln(indent+obj+ "    " + (typeof obj).toUpperCase());
+			var simpleTypeStr = (indent+obj+ "    " + (typeof obj).toUpperCase());
+			$.writeln(simpleTypeStr);
+			resultStr += simpleTypeStr;
 		}
+		return resultStr;
 	}
+	else return "";
 };
 
 // high resolution timer -- used twice in a row to make sure that we are not working with a rogue / leak
@@ -6834,14 +6862,22 @@ String.prototype.toRangesStr = function()
 	return this.toRangesArr().toSimplifiedString();
 }
 
-// Instant MATH, just add .prototype, teehee
-
 Number.prototype.clamp = function(min, max)
 {
     var n = this.valueOf();
     if(min == undefined || max == undefined) return n;
 	if(n < min) n = min;
 	if(n > max) n = max;
+	return n;
+};
+
+Number.prototype.adjustFloatPrecision = function(tolerance)
+{
+	if(tolerance == undefined) tolerance = 0.0001;
+    var n = this.valueOf();
+	var round = Math.round(n);
+	var delta = Math.abs(round-n);
+	if(delta <= tolerance) n = round;
 	return n;
 };
 
