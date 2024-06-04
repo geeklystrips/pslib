@@ -106,12 +106,14 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.85;
+Pslib.version = 0.86;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
 Pslib.isInDesign = app.name == "Adobe InDesign";
 Pslib.isBridge = app.name == "Adobe Bridge";
+
+Pslib.isDebugging = ($.level > 0);
 
 Pslib.isWindows = $.os.match(/windows/i) == "Windows";
 Pslib.isPs64bits = Pslib.isPhotoshop ? (Pslib.isWindows ? BridgeTalk.appVersion.match(/\d\d$/) == '64' : true) : false; // macOS assumed x64
@@ -270,7 +272,8 @@ if(Pslib.isPhotoshop)
 
         // if(obj.hasOwnProperty("tags"))
         // if(!isEmptyObject(dictionary))
-        if(!JSUI.isObjectEmpty(dictionary))
+        // if(!JSUI.isObjectEmpty(dictionary))
+        if(!dictionary.isEmpty(dictionary))
         {
             obj.tags = dictionary;
         }
@@ -1344,7 +1347,6 @@ Pslib.swapXmpNamespace = function( target, ns, prefix, newNs, newPrefix, silent 
 					for(var i = 0; i < conflicts.length; i++)
 					{
 						xmp.deleteProperty(ns, conflicts[i]);
-						// JSUI.quickLog("deleted "+prefix+conflicts[i]);
 					}
 				}
 				else
@@ -1353,7 +1355,6 @@ Pslib.swapXmpNamespace = function( target, ns, prefix, newNs, newPrefix, silent 
 					for(var i = 0; i < conflicts.length; i++)
 					{
 						xmp.deleteProperty(newNs, conflicts[i]);
-						// JSUI.quickLog("deleted "+newPrefix+conflicts[i]);
 					}
 				}
 
@@ -1391,7 +1392,6 @@ Pslib.swapXmpNamespace = function( target, ns, prefix, newNs, newPrefix, silent 
 				xmpStr = xmpStr.replace(closingTagMatch, '</'+newPrefix);
 			}
 
-			// JSUI.quickLog(xmpStr);
 			xmp = new XMPMeta(xmpStr);
 			if(Pslib.isPhotoshop) target.xmpMetadata.rawData = xmp.serialize();
 			else if(Pslib.isIllustrator) target.XMPString = xmp.serialize();
@@ -1404,7 +1404,6 @@ Pslib.swapXmpNamespace = function( target, ns, prefix, newNs, newPrefix, silent 
     }
     
     // var allNsProperties = Pslib.getAllNsPropertiesArray(xmp, ns, false);
-    // JSUI.quickLog(allNsProperties);
 
     // should also account for layer-based XMP
 
@@ -1819,7 +1818,6 @@ Pslib.pushDataCollectionToOrderedArray = function( obj )
     if(!obj.requiredQualifiers) obj.requiredQualifiers = Pslib.requiredAssetQualifiers; // default:  [ [ "assetID", null ] ];
     if(!obj.converter) obj.converter = Pslib.assetKeyConversionArr; // default is empty array, no conversion
     if(!obj.namespace) obj.namespace = Pslib.XMPNAMESPACE;
-	// if(!obj.secondaryNamespace) obj.secondaryNamespace = Pslib.SECONDARYXMPNAMESPACE;
 	if(!obj.secondaryNamespace) obj.secondaryNamespace = obj.namespace;
 
     if(obj.deleteExisting == undefined) obj.deleteExisting = false;
@@ -1835,16 +1833,12 @@ Pslib.pushDataCollectionToOrderedArray = function( obj )
         {
             itemCount = obj.xmp.countArrayItems(obj.namespace, obj.arrNameStr);
             obj.xmp.deleteProperty(obj.namespace, obj.arrNameStr);
-            // JSUI.quickLog("deleted " + itemCount+ " array items");
         }
         else
         {
             // if there is existing data that we need to keep and work with, get it here
             preExistingArrayItems = Pslib.getDataCollectionFromOrderedArray( obj );
-            
             itemCount = obj.xmp.countArrayItems(obj.namespace, obj.arrNameStr);
-
-            // JSUI.quickLog(preExistingArrayItems, "\npreExistingArrayItems items: " +(preExistingArrayItems.length));
         }
     }
 
@@ -1852,18 +1846,12 @@ Pslib.pushDataCollectionToOrderedArray = function( obj )
     if(obj.artboardObjArr.length)
     {
         obj.artboardObjArr = Pslib.getAdvancedSpecs(obj.artboardObjArr, { dictionary: Pslib.arrayToObj(obj.requiredQualifiers), converter: obj.converter });
-        // obj.artboardObjArr = Pslib.filterDataObjectArray(obj.artboardObjArr, obj.converter);
-        // JSUI.quickLog(obj.artboardObjArr, "\nobj.artboardObjArr: " +(obj.artboardObjArr.length));
-
     }
 
     // obj.existingArrayItems allows passing an arbitrary number of items taken from the same document, or another source.
     if(obj.existingArrayItems.length)
     {
         obj.existingArrayItems = Pslib.getAdvancedSpecs(obj.existingArrayItems, { dictionary: Pslib.arrayToObj(obj.requiredQualifiers), converter: obj.converter });
-        // obj.existingArrayItems = Pslib.filterDataObjectArray(obj.existingArrayItems);
-
-        // JSUI.quickLog(obj.existingArrayItems, "\nobj.existingArrayItems: " +(obj.existingArrayItems.length));
     }
 
     // add existing stuff to new array...?
@@ -1943,15 +1931,12 @@ Pslib.pushDataCollectionToOrderedArray = function( obj )
         for(var i = 0; i < preExistingArrayItems.length; i++)
         {
             seqArrayItems.push(preExistingArrayItems[i]);
-            // JSUI.quickLog(preExistingArrayItems[i]);
         }
     }
-    // JSUI.quickLog(seqArrayItems, "\nCurrent Harvest: " +(seqArrayItems.length));
 
     for(var i = 0; i < obj.existingArrayItems.length; i++)
     {
         seqArrayItems.push(obj.existingArrayItems[i]);
-        // JSUI.quickLog(obj.existingArrayItems[i]);
     }
 
     // reorder array based on value of property "assetArtboardID"
@@ -1960,7 +1945,6 @@ Pslib.pushDataCollectionToOrderedArray = function( obj )
 
     if(seqArrayItems.length)
     {
-        // JSUI.quickLog("Pushing " + seqArrayItems.length + " item"+(seqArrayItems.length > 1 ? "s" : "")+" to \"" + obj.arrNameStr + "\"");
         obj.xmp = Pslib.setOrderedArray(obj.xmp, obj.arrNameStr, seqArrayItems, obj.namespace, obj.secondaryNamespace); //, "artboard");
         xmpUpdated = true;
     }
@@ -2166,188 +2150,6 @@ Pslib.getDocTextLayers = function( xmp )
 
 // // var fontsObj = Pslib.getLeafNodesObj(xmp, xmpTpg_NS, property, stFnt_NS, qualifiers);
 
-// Pslib.getLeafNodesObj = function(xmp, ns, property, leafNs, qualifiersArr)
-// {
-// 	if(!xmp) return;
-// 	if(!ns) return;
-// 	if(!property) return;
-// 	if(!leafNs) return;
-// 	if(!qualifiersArr) return;
-
-// 	var arr = Pslib.getLeafNodesArr(xmp, ns, property, leafNs, qualifiersArr);
-// 	var objArr = [];
-// 	// JSUI.quickLog(arr);
-
-// 	for(var i = 0; i < arr.length; i++ )
-// 	{
-// 		// var obj = {};
-// 		var item = arr[i];
-		
-// 		if(item instanceof Array)
-// 		{
-// 			var obj = {};    
-
-// 			// // prepare extra array for structs list
-// 			// var structsArr = [];
-
-// 			// JSUI.quickLog(i);
-
-// 			for(var a = 0; a < item.length; a++ )
-// 			{           
-// 				// var obj = {};     
-// 				var it = item[a];
-// 				if(item instanceof Array)
-// 				{
-// 					var itHasLength = it.length > 0;
-// 					var firstItIsStr = itHasLength ? typeof it[0] == "string" : false;
-// 					var secondItIsStr = itHasLength ? typeof it[1] == "string" : false;
-// 					var secondItIsArr = itHasLength ? it[1] instanceof Array : false;
-
-// 					// JSUI.quickLog("firstItIsStr: " + firstItIsStr + " secondItIsStr: " + secondItIsStr, i+" "+a);
-
-// 					if(firstItIsStr && secondItIsArr)
-// 					{
-// 						// prepare extra array for structs list
-// 						var structsArr = [];
-// 						// var struct = {};
-// 						for(var b = 0; b < it[1].length; b++ )
-// 						{
-// 							var nested = it[1][b];
-// 							JSUI.quickLog(nested);
-
-// 							// convert to nested struct
-// 							// var objFromArr = nested.convertToObject( true, false );
-
-// 							// // obj[it[0]] = objFromArr; 
-// 							// structsArr.push(objFromArr);
-// 							// JSUI.quickLog(objFromArr, i+" "+a + " pushing object");
-// 						}
-// 						// var objFromArr = nested.convertToObject( true, false );
-
-// 						// obj[it[0]] = objFromArr; 
-// 						structsArr.push(objFromArr);
-
-// 						if(structsArr.length) obj[it[0]] = structsArr;
-
-// 						// // convert to nested struct
-// 						// var objFromArr = it[1].convertToObject( true, false );
-
-// 						// // obj[it[0]] = objFromArr; 
-// 						// structsArr.push(objFromArr);
-// 						// JSUI.quickLog(objFromArr, i+" "+a + " pushing object");
-// 					}
-// 					else //if(firstItIsStr && secondItIsStr)
-// 					{
-// 						// convert to simple object
-// 						obj = item.convertToObject( true, false );
-// 					}
-
-// 					// objArr.push(obj);
-// 					// JSUI.quickLog(obj);
-// 				}
-// 				// if(structsArr.length) obj[it[0]] = structsArr;
-// 				// objArr.push(obj);
-// 				// JSUI.quickLog(obj);
-// 			}
-// 			// if(structsArr.length) obj[it[0]] = structsArr;
-
-
-// 			objArr.push(obj);
-// 			// JSUI.quickLog(obj);
-// 		} 
-// 		// objArr.push(obj);
-// 		// JSUI.quickLog(obj);
-// 	}
-// 	// JSUI.quickLog(objArr);
-// 	return objArr;
-// }
-
-// Pslib.getLeafNodesArr = function(xmp, ns, property, leafNs, qualifiersArr)
-// {
-// 	if(!xmp) return;
-// 	if(!ns) return;
-// 	if(!property) return;
-// 	if(!leafNs) return;
-// 	if(!qualifiersArr) return;
-
-// 	var biDimArr = [];
-// 	var propertyExists = xmp.doesPropertyExist(ns, property);
-
-// 	if(propertyExists)
-// 	{
-// 		var leafNsPrefix = XMPMeta.getNamespacePrefix(leafNs);
-// 		if(!leafNsPrefix)
-// 		{
-// 			return;
-// 		}
-
-// 		var itemsCount = xmp.countArrayItems(ns, property);
-// 		for(var i = 1; i <= itemsCount; i++)
-// 		{
-// 			var itemArr = [];
-
-// 			for(var q = 0; q < qualifiersArr.length; q++)
-// 			{
-// 				var qualifier = qualifiersArr[q];
-// 				var qualifierPath;
-// 				var leafNodeStr;
-
-// 				if(qualifier instanceof Array)
-// 				{
-// 					if(typeof qualifier[0] == "string" && qualifier[1] instanceof Array)
-// 					{
-// 						var arrQualifierPath = (property+"["+i+"]/"+leafNsPrefix+qualifier[0]);
-// 						var qualifiersItemsCount = xmp.countArrayItems(ns, arrQualifierPath);
-// 						var structContainer = [ qualifier[0] ];
-// 						for(var s = 1; s <= qualifiersItemsCount; s++)
-// 						{
-// 							if($.level) $.writeln("");
-// 							var qualifiersItemsArr = qualifier[1];
-// 							var subItemArr = [];
-
-// 							for(var sq = 0; sq < qualifiersItemsArr.length; sq++)
-// 							{
-// 								var subQualifier = qualifiersItemsArr[sq];
-// 								var subArrQualifierPath = arrQualifierPath+"["+s+"]/"+leafNsPrefix+subQualifier;
-// 								var subPropertyExists = xmp.doesPropertyExist(ns, subArrQualifierPath);
-// 								if(subPropertyExists)
-// 								{
-// 									var subLeafNodeStr = xmp.getProperty(ns, subArrQualifierPath).toString();
-
-// 									if(subLeafNodeStr != undefined)
-// 									{
-// 										subItemArr.push([ subQualifier, subLeafNodeStr ]);
-// 									}
-// 								}
-// 							}
-// 							if(subItemArr.length) structContainer.push( subItemArr );
-// 						}
-// 						if(structContainer.length) itemArr.push(structContainer);
-// 					}
-// 				}
-// 				else
-// 				{
-// 					// default for getting items
-// 					qualifierPath = (property+"["+i+"]/"+leafNsPrefix+qualifier);
-// 					var subPropertyExists = xmp.doesPropertyExist(ns, qualifierPath);
-// 					if(subPropertyExists)
-// 					{
-// 						leafNodeStr = xmp.getProperty(ns, qualifierPath).toString();
-
-// 						if(leafNodeStr != undefined)
-// 						{
-// 							itemArr.push([qualifier, leafNodeStr]);
-// 						}
-// 					}
-// 				}
-// 			}
-// 			if(itemArr.length) biDimArr.push(itemArr);
-// 		}    
-// 	}
-// 	return biDimArr;
-// }
-    
-
 // convert list of bidimensional qualifiers-value arrays to individual objects from XMP
 // getting fonts listed in illustrator document XMP
 	// var xmp = Pslib.getXmp(app.activeDocument);
@@ -2367,7 +2169,6 @@ Pslib.getDocTextLayers = function( xmp )
         if(!qualifiersArr) return;
     
         var arr = Pslib.getLeafNodesArr(xmp, ns, property, leafNs, qualifiersArr);
-		// JSUI.quickLog(arr, "getLeafNodesArr");
 		return arr;
 
         var objArr = [];
@@ -2388,7 +2189,7 @@ Pslib.getDocTextLayers = function( xmp )
 					
 					var prop = it[0];
 					var val = it[1];
-					// JSUI.quickLog(prop+": "+val);
+					// Pslib.log(prop+": "+val);
 
                     var firstItIsStr = itHasLength ? typeof prop == "string" : false;
                     var secondItIsStr = itHasLength ? typeof val == "string" : false;
@@ -2401,11 +2202,9 @@ Pslib.getDocTextLayers = function( xmp )
 						{
 							var qualArr = it[b];
 							var qualObj = {};
-							// JSUI.quickLog("\t"+b+": ");
 							for(var c = 0; c < qualArr.length; c++ )
 							{
 								var qual = qualArr[c];
-								// JSUI.quickLog("\t\t"+c+": "+qual);
 								qualObj[it[0]] = qual;
 							}
 							qualObjArr.push(qualObj);
@@ -2420,8 +2219,6 @@ Pslib.getDocTextLayers = function( xmp )
                     }
                     else if(firstItIsStr && secondItIsStr)
                     {
-						// JSUI.quickLog(prop);
-						// JSUI.quickLog(val);
                         // convert to simple object
                         obj = item.convertToObject( true, false );
                     }
@@ -2456,7 +2253,6 @@ Pslib.getDocTextLayers = function( xmp )
             }
 
             var itemsCount = xmp.countArrayItems(ns, property);
-			// JSUI.quickLog("Counted " + itemsCount + " items");
 
             for(var i = 1; i <= itemsCount; i++)
             {
@@ -2511,7 +2307,7 @@ Pslib.getDocTextLayers = function( xmp )
 						// try
 						// {
 						// 	structFieldExists = xmp.doesStructFieldExist(ns, qualifierPath, leafNs, qualifier);
-						// 	JSUI.quickLog("structFieldExists: " + structFieldExists);
+						// 	Pslib.log("structFieldExists: " + structFieldExists);
 						// }
 						// catch(e)
 						// {
@@ -2537,11 +2333,7 @@ Pslib.getDocTextLayers = function( xmp )
 						// if qualifier found, must be a Seq
 						if(qualifierExists)
 						{
-							// JSUI.quickLog("Qualifier found: " + qualifierPath);
-							
 							// this is how you get details for Seq (ordered) array items
-
-							// qualifierPath = (property+"["+i+"]/"+leafNsPrefix+qualifier);
 							leafNodeStr = xmp.getQualifier(ns, property+"["+i+"]", leafNs, qualifier).toString();
 
 							leafNodeStr = Pslib.autoTypeDataValue(leafNodeStr, false, false); // empty string allowed, null not allowed 
@@ -2553,8 +2345,6 @@ Pslib.getDocTextLayers = function( xmp )
 						// if qualifier not found, assume we are working with a Bag
 						else
 						{
-							// JSUI.quickLog("Qualifier NOT FOUND: " + qualifierPath);
-
 							// this is how you get details for Bag (unordered) array items
 
 							// <xmpTPg:Fonts>
@@ -2872,7 +2662,7 @@ Pslib.packageDocument = function( obj )
     
     // var docSpecs = Pslib.getDocumentSpecs();
     // var jsonAssetsObj = Pslib.artboardCollectionCoordsToJsonFile(undefined, docSpecs, true); // exports JSON file
-    var jsonAssetsObjArr = Pslib.getArtboardCollectionCoordinates(); // only math, no tags here
+    var jsonAssetsObjArr = Pslib.getArtboardCollectionCoordinates( undefined, true ); // only math, no tags here
     // var jsonAssetsObjArr = [];
 	
 	if(obj.advanced)
@@ -2921,9 +2711,7 @@ Pslib.packageDocument = function( obj )
                 // select artboard by id
                 // var artboard = Pslib.selectLayerByID( asset.id, false );
                 // tags = Pslib.getXmpProperties(artboard, obj.tags, obj.namespace);
-				tags = Pslib.getXmpProperties( asset.id, obj.tags, obj.tagsNamespace ? obj.tagsNamespace : obj.namespace); // much faster!
-
-                // JSUI.quickLog(tags);
+				tags = Pslib.getXmpProperties( asset.id, obj.tags, obj.tagsNamespace ? obj.tagsNamespace : obj.namespace); 
             }
             else if(Pslib.isIllustrator)
             {
@@ -3164,9 +2952,7 @@ Pslib.packageDocument = function( obj )
                 var name = artboardNameStr;
                 var value = contentStr;
 
-                // newXmp.setProperty(Pslib.SECONDARYXMPNAMESPACE, name, value, 0, XMPConst.STRING);
                 newXmp.setProperty(obj.simplePropertiesNamespace, name, value, 0, XMPConst.STRING);
-                 // JSUI.quickLog(name + "\t" + value); 
             }
 
            // prepare struct fields for ordered array
@@ -3196,11 +2982,8 @@ Pslib.packageDocument = function( obj )
 
         if($.level) $.writeln( "  </rdf:Seq>\n</"+obj.namespacePrefix+obj.propertyName+">\n" ); 
 
-        // JSUI.quickLog(name + "\t" + value);
 
         // write ordered struct fields array
-
-        // var added = Pslib.addXmpPropertiesToFile(mediaFileOutput, new XMPMeta(), undefined, propertiesArr); // this works for a single asset file
         var added = Pslib.writeXMPtoMediaFile( mediaFileOutput, newXmp );
 
 		if(obj.includeSVG)
@@ -4229,7 +4012,6 @@ Pslib.isArtboard = function( layerObject )
 		else if((dtype == "object"))
 		{
 			var str = Pslib.getDescriptorKeyValues( layerObject );
-			// JSUI.quickLog(str);
 
 			if(layerObject == doc.activeLayer)
 			{
@@ -4237,8 +4019,6 @@ Pslib.isArtboard = function( layerObject )
 			}
 			else if( layerObject instanceof Object)
 			{
-				// alert("Object is a layer!");
-				// JSUI.quickLog("typename: " + layerObject.typename );
 				var tname = layerObject.typename;
 
 				if(tname == "ActionDescriptor")
@@ -4247,7 +4027,6 @@ Pslib.isArtboard = function( layerObject )
 				}
 				else
 				{
-					// alert("is not remote layer!")
 					// last resort, do use active layer
 					var storedActiveLayer = doc.activeLayer;
 					doc.activeLayer = layerObject;
@@ -4874,7 +4653,7 @@ Pslib.getXmpFromContainers = function( containersArr )
 			// var desc = Pslib.getLayerDescriptorByID(id);
 			// var layerName = desc.getString(sTID("name"));
 
-			// JSUI.quickLog(id + ": " + layerName);
+			// Pslib.log(id + ": " + layerName);
 		}
 	}
 
@@ -5128,6 +4907,7 @@ Pslib.getSpecsForAllArtboards = function(onlyIDs)
 {
 	if(!app.documents.length) return;
 	var doc = app.activeDocument;
+	// if(onlyIds == undefined) var onlyIDs = false;
 
 	if(Pslib.isPhotoshop)
 	{
@@ -5137,8 +4917,6 @@ Pslib.getSpecsForAllArtboards = function(onlyIDs)
 		var artboards = [];
 		for (var i = from; i <= to; i++)
 		{
-			// (r = new ActionReference()).putProperty(sTID("property"), p = sTID('artboardEnabled'));
-
 			var r = new ActionReference();
 			r.putProperty(sTID('property'), sTID('artboardEnabled'));
 			r.putIndex(sTID('layer'), i);
@@ -5149,10 +4927,8 @@ Pslib.getSpecsForAllArtboards = function(onlyIDs)
 				artboardEnabled = executeActionGet(r).getBoolean(sTID('artboardEnabled'));
 			} catch(e) { };
 
-			if (artboardEnabled) {
-				// (r = new ActionReference()).putProperty(sTID("property"), p = sTID('artboard'));
-				// r.putIndex(sTID("layer"), i);
-	
+			if (artboardEnabled)
+			{
 				// get artboard name
 				var ref = new ActionReference();
 				ref.putIndex( cTID( "Lyr " ), i);
@@ -5173,8 +4949,9 @@ Pslib.getSpecsForAllArtboards = function(onlyIDs)
 						right: artboardRect.getDouble(sTID('right')),
 						bottom: artboardRect.getDouble(sTID('bottom'))
 					};
+
 				artboards.push({ name: artboardName, index: i, id: artboardID, x: bounds.left, y: bounds.top, width: bounds.right - bounds.left, height: bounds.bottom - bounds.top });
-			 }
+			}
 		}
 	
 		return artboards;
@@ -5242,7 +5019,6 @@ Pslib.getSpecsForAllArtboards = function(onlyIDs)
 
 		if(initialSelection) doc.selection = initialSelection;
 
-		// JSUI.quickLog(artboardsCoords);
 		return artboardsCoords;
 	}
 }
@@ -5299,50 +5075,80 @@ Pslib.getAdvancedSpecs = function( specsArr, obj )
 	if(!app.documents.length) return;
 	var doc = app.activeDocument;
 
-	// if(Pslib.isPhotoshop)
-	// {
-		// if(!specsArr) specsArr = Pslib.isPhotoshop ? Pslib.getSpecsForSelectedArtboards() : Pslib.getArtboardCollectionCoordinates(); // this still needs to be finetuned for illustrator
-		if(!specsArr) specsArr = Pslib.getSpecsForSelectedArtboards();
-		if(!obj) obj = {};
-		if(!obj.dictionary) obj.dictionary = Pslib.arrayToObj(Pslib.assetKeyValuePairs);
-		if(!obj.namespace) obj.namespace = Pslib.XMPNAMESPACE;
-		if(!obj.converter) obj.converter = Pslib.assetKeyConversionArr; 
+	// if(!specsArr) specsArr = Pslib.isPhotoshop ? Pslib.getSpecsForSelectedArtboards() : Pslib.getArtboardCollectionCoordinates(); // this still needs to be finetuned for illustrator
+	if(!specsArr) specsArr = Pslib.getSpecsForSelectedArtboards();
+	if(!obj) obj = {};
+	if(!obj.dictionary) obj.dictionary = Pslib.arrayToObj(Pslib.assetKeyValuePairs);
+	if(!obj.namespace) obj.namespace = Pslib.XMPNAMESPACE;
+	if(!obj.converter) obj.converter = Pslib.assetKeyConversionArr; 
 
-		var initialSelection;
-		if(Pslib.isIllustrator) initialSelection = doc.selection;
-		var updatedSpecsArr = [];
+	var initialSelection;
+	if(Pslib.isIllustrator) initialSelection = doc.selection;
+	var updatedSpecsArr = [];
 
-		for(var i = 0; i < specsArr.length; i++)
+	for(var i = 0; i < specsArr.length; i++)
+	{
+		var specsObj = specsArr[i];
+		var layerObj;
+
+		if(obj.dictionary)
 		{
-			var specsObj = specsArr[i];
-			// var layerObj = Pslib.isPhotoshop ? Pslib.selectLayerByID( specsObj.id, false ) : ;
-			// var layerObj = Pslib.selectLayerByID( specsObj.id, false ); // illustrator purposefully returns undefined
-			var layerObj;
+			var keyValuePairs = Pslib.getXmpDictionary( Pslib.isPhotoshop ? specsObj.id : layerObj, obj.dictionary, false, false, false, obj.namespace);
 
-			if(obj.dictionary)
+			if(obj.dictionary instanceof Array)
 			{
-				// Pslib.assetKeyValuePairs = [ [ "assetID", null ], [ "index", null ] ];
-				// Pslib.isPhotoshop ? 
-				// if(Pslib.isIllustrator) Pslib.getArtboardCoordinates(originalArtboard)
-				// var keyValuePairs = Pslib.isPhotoshop ? Pslib.getXmpDictionary( layerObj, obj.dictionary, false, false, false, obj.namespace) : ( [ /* get artboard item tags */ ] );
-				var keyValuePairs = Pslib.getXmpDictionary( Pslib.isPhotoshop ? specsObj.id : layerObj, obj.dictionary, false, false, false, obj.namespace);
-				// var keyValuePairs = Pslib.getXmpDictionary( layerObj, Pslib.assetKeyValuePairs, false, false, false, obj.namespace ? obj.namespace : Pslib.XMPNAMESPACE);
-				// JSUI.quickLog(keyValuePairs, layerObj.name + " keyValuePairs "+(typeof keyValuePairs)+": ");
-
-				if(obj.dictionary instanceof Array)
+				for(var j = 0; j < keyValuePairs.length; j++)
 				{
-					for(var j = 0; j < keyValuePairs.length; j++)
+					var pair = keyValuePairs[j];
+					if(!pair) continue;
+
+					var property = pair[0];
+					var value = pair[1];
+
+					if(property != undefined)
 					{
-						var pair = keyValuePairs[j];
-						// if($.level) $.writeln("pair: " + pair );
-						if(!pair) continue;
-
-						var property = pair[0];
-						var value = pair[1];
-
-						if(property != undefined)
+						if(value != undefined)
 						{
-							if(value != undefined)
+							// convert item property name to xmp qualifier here
+							// converter: [ [ "layerProperty", "docArrayItemQualifier"] ]
+							if(obj.converter != undefined)
+							{
+								if(obj.converter instanceof Array)
+								{
+									for(var k = 0; k < obj.converter.length; k++)
+									{
+										if(obj.converter[k][0] == property)
+										{
+											property = obj.converter[k][1];
+										}
+									}
+								}
+							}
+
+							specsObj[property] = value;
+						}
+					}
+				}
+			}
+			else if(obj.dictionary instanceof Object)
+			{
+				for (var key in keyValuePairs)
+				{
+					// let's not go further here if Object.prototype function
+					if(keyValuePairs[key] instanceof Function)
+					{
+						continue;
+					}
+					if (key.charAt(0) == '_' || key == "reflect" || key == "Components" || key == "typename")
+					{
+						continue;			
+					}
+					if(keyValuePairs[key] != undefined)
+					{
+						var value = keyValuePairs[key];
+						if(value != undefined)
+						{
+							if(value != null && value != "null")
 							{
 								// convert item property name to xmp qualifier here
 								// converter: [ [ "layerProperty", "docArrayItemQualifier"] ]
@@ -5352,110 +5158,57 @@ Pslib.getAdvancedSpecs = function( specsArr, obj )
 									{
 										for(var k = 0; k < obj.converter.length; k++)
 										{
-											if(obj.converter[k][0] == property)
+											if(obj.converter[k][0] == key)
 											{
-												property = obj.converter[k][1];
+												key = obj.converter[k][1];
 											}
 										}
 									}
 								}
 
-								// if($.level) $.writeln(property +": " + value );
-								specsObj[property] = value;
-							}
-						}
-					}
-				}
-				else if(obj.dictionary instanceof Object)
-				{
-					for (var key in keyValuePairs)
-					{
-						// let's not go further here if Object.prototype function
-						if(keyValuePairs[key] instanceof Function)
-						{
-							continue;
-						}
-						if (key.charAt(0) == '_' || key == "reflect" || key == "Components" || key == "typename")
-						{
-							continue;			
-						}
-						if(keyValuePairs[key] != undefined)
-						{
-							var value = keyValuePairs[key];
-							if(value != undefined)
-							{
-								// if(typeof value != "function")
-								// {
-									if(value != null && value != "null")
-									{
-										// convert item property name to xmp qualifier here
-										// converter: [ [ "layerProperty", "docArrayItemQualifier"] ]
-										if(obj.converter != undefined)
-										{
-											if(obj.converter instanceof Array)
-											{
-												for(var k = 0; k < obj.converter.length; k++)
-												{
-													if(obj.converter[k][0] == key)
-													{
-														key = obj.converter[k][1];
-													}
-												}
-											}
-										}
-
-										specsObj[key] = value;
-										// if($.level) $.writeln("***"+key +": " + value );
-									}
-								// }
+								specsObj[key] = value;
 							}
 						}
 					}
 				}
 			}
-
-			// if custom function object is passed along to do something specific with the current state of the document or layer, execute it here
-			if(obj.customObjFunction != undefined)
-			{
-				specsObj.customResults = obj.customObjFunction();
-			}
-
-			// JSUI.quickLog(specsObj, "Updating...");
-
-			updatedSpecsArr.push(specsObj);
 		}
 
-		// this does not restore the initial illustrator selection 
-		if(Pslib.isPhotoshop)
+		// if custom function object is passed along to do something specific with the current state of the document or layer, execute it here
+		if(obj.customObjFunction != undefined)
 		{
-			// if(Pslib.isPhotoshop)
-			// {
-			// 	// restore selection in layers palette 
-			// 	for(var i = 0; i < specsArr.length; i++)
-			// 	{
-			// 		if(specsArr[i])
-			// 		{
-			// 			if(specsArr[i].id) Pslib.selectLayerByID( specsArr[i].id, true );
-			// 		}
-			// 	}
-			// }
-
-			// Pslib.selectArtboardsCollection(specsArr);
+			specsObj.customResults = obj.customObjFunction();
 		}
-		else if(Pslib.isIllustrator)
+
+		updatedSpecsArr.push(specsObj);
+	}
+
+	// this does not restore the initial illustrator selection 
+	if(Pslib.isPhotoshop)
+	{
+		// if(Pslib.isPhotoshop)
+		// {
+		// 	// restore selection in layers palette 
+		// 	for(var i = 0; i < specsArr.length; i++)
+		// 	{
+		// 		if(specsArr[i])
+		// 		{
+		// 			if(specsArr[i].id) Pslib.selectLayerByID( specsArr[i].id, true );
+		// 		}
+		// 	}
+		// }
+
+		// Pslib.selectArtboardsCollection(specsArr);
+	}
+	else if(Pslib.isIllustrator)
+	{
+		if(initialSelection)
 		{
-			if(initialSelection)
-			{
-				doc.selection = initialSelection;
-			}
+			doc.selection = initialSelection;
 		}
+	}
 
-		return updatedSpecsArr;
-	// }
-	// else if(Pslib.isIllustrator)
-	// {
-
-	// }
+	return updatedSpecsArr;
 }
 
 Pslib.getActiveArtboard = function()
@@ -5587,14 +5340,14 @@ Pslib.getArtboardNames = function( artboards )
 	{
 		if(!artboards)
 		{
-			artboards = app.activeDocument.artboards;
+			var artboards = app.activeDocument.artboards;
 		}
 	}
 	else if(Pslib.isPhotoshop)
 	{
 		if(!artboards)
 		{
-			artboards = Pslib.getSpecsForAllArtboards();
+			var artboards = Pslib.getSpecsForAllArtboards();
 		}
 	}
 
@@ -5833,15 +5586,13 @@ Pslib.getLayerReferenceByID = function( id, obj )
 			id = doc.activeLayer.id;
 		}
 
-        // var r = new ActionReference();    
-        // r.putIdentifier(sTID("layer"), id);
-		// var ref = executeActionGet(r);
 		var ref = Pslib.getLayerDescriptorByID(id);
 
 		if(obj.getCoordsObject)
 		{
-			coords.name = ref.getString(sTID("name"));
+			coords.name = ref.getString(sTID('name'));
 			coords.id = id;
+			if($.level) $.writeln("Photoshop Layer Object reference: " + coords.id);
 
 			// this tells us whether we're dealing with an art layer of with a group/artboard/frame
 			var layerSection = ref.getEnumerationValue(sTID('layerSection'));
@@ -5851,8 +5602,8 @@ Pslib.getLayerReferenceByID = function( id, obj )
 			// if reference object has no parent layer ID, it's nested at the top-level of the document
 			var parentID = ref.getInteger(sTID('parentLayerID'));
 			var isTopLevelLayerObject = parentID < 0; 
-			// JSUI.quickLog("parentID: " + parentID);
-			// JSUI.quickLog("isTopLevelLayerObject: " + isTopLevelLayerObject);
+			// Pslib.log("parentID: " + parentID);
+			// Pslib.log("isTopLevelLayerObject: " + isTopLevelLayerObject);
 
 			var isVisible = ref.getBoolean(cTID( "Vsbl" ));
 			if(!isVisible) coords.visible = isVisible; // only include visibility info if layer object is hidden?
@@ -6120,11 +5871,11 @@ Pslib.getLayerReferenceByID = function( id, obj )
 				coords.width = rect.getDouble(sTID("right")) - coords.x;
 				coords.height = rect.getDouble(sTID("bottom")) - coords.y;
 
-				// if group in a context which includes artboards, coordinates may be those of the parent document
-				if(isGroup)
-				{
-					// JSUI.quickLog( );
-				}
+				// // if group in a context which includes artboards, coordinates may be those of the parent document
+				// if(isGroup)
+				// {
+
+				// }
 
 				var type =  isArtboard ? "artboard" : (isFrame ? "frame" : "group");
 				coords.type = type;
@@ -6149,12 +5900,11 @@ Pslib.getLayerReferenceByID = function( id, obj )
 				try{
 					xmpData = xdesc.getObjectValue(sTID( "metadata" )).getString(sTID( "layerXMP" ));
 				}catch(e){ 
-					// JSUI.quickLog("ERROR GETTING XMP FROM " + coords.id);
+					// Pslib.log("ERROR GETTING XMP FROM " + coords.id);
 				}
 		
 				if(typeof xmpData == "string")
 				{
-					// JSUI.quickLog("\n\n\n"+xmpData+"\n");
 					xmpData = new XMPMeta(xmpData);
 
 					// scan for tags
@@ -6216,7 +5966,7 @@ Pslib.getLayerReferenceByID = function( id, obj )
 		var isClipped = false;
 
 		var index;
-		var itemUUID;
+		var itemUUID = "";
 
 		var selection = doc.selection; // restore selection later 
 
@@ -6241,7 +5991,15 @@ Pslib.getLayerReferenceByID = function( id, obj )
 			if(!isNaN(parseInt(id))) 
 			{
 				itemUUID = id;
-				coords.uuid = itemUUID;
+				if(itemUUID.length)
+				{
+					ref = doc.getPageItemFromUuid(itemUUID);
+					if(ref)
+					{
+						if($.level) $.writeln("Illustrator PageItem ref: " + coords.uuid);
+						coords.uuid = itemUUID;
+					}
+				}
 			}
 		}
 
@@ -6452,7 +6210,6 @@ Pslib.getLayerReferenceByID = function( id, obj )
 			{
 				if(ext == obj.filterExtension)
 				{
-					// JSUI.quickLog("filtering out extension " + ext);
 					coords.name = coords.name.replace(/\.[^\\.]+$/, "");
 				}
 			}
@@ -6460,18 +6217,14 @@ Pslib.getLayerReferenceByID = function( id, obj )
 			{
 				for(var i = 0; i < obj.filterExtension.length; i++)
 				{
-					// JSUI.quickLog("filtering out extension array " + obj.filterExtension[i]);
 					if(obj.filterExtension[i] == ext)
 					{
-						// JSUI.quickLog("\t "+i+ ":"+ ext);
 						coords.name = coords.name.replace(/\.[^\\.]+$/, "");
-						// break;
 					}
 				}
 			}
 			else
 			{
-				// JSUI.quickLog("filtering out ANY extension: " + ext);
 				coords.name = coords.name.replace(/\.[^\\.]+$/, "");
 			}
 
@@ -6776,9 +6529,6 @@ Pslib.isPlacedItem = function( id )
 		var fileReference = sref.getString(sTID('fileReference'));
 		if(fileReference) fileReference = new File(fileReference);
 
-		// JSUI.quickLog("fileReference: " + fileReference);
-		// JSUI.quickLog( isLinked ? "File is linked" : "File is embedded");
-
 		// is placed
 		if(isLinked)
 		{
@@ -6804,13 +6554,11 @@ Pslib.isPlacedItem = function( id )
 					{
 						link = sref.getPath(sTID("link"));
 						link = new File(link);
-						// JSUI.quickLog("ALIASTYPE: " + link);
 						break;
 					}
 					case DescValueType.STRINGTYPE:
 					{
 						link = sref.getString(sTID("link"));
-						// JSUI.quickLog("STRINGTYPE: " + link);
 						break;
 					}
 					default:
@@ -7227,19 +6975,47 @@ Pslib.layerTranslate = function( x, y )
 }
 
 // quickly accessible basic info for all of a document's artboards
-Pslib.getArtboardCollectionCoordinates = function()
+Pslib.getArtboardCollectionCoordinates = function( ids, precise )
 {
 	if(!app.documents.length) return;
+	if(ids == undefined) var ids = [];
+	if(precise == undefined) var precise = false;
+
 	var doc = app.activeDocument;
+
+	var artboardIds = ids;
 	var artboardObjArr = [];
 
 	if(Pslib.isPhotoshop)
 	{
-		artboardObjArr = Pslib.getSpecsForAllArtboards();
+		if(!artboardIds.length)
+		{
+			var artboardObjArr = Pslib.getSpecsForAllArtboards(false);
+			// var artboardObjArr = Pslib.getArtboardCollectionCoordinates();
+			return artboardObjArr;
+
+			// artboardIds = Pslib.getSpecsForAllArtboards(true);
+		}
+
+		for(var i = 0; i < artboardIds.length; i++)
+		{
+			var ref = Pslib.getLayerReferenceByID(artboardIds[i]);
+			// var coords = Pslib.getLayerReferenceByID(artboardIds[i], { getCoordsObject: true } );
+			// var coords = Pslib.getArtboardCoordinates( artboardIds[i], precise );
+			var coords = Pslib.getArtboardCoordinates( ref, precise );
+			artboardObjArr.push(coords);
+		}
 	}
 	else if(Pslib.isIllustrator)
 	{
-		// var artboards = doc.artboards;
+		if(!artboardIds.length)
+		{
+			for(var i = 0; i < doc.artboards.length; i++)
+			{
+				artboardIds.push(i);
+			}
+		}
+
 		app.coordinateSystem = CoordinateSystem.ARTBOARDCOORDINATESYSTEM;
 		
 		// adjustment for illustrator
@@ -7248,11 +7024,15 @@ Pslib.getArtboardCollectionCoordinates = function()
 		var xOffset = -docSpecs.topLeft[0];
 		var yOffset = docSpecs.topLeft[1];
 
-		for(var i = 0; i < doc.artboards.length; i++)
+		// for(var i = 0; i < doc.artboards.length; i++)
+		for(var i = 0; i < artboardIds.length; i++)
 		{
-			var coords = Pslib.getArtboardCoordinates( doc.artboards[i] );
-			var page = i+1;
-			var obj = { name: coords.name, id: i, page: page, width: coords.width, height: coords.height, x: coords.x+xOffset, y: coords.y+yOffset };
+			// var coords = Pslib.getArtboardCoordinates( doc.artboards[i], precise );
+			var coords = Pslib.getArtboardCoordinates( doc.artboards[artboardIds[i]], precise );
+			// var page = i+1;
+			var page = artboardIds[i]+1;
+			// var obj = { name: coords.name, id: i, page: page, width: coords.width, height: coords.height, x: coords.x+xOffset, y: coords.y+yOffset };
+			var obj = { name: coords.name, id: artboardIds[i], page: page, width: coords.width, height: coords.height, x: coords.x+xOffset, y: coords.y+yOffset };
 			artboardObjArr.push(obj);
 		}
 	}
@@ -7428,6 +7208,9 @@ Pslib.getArtboardCoordinates = function( artboard, precise, uuidStr )
 		coords.y = (-rect[1]);
 		coords.width = rect[2] - rect[0];
 		coords.height = Math.abs(rect[3] - rect[1]);
+
+		if(!precise) return coords;
+
 		coords.rect = rect;
 		coords.centerX = coords.x + coords.width/2;
 		coords.centerY = coords.y - coords.height/2;
@@ -7455,8 +7238,9 @@ Pslib.getArtboardCoordinates = function( artboard, precise, uuidStr )
 		var id;
 		var r;
 		var coords = {};
+		var isDescriptor = false;
 
-		if(!artboard)
+		if(artboard == undefined)
 		{ 
 			var layer = doc.activeLayer;
 			if(!Pslib.isArtboard(layer))
@@ -7469,28 +7253,37 @@ Pslib.getArtboardCoordinates = function( artboard, precise, uuidStr )
 		{
 			id = artboard;
 		}
+		// if object, assume layer descriptor
+		else if(typeof artboard == "object")
+		{
+			isDescriptor = true;
+		}
 		else
 		{
 			return {};
 		}
 
-        r = Pslib.getArtboardReferenceByID(id);
+        r = isDescriptor ? artboard : Pslib.getArtboardReferenceByID(id);
 
         if(r)
         {
-            var d = r.getObjectValue(sTID("artboard")).getObjectValue(sTID("artboardRect"));
+            var d = r.getObjectValue(sTID('artboard')).getObjectValue(sTID('artboardRect'));
             var bounds = new Array();
-            bounds[0] = d.getUnitDoubleValue(sTID("top"));
-            bounds[1] = d.getUnitDoubleValue(sTID("left"));
-            bounds[2] = d.getUnitDoubleValue(sTID("right"));
-            bounds[3] = d.getUnitDoubleValue(sTID("bottom"));
+            bounds[0] = d.getUnitDoubleValue(sTID('top'));
+            bounds[1] = d.getUnitDoubleValue(sTID('left'));
+            bounds[2] = d.getUnitDoubleValue(sTID('right'));
+            bounds[3] = d.getUnitDoubleValue(sTID('bottom'));
 
-            coords.name = r.getString(sTID("name")).trim();
-            coords.id = id;
+            coords.name = r.getString(sTID('name')).trim();
+			if(isDescriptor) coords.id = r.getInteger(sTID('layerID'));
+
+            else coords.id = id;
             coords.x = bounds[1];
             coords.y = bounds[0];
 		    coords.width = bounds[2] - bounds[1];
 		    coords.height = bounds[3] - bounds[0];
+
+			if(!precise) return coords;
 
             coords.rect = bounds;
 		    coords.centerX = coords.x + coords.width/2;
@@ -7501,7 +7294,6 @@ Pslib.getArtboardCoordinates = function( artboard, precise, uuidStr )
             coords.isPortrait = coords.width < coords.height;
             coords.isLandscape = coords.width > coords.height;
             coords.hasIntegerCoords = coords.x == Math.round(coords.x) && coords.y == Math.round(coords.y) && coords.width == Math.round(coords.width) && coords.height == Math.round(coords.height);
-
             return coords;
 		}
 	}
@@ -7521,10 +7313,10 @@ Pslib.getArtboardSpecs = function( artboard, uuidStr )
 		var doc = app.activeDocument;
 
 		specs.isPow2 = specs.width.isPowerOf2() && specs.height.isPowerOf2();
-		specs.isMult4 = specs.width.isMult4() && specs.height.isMult4();
-		specs.isMult8 = specs.width.isMult8() && specs.height.isMult8();
-		specs.isMult16 = specs.width.isMult16() && specs.height.isMult16();
-		specs.isMult32 = specs.width.isMult32() && specs.height.isMult32();
+		specs.isMult4 = specs.width.isMultOf(4) && specs.height.isMultOf(4);
+		specs.isMult8 = specs.width.isMultOf(8) && specs.height.isMultOf(8);
+		specs.isMult16 = specs.width.isMultOf(16) && specs.height.isMultOf(16);
+		specs.isMult32 = specs.width.isMultOf(32) && specs.height.isMultOf(32);
 
 		// if active, select items and harvest more information
 		if(isActive)
@@ -7579,10 +7371,10 @@ Pslib.getArtboardSpecs = function( artboard, uuidStr )
 			var specs = coords;
 
 			specs.isPow2 = specs.width.isPowerOf2() && specs.height.isPowerOf2();
-			specs.isMult4 = specs.width.isMult4() && specs.height.isMult4();
-			specs.isMult8 = specs.width.isMult8() && specs.height.isMult8();
-			specs.isMult16 = specs.width.isMult16() && specs.height.isMult16();
-			specs.isMult32 = specs.width.isMult32() && specs.height.isMult32();
+			specs.isMult4 = specs.width.isMultOf(4) && specs.height.isMultOf(4);
+			specs.isMult8 = specs.width.isMultOf(8) && specs.height.isMultOf(8);
+			specs.isMult16 = specs.width.isMultOf(16) && specs.height.isMultOf(16);
+			specs.isMult32 = specs.width.isMultOf(32) && specs.height.isMultOf(32);
 
 			return specs;
 		}
@@ -9411,52 +9203,112 @@ Pslib.getVisibleAndLockedLayers = function( layers )
 // - check for file extension in names
 // - check for leading and trailing whitespace
 
-// check for duplicates, return list
-Pslib.documentHasDuplicateArtboards = function( getListBool )
+// check for duplicates boolean only
+Pslib.documentHasDuplicateArtboards = function( )
 {
 	if(!app.documents.length) return;
-
-	// var doc = app.activeDocument;
-
 	var names = Pslib.getArtboardNames();
-	var coordsCollection = getListBool ? Pslib.getArtboardCollectionCoordinates() : [];
-	var namesStr = names.join(", "); // avoid false positives
-	var hasDuplicates = false;
-	var duplicates = [];
-	var duplicateSets = [];
 
 	for(var i = 0; i < names.length; i++)
 	{
-		var nameMatches = new RegExp( names[i]+", ", 'g' );
-		var matches = namesStr.match(nameMatches);
-
-		if(matches != null)
-		{
-			if(matches.length > 1)
+		var name = names[i];
+		// if()
+		var idx = names.indexOf(name);
+		if(idx === -1) continue;
+		// var exactMatch = idx !== i;
+		if(idx !== i)
+		{	
+			if(name === names[idx])
 			{
-				hasDuplicates = true;
-				if(getListBool)
-				{
-					var coords = coordsCollection[i];
-					duplicates.push( coords );
-				}
-				else
-				{
-					break;
-				}
+				return true;
 			}
 		}
 	}
 
-	if(getListBool)
+	return false;
+}
+
+Pslib.getDuplicateArtboardInfos = function( collection, getCoordsList, getIndexPairs, getPartialMatch )
+{
+	if(!app.documents.length) return;
+
+	var names = [];
+	var coordsCollection = [];
+	if(collection == undefined)
 	{
-		if(duplicates.length)
+		coordsCollection = Pslib.getArtboardCollectionCoordinates();
+		names = Pslib.getArtboardNames();
+	}
+	else
+	{
+		// if given a collection of integers, assume illustrator artboard indexes or photoshop artboard IDs
+		if(collection instanceof Array)
 		{
-			duplicateSets = duplicates.getObjectPropertyDuplicates("name");
+			if(collection.length)
+			{
+				var arrItem = collection[0];
+				if(typeof arrItem == "number")
+				{
+					coordsCollection = Pslib.getArtboardCollectionCoordinates( collection, false );
+				}
+				// else if(typeof arrItem == "object")
+				// {
+
+				// }
+			}
+		}
+
+	}
+
+	var hasDuplicates = false;
+	var hasPartialDuplicates = false;
+
+	var duplicates = [];
+	var partialDuplicates = [];
+
+	var duplicateSets = [];
+	var partialDuplicateSets = [];
+
+	for(var i = 0; i < names.length; i++)
+	{
+		var name = names[i];
+		var indexOfDupe = names.indexOf(name);
+		var exactMatch = (indexOfDupe !== i) && (indexOfDupe !== -1);
+		var partialMatch = false;
+		if(exactMatch)
+		{	
+			if(!getCoordsList && !getIndexPairs && !getPartialMatch)
+			{
+				if(name === names[indexOfDupe])
+				{
+					return true;
+				}
+			}
+
+			duplicates.push([i,name]);
+			if(getCoordsList) duplicateSets.push([i,coordsCollection[i]]);
+			else if(getIndexPairs) duplicateSets.push([i,indexOfDupe]);
+		}
+
+		if(getPartialMatch)
+		{
+			partialMatch = (indexOfDupe !== i) && (indexOfDupe !== -1) && (name !== names[indexOfDupe]);
+
+			if(partialMatch)
+			{
+				partialDuplicates.push([i,name]);
+				if(getCoordsList) partialDuplicateSets.push([i,coordsCollection[i]]);
+				else if(getIndexPairs) partialDuplicateSets.push([i,indexOfDupe]);
+			}
 		}
 	}
 
-	return  getListBool ? duplicateSets : hasDuplicates;
+	if(duplicates.length) hasDuplicates = true;
+	if(partialDuplicates.length) hasPartialDuplicates = true;
+
+	if(!getCoordsList && !getIndexPairs && !getPartialMatch) return hasDuplicates;
+	else if (getPartialMatch) return (!getCoordsList && !getIndexPairs) ? hasPartialDuplicates : (getCoordsList || getIndexPairs) ? partialDuplicateSets : partialDuplicates;
+	else return (!getCoordsList && !getIndexPairs) ? hasDuplicates : (getCoordsList || getIndexPairs) ? duplicateSets : duplicates;
 }
 
 // rename artboard duplicates based on collection of JSON objects
@@ -9466,35 +9318,20 @@ Pslib.renameDuplicateArtboards = function( obj )
 {
 	if(!app.documents.length) return;
 	if(!obj) obj = {};
+	if(obj.confirmBool == undefined) obj.confirmBool = false;
 
 	var doc = app.activeDocument;
+	var selection = Pslib.isPhotoshop ? Pslib.getSelectedArtboardIDs() : doc.selection;
 	var processed = [];
+	var names = Pslib.getArtboardNames();
 
 	if(obj.duplicatesArr == undefined) 
 	{
-		obj.duplicatesArr = Pslib.documentHasDuplicateArtboards( true );
+		// obj.duplicatesArr = Pslib.documentHasDuplicateArtboards( true );
+		obj.duplicatesArr = Pslib.getDuplicateArtboardInfos( undefined, true, false, false);
 	}
 
-	if( obj.duplicatesArr.length )
-	{
-		// first array item should be an array
-		// if JSON object, assume array must be processed to detect duplicates
-		if( !(obj.duplicatesArr[0] instanceof Array) )
-		{
-			obj.duplicatesArr = obj.duplicatesArr.getObjectPropertyDuplicates("name");
-			if(!obj.duplicatesArr.length)
-			{
-				return processed;
-			}
-
-			// abort if failed
-			if( !(obj.duplicatesArr[0] instanceof Array) )
-			{
-				return processed;
-			}
-		}
-	}
-	else
+	if( !obj.duplicatesArr.length )
 	{
 		if(obj.confirmBool) JSUI.alert("No duplicates found.");
 		return processed;
@@ -9505,18 +9342,18 @@ Pslib.renameDuplicateArtboards = function( obj )
 	{
 		obj.message = obj.message ? obj.message : "Rename artboards?";
 
-		var dupesMsg = "Duplicate artboard names detected\n\n";
+		var dupesMsg = "\nDuplicate artboard names detected:\n\n";
         if(obj.duplicatesArr.length)
         {
             for(var i = 0; i < obj.duplicatesArr.length; i++)
             {   
                 var dupe = obj.duplicatesArr[i];
-                dupesMsg += ( dupe.length+"x\t"+dupe.getUniqueValues("name") + "\n" );
+                dupesMsg += ( dupe[0]+":\t"+ dupe[1].name + "\n" );
             }
 			obj.message += dupesMsg;
         }
 
-		obj.title = "Confirm Rename Artboard Duplicates";
+		obj.title = "Confirm Rename Artboard";
 		obj.label = "Rename";
 
 		if(!JSUI.confirm( obj ))
@@ -9525,115 +9362,157 @@ Pslib.renameDuplicateArtboards = function( obj )
 		}
 	}
 
+
 	for(var i = 0; i < obj.duplicatesArr.length; i++)
 	{
 		var set = obj.duplicatesArr[i];
-		// skip first item!
-		for(var j = 1; j < set.length; j++)
-		{
-			var jsObj = set[j];
-			if(!jsObj) continue;
-			var updatedName = jsObj.name.trim() + "_" + (j+1).toString().zeroPad(3);
 
-			if(Pslib.isIllustrator)
+		var jsObj = set[1];
+		if(!jsObj) continue;
+
+		// detect existing "_001" pattern, adjust accordingly
+		var numsequence = (i+1).toString().zeroPad(3);
+		var idx = names.indexOf(numsequence);
+		if(idx != -1)
+		{
+			numsequence = "0"+((i+1).toString().zeroPad(3));
+		}
+		var updatedName = jsObj.name.trim() + "_" + numsequence;
+
+		var artboard;
+		if(Pslib.isIllustrator)
+		{
+			artboard = doc.artboards[jsObj.id];
+		}
+		else if(Pslib.isPhotoshop)
+		{
+			artboard = Pslib.selectLayerByID(jsObj.id);
+		}
+		if(artboard)
+		{
+			artboard.name = updatedName;
+			processed.push( [jsObj.id, jsObj.name, updatedName] );
+			names.push(updatedName);
+		}
+	}
+
+	if(processed.length)
+	{
+		if(Pslib.isPhotoshop)
+		{
+			if(selection)
 			{
-				var artboard = doc.artboards[jsObj.id];
-				if(artboard)
-				{
-					artboard.name = updatedName;
-					processed.push(artboard);
-				}
+				Pslib.selectArtboardsCollection(selection);
 			}
-			else if(Pslib.isPhotoshop)
+		}
+		else if(Pslib.isIllustrator)
+		{
+			if(selection)
 			{
-				var artboard = Pslib.selectLayerByID(jsObj.id);
-				if(artboard)
-				{
-					artboard.name = updatedName;
-					processed.push(artboard);
-				}
+				doc.selection = selection;
 			}
 		}
 	}
+
 	return processed;
 }
 
 // simple function to find/replace/add text patterns in artboard names 
 // var obj = { find: "TextToFind", replace: "TextToReplaceWith", prefix: "Prefix_", suffix: "_Suffix" }
+// Ps: artboard ids
 Pslib.renameArtboards = function( artboards, obj )
 {
-	if(Pslib.isIllustrator)
+	if(!app.documents.length) return;
+	if(!obj) return;
+
+	var doc = app.activeDocument;
+	var selection = Pslib.isPhotoshop ? Pslib.getSelectedArtboardIDs() : doc.selection;
+	var renamedArr = [];
+
+	if(!artboards)
 	{
-		if(!obj){ return; }
-		// if(!obj){ var obj = {} }; // this could be valid if used by sanitization function
-
-		if(!artboards)
-		{
-			artboards = app.activeDocument.artboards;
-		}
-
-		var renamedArr = [];
-		for(var i = 0; i < artboards.length; i++)
-		{
-			var artboard = artboards[i];
-			var originalStr = artboard.name;
-			var renamedStr = artboard.name.trim();
-
-			if(obj.find)
-			{
-				artboard.name = artboard.name.replace(obj.find, obj.replace);
-				renamedStr = artboard.name;
-			}
-
-			// can be empty
-			if(obj.prefix != undefined)
-			{
-				artboard.name = obj.prefix + artboard.name;
-				renamedStr = artboard.name;
-			}
-
-			// can be empty
-			if(obj.suffix != undefined)
-			{
-				artboard.name = artboard.name + obj.suffix;
-				renamedStr = artboard.name;
-			}
-			if(renamedStr != originalStr) renamedArr.push(renamedStr);
-			else renamedArr.push(undefined); // push nothing, just so returned array length matches original
-		}
-		return renamedArr;
+		var artboards = Pslib.isPhotoshop ? Pslib.getAllArtboardIDs() : doc.artboards;
 	}
+
+	for(var i = 0; i < artboards.length; i++)
+	{
+		var id = Pslib.isPhotoshop ? artboards[i] : Pslib.getArtboardIndex(artboards[i]);
+		var artboard = Pslib.isPhotoshop ? Pslib.selectLayerByID(artboards[i]) : artboards[i];
+		var originalStr = artboard.name;
+		var renamedStr = artboard.name.trim();
+
+		if(obj.find)
+		{
+			artboard.name = artboard.name.replace(obj.find, obj.replace);
+			renamedStr = artboard.name;
+		}
+
+		// can be empty
+		if(obj.prefix != undefined)
+		{
+			artboard.name = obj.prefix + artboard.name;
+			renamedStr = artboard.name;
+		}
+
+		// can be empty
+		if(obj.suffix != undefined)
+		{
+			artboard.name = artboard.name + obj.suffix;
+			renamedStr = artboard.name;
+		}
+		if(renamedStr != originalStr) renamedArr.push( [ id, originalStr, renamedStr ]);
+		else renamedArr.push( [ id, null, null ]);
+	}
+
+	if(renamedArr.length)
+	{
+		if(Pslib.isPhotoshop)
+		{
+			if(selection)
+			{
+				Pslib.selectArtboardsCollection(selection);
+			}
+		}
+		else if(Pslib.isIllustrator)
+		{
+			if(selection)
+			{
+				doc.selection = selection;
+			}
+		}
+	}
+
+	return renamedArr;
 }
 
 // replace any whitespace characters in artboard collection names
 // default replacement is underscore, define optional object as { replace: "^-^" } to use something else
 Pslib.renameArtboardsWhiteSpace = function( artboards, obj )
 {
-	if(Pslib.isIllustrator)
-	{
-		if(!obj){ var obj = {} }; 
-		return Pslib.renameArtboards( artboards, { find: new RegExp(/[\s]/g), replace: obj.replace != undefined ? obj.replace : "_" } );
-	}
+	if(!app.documents.length) return;
+	var doc = app.activeDocument;
+	var artboards = Pslib.isPhotoshop ? Pslib.getAllArtboardIDs() : doc.artboards;
+	if(!obj){ var obj = {} }; 
+	return Pslib.renameArtboards( artboards, { find: new RegExp(/[\s]/g), replace: obj.replace != undefined ? obj.replace : "_" } );
 }
 
 // deal with special characters: whitespace, slash, backslash, question, exclamation, quotes etc (default replacement is "_")
 // default replacement is underscore, define optional object as { replace: "^-^" } to use something else
 Pslib.renameArtboardsSystemSafe = function( artboards, obj )
 {	
-	if(Pslib.isIllustrator)
-	{
-		if(!obj){ var obj = {} }; 
-		return Pslib.renameArtboards( artboards, { find: new RegExp(/[\s:\/\\*\?\!\"\'\<\>\|]/g), replace: obj.replace != undefined ? obj.replace : "_" } );
-	}
+	if(!app.documents.length) return;
+	var doc = app.activeDocument;
+	var artboards = Pslib.isPhotoshop ? Pslib.getAllArtboardIDs() : doc.artboards;
+	if(!obj){ var obj = {} }; 
+	return Pslib.renameArtboards( artboards, { find: new RegExp(/[\s:\/\\*\?\!\"\'\<\>\|]/g), replace: obj.replace != undefined ? obj.replace : "_" } );
 }
 
 // this is broken for now!
 Pslib.moveItemsToLayer = function( items, layer )
 {	
+	if(!app.documents.length) return;
 	if(Pslib.isIllustrator)
-	{
-		if(!app.documents.length) return;
-		
+	{	
 		var doc = app.activeDocument;
 		// var initialSelection = doc.selection;
 		if(!items)
@@ -10556,7 +10435,8 @@ Pslib.artboardsToFiles = function( obj )
 
 					var jsonFileCreated = false;
 
-					 if( !JSUI.isObjectEmpty(artboardJsonData) ) 
+					//  if( !JSUI.isObjectEmpty(artboardJsonData) ) 
+					 if( !artboardJsonData.isEmpty() ) 
 					 jsonFileCreated = JSUI.writeToFile(jsonFile, JSON.stringify(artboardJsonData, null, "\t"), "utf8");
 					
 					if(jsonFileCreated)
@@ -10713,36 +10593,10 @@ Pslib.artboardToFile = function( obj )
 
 			var placeholder;
 
-			placeholder = Pslib.addArtboardRectangle( { hex: "transparent", name: "#" } ); // specs ignored
+			placeholder = Pslib.addArtboardRectangle( { hex: "transparent", name: "#" } );
 			placeholderCreated = true;
-	
-			// if(!placeholder)
-			// {
-			// 	// cannot assume placeholder has same bounds as artboard
-			// 		// get placeholder, compare bounds
-			// 	// placeholder = Pslib.addArtboardRectangle( { hex: "FF1080", name: "OHHAI", opacity: 100} ); // specs ignored
-			// 	placeholder = Pslib.addArtboardRectangle( "FF1080" ); // specs ignored
-			// 	placeholderCreated = true;
-			// 	// should also check for any visible geometry outside of artboard bounds
-			// 		//
-			// 	// check for locked items?
-			// }
-			// else
-			// {
-			// 	// validate existing 
-			// 	var bounds = placeholder.visibleBounds;
-			// 	var artboardBounds = artboard.artboardRect;
-			// 	JSUI.quickLog(bounds, "\nplaceholder bounds:");
-			// 	JSUI.quickLog(artboardBounds, "\nartboard bounds:");
-			// }	
-
-			// validate actual content bounds
-			// add temporary clippling path if necessary
 
 		}
-
-		// remove placeholder if created
-		// if(placeholderCreated) placeholder.remove();
 
 		if(selection != null)
 		{
@@ -10820,7 +10674,6 @@ Pslib.artboardFromFile = function( obj )
 
                 // add artboard
                 var itemBounds = item.visibleBounds;
-                // JSUI.quickLog(itemBounds, item.typename);
 
                 var x = Math.round(item.left);
                 var y = Math.round(item.top);
@@ -10962,7 +10815,6 @@ Pslib.placeItem = function( obj )
 
 			// add artboard
 			var itemBounds = placedItem.visibleBounds;
-			// JSUI.quickLog(itemBounds, placedItem.typename);
 
 			var x = Math.round(placedItem.left);
 			var y = Math.round(placedItem.top);
@@ -11241,14 +11093,16 @@ Pslib.documentToFile = function( obj )
 // select first art item found with provided name on current artboard
 	// *** adapt for existing item list match / artboard bounds?
 	// *** itemCollection == existing PageItem or array of PageItem objects
-Pslib.getArtboardItem = function( artboard, nameStr, itemCollection, activate )
+Pslib.getArtboardItem = function( artboard, nameStr, itemCollection, activate, tagNameStr, firstMatch )
 {
 	if(!app.documents.length) return;
 
 	if(!nameStr) { var nameStr = "#"; }
 	if(!artboard) { var artboard = Pslib.getActiveArtboard(); }
 	if(activate == undefined) activate = true;
-	
+	if(!tagNameStr) { var tagNameStr = "assetID"; }
+	if(firstMatch == undefined) firstMatch = true;
+
 	var doc = app.activeDocument;
 	var targetItem;
 
@@ -11316,6 +11170,7 @@ Pslib.getArtboardItem = function( artboard, nameStr, itemCollection, activate )
 				// if multiple matches, target objects with tags
 				if((matchedItems.length > 1) && tagNameStr)
 				{
+					// last match in array is most likely to be the target
 					// for (var m = 0; m < matchedItems.length; m++)
 					for (var m = matchedItems.length-1; m > -1; m--)
 					{
@@ -11366,8 +11221,9 @@ Pslib.getArtboardItem = function( artboard, nameStr, itemCollection, activate )
 		{
 			// attempt to find target by actively scanning content (avoid when possible)
 			// - this is significantly longer to process
-			// - selection triggers events that will affect 
-			doc.selectObjectsOnActiveArtboard();
+			// - selecting objects triggers events that will affect performance
+
+			if(activate) doc.selectObjectsOnActiveArtboard();
 			var selection = doc.selection;
 		
 			if(selection.length)
@@ -11405,6 +11261,10 @@ Pslib.getArtboardItem = function( artboard, nameStr, itemCollection, activate )
 					}
 				}
 			}
+			else
+			{
+				if($.level) $.writeln("No active selection");
+			}
 		}
 	}
 	return targetItem;
@@ -11440,6 +11300,8 @@ Pslib.getInfosForTaggedItems = function(itemCollection, pageItemType, nameStr, t
         {
             function _filterItems( item )
             {
+				if($.level) $.writeln("Pslib.getInfosForTaggedItems() " + item.name);
+
                 var targetItem;
                 if( item.typename == "GroupItem" && searchGroupItems)
                 {
@@ -11573,7 +11435,8 @@ Pslib.getArtboardSpecsInfo = function( obj )
 		var artboardSpecs = [];
 	
 		var docSpecs = Pslib.getXmpDictionary( app.activeDocument, { source: null, hierarchy: null, specs: null, custom: null }, false, false, false, obj.namespace ? obj.namespace : Pslib.XMPNAMESPACE);
-		var docHasTags = !JSUI.isObjectEmpty(docSpecs);
+		// var docHasTags = !JSUI.isObjectEmpty(docSpecs);
+		var docHasTags = !docSpecs.isEmpty();
 	
 		// provide solution for exporting only active artboard specs
 		for(var i = 0; i < obj.artboards.length; i++)
@@ -12153,11 +12016,39 @@ Pslib.addArtboardRectangle = function ( obj )
 		}
 		else
 		{
-			rectangle = doc.pathItems.rectangle( coords.x, -coords.y, coords.x+coords.width, coords.y+coords.height );
+			// before creating rectangle, check if active layer is locked or hidden
+			var layer = doc.activeLayer;
 
+			// var isLocked = layer.locked;
+			// var isVisible = layer.visible;
+			if(layer.locked || !layer.visible)
+			{
+				var msg = "Target layer is";
+				if(layer.locked) msg += " locked";
+				if(!layer.visible) msg += " invisible";
+				//
+				var confirmDlg = confirm(msg);
+				if(confirmDlg)
+				{
+					if(layer.locked) layer.locked = false;
+					if(!layer.visible) layer.visible = true;
+				}
+			}
+
+			if(!layer.locked && layer.visible)
+			{
+				try
+				{
+					rectangle = doc.pathItems.rectangle( coords.x, -coords.y, coords.x+coords.width, coords.y+coords.height );
+				}
+				catch(e)
+				{
+					// alert(e);
+				}
+			}
 		}
 
-		if(!rectangle) return
+		if(!rectangle) return;
 		doc.selection = rectangle;
 	
 		var transp = new NoColor();
@@ -12699,7 +12590,6 @@ Pslib.removeArtboardRectangles = function ( arr, nameStr )
 			{
 				try
 				{
-					// JSUI.quickLog(arr[i]+" removing " + rectangle.name);
 					doc.activeLayer = rectangle;
 					rectangle.remove();
 				}
@@ -12709,13 +12599,11 @@ Pslib.removeArtboardRectangles = function ( arr, nameStr )
 					// just set its opacity to zero
 					// rectangle.opacity = 0;
 					rectangle.visible = false;
-					// JSUI.quickLog(arr[i] + "\n\n"+e);
-
 				}
 			}
 			else
 			{
-				// JSUI.quickLog(arr[i]+" No rectangle found.");
+				// Pslib.log(arr[i]+" No rectangle found.");
 			}
 
 		}
@@ -12725,7 +12613,6 @@ Pslib.removeArtboardRectangles = function ( arr, nameStr )
 	{
 		// var items = Pslib.getArtboardItems( arr, nameStr );
 
-		// JSUI.quickLog(items);
 		for(var i = 0; i < arr.length; i++)
 		{
 			var rectangle = Pslib.getArtboardItem( doc.activeLayer, nameStr);
@@ -12735,7 +12622,7 @@ Pslib.removeArtboardRectangles = function ( arr, nameStr )
 			}
 			else
 			{
-				// JSUI.quickLog(arr[i]+" No rectangle found.");
+				// Pslib.log(arr[i]+" No rectangle found.");
 			}
 		}
 		return true;
@@ -13807,7 +13694,6 @@ Pslib.randomizeFloat = function( num, max, range )
 	flux = ( random < 0.5 ? (-flux) : flux);
 	flux = parseInt( num + flux);
 	flux = flux < 0 ? 0 : flux > max ? max : flux;
-	// JSUI.quickLog(flux, "randomised: ");
 	return flux;
 }
 
@@ -14630,7 +14516,7 @@ Pslib.writeActionFileFromString = function( actionSetContentStr, actionSetName, 
 // when expecting a object to work with
 // arr = [ "name1", "name2", "name3"]
 // returns { name1: undefined, name2: undefined, name3: undefined }
-Array.prototype.convertToObject = function( allowNullOrUndef, recursive )
+if(!Array.prototype.convertToObject) { Array.prototype.convertToObject = function( allowNullOrUndef, recursive )
 {
 	if(!this.length) return {};
 	var obj = {};
@@ -14686,12 +14572,12 @@ Array.prototype.convertToObject = function( allowNullOrUndef, recursive )
 		}
 	}
 	return obj;
-}
+}}
 
 // simple data types object to bidimensional array
 // obj = { name1: "value1", name2: "value2"}
 // returns [ ["name1", "value1"], ["name2", "value2"]]
-Object.prototype.convertToArray = function( allowNullOrUndef )
+if(!Object.prototype.convertToArray) { Object.prototype.convertToArray = function( allowNullOrUndef )
 {
 	if(!this) return [];
 	var arr = [];
@@ -14730,7 +14616,7 @@ Object.prototype.convertToArray = function( allowNullOrUndef )
 	}
 
 	return arr;
-}
+}}
 
 // swap property names when found in bidimensional/tridimensional array
 // affects first item for each set, a third item is allowed, may be useful for presentation purposes
@@ -14741,7 +14627,7 @@ Object.prototype.convertToArray = function( allowNullOrUndef )
 //
 // then convert back with reversed flag, and content should match precisely
 // var reconvertedArr = newArr.convertTags(converterArr, true); // yields [ [ "source", "~/file.psd"], [ "range", "1-8"], [ "destination", "./images"] ]
-Array.prototype.convertTags = function( converter, reversed )
+if(!Array.prototype.convertTags) { Array.prototype.convertTags = function( converter, reversed )
 {
 	if(!this) return [];
 	var newArr = [];
@@ -14768,303 +14654,521 @@ Array.prototype.convertTags = function( converter, reversed )
 	}
 
 	return newArr;
-}
-
+}}
 
 //
 //
 // these are mirrored from JSUI if not included along with Pslib
-if(typeof JSUI !== "object")
-{
+// if(typeof JSUI !== "object")
+// {
 	// only if JSON lib present
-	if(typeof JSON === "object")
+if((typeof JSON) === "object")
+{
+	if(!Object.prototype.isEmpty) { Object.prototype.isEmpty = function()
 	{
-		Object.prototype.isEmpty = function()
+		return JSON.stringify(this) === '{\n\n}';
+	}}
+	// alert(typeof JSUI === "object");
+	if(typeof JSUI === "object")
+	{
+		Pslib.log = JSUI.quickLog;
+	}		
+}
+else
+{
+	Pslib.log = function(str, depth, msg)
+	{
+		if(Pslib.isDebugging)
+		{ 
+			// if((typeof str) != "string") return "";
+
+			// if( msg == undefined && (typeof depth == "string")) 
+			// {
+			// 	var msg = depth;
+			// 	depth = 0;
+			// }
+
+			// if(obj === 0)
+			// {	
+			// 	return Pslib.log("0", depth, msg);
+			// }
+	
+			// if(obj === null)
+			// {	
+			// 	return Pslib.log("null", depth, msg);
+			// }
+
+			// if(depth === undefined) depth = 0;
+			// var indent = "";
+			// for(var i = 1; i < depth; i++)
+			// {
+			// 	indent += "\t";
+			// }
+
+			// if(msg && (depth === 0))
+			// { 
+			// 	$.writeln( msg );
+			// 	return msg;
+			// }
+
+			$.writeln(str);
+			return str;
+		}
+		else
 		{
-			return JSON.stringify(this) === '{\n\n}';
+			return str;
+		}
+	}	
+}
+
+// XBytor's string trim
+if(!String.prototype.trim) { String.prototype.trim = function()
+{
+	return this.replace(/^[\s]+|[\s]+$/g,'');
+}}
+
+// this does not like zeroes!
+if(!String.prototype.padStart) { String.prototype.padStart = function(num, pad)
+{
+	if(!num) var num = 6;
+	if(!pad) var pad = " ";
+	if(pad == "0") return this.zeroPad(num);
+
+	num = Math.min(num, this.length)
+	var padStr = "";
+	if(this.length < num)
+	{
+		for(var i = 0; i < num; i++)
+		{
+			padStr += pad;
 		}
 	}
+	return padStr +""+ this;
+}}
 
-	String.prototype.trim = function()
+if(!String.prototype.zeroPad) { String.prototype.zeroPad = function(num)
+{
+	if(!num) var num = 3;
+	var padStr = "";
+	if(this.length < num) { padStr = new Array(num - this.length+1).join("0"); }
+	return padStr +""+ this;
+}}
+
+// remove special characters that will cause problem in a file system context
+if(!String.prototype.toFileSystemSafeName) { String.prototype.toFileSystemSafeName = function(replaceStr)
+{
+	return this.replace(/[\s:\/\\*\?\!\"\'\<\>\|]/g, replaceStr ? replaceStr : "_");
+}}
+
+// get name without extension
+if(!String.prototype.getFileNameWithoutExtension) { String.prototype.getFileNameWithoutExtension = function()
+{
+	var match = this.match(/([^\.]+)/);
+	return match != null ? match[1] : null;
+}}
+
+// boolean indicating if string contains a ".ext" pattern
+if(!String.prototype.hasFileExtension) { String.prototype.hasFileExtension = function()
+{
+	return this.getFileExtension() != null;
+}}
+
+// get extension pattern ".ext"
+if(!String.prototype.getFileExtension) { String.prototype.getFileExtension = function()
+{
+	var match = this.trim().match(/\.[^\\.]+$/);
+	return match != null ? match[0].toLowerCase() : null; // null if no match
+}}
+
+// str.hasSpecificExtension(".png") // "image.png" true   "image.jpg" false
+if(!String.prototype.hasSpecificExtension) { String.prototype.hasSpecificExtension = function( str )
+{
+	return this.getFileExtension() == str;
+}}
+
+if(!String.prototype.getDocumentName) { String.prototype.getDocumentName = function()
+{
+	return this.trim().getFileNameWithoutExtension().toFileSystemSafeName();
+}}
+
+// an approximation! special characters are not encouraged, but allowed
+if(!String.prototype.getAssetsFolderName) {	String.prototype.getAssetsFolderName = function()
+{
+	return (this.getDocumentName() + "-assets");
+}}
+
+if(!String.prototype.getAssetsFolderLocation) { String.prototype.getAssetsFolderLocation = function( folderUri, allowNonExistantBool, createBool, allowMultipleParentsCreationBool )
+{
+	var name = this.getAssetsFolderName();
+
+	var currentDocument = false;
+	var hasDocuments = app.documents.length;
+	var matchesSystem = false;
+	var targetFolder;
+
+	// sanitize
+	if(folderUri)
 	{
-		return this.replace(/^[\s]+|[\s]+$/g,'');
+		if( !(folderUri instanceof Folder))
+		{
+			if(typeof folderUri == "string")
+			{
+				folderUri = new Folder(folderUri);
+			}
+			// are we working with a File? if so, assume we want its parent
+			if(folderUri instanceof File)
+			{
+				folderUri = folderUri.parent;
+			}
+		}
+
+		var testFolder = new Folder(folderUri);
+
+		if(testFolder.exists)
+		{
+			matchesSystem = JSUI.isWindows ? (testFolder.toString().match(app.path) != null) : (testFolder.toString() == ("/" + (hasDocuments ? app.activeDocument.name : "")));
+			if(!matchesSystem)
+			{
+				targetFolder = testFolder;
+			}
+		}
+		// it's entirely possible we want to point to a directory that will be created later on
+		else
+		{
+			if(allowNonExistantBool) targetFolder = testFolder;
+		}
+	}
+	// if no argument passed, assume we want to use current document
+	else
+	{
+		if(hasDocuments)
+		{
+			currentDocument = true;
+		}
+		folderUri = JSUI.getDocumentFullPath();
+		if(folderUri) targetFolder = folderUri.parent;
+		if(!targetFolder) { return } // issue if document does not exist on disk
 	}
 
-	// this does not like zeroes!
-	String.prototype.padStart = function(num, pad)
-    {
-        if(!num) num = 6;
-        if(!pad) pad = " ";
-		if(pad == "0") return this.zeroPad(num);
-
-        num = Math.min(num, this.length)
-        var padStr = "";
-        if(this.length < num)
-        {
-            for(var i = 0; i < num; i++)
-            {
-                padStr += pad;
-            }
-        }
-        return padStr + this;
-    }
-
-	String.prototype.zeroPad = function(num)
-    {
-		if(!num) num = 3;
-		var padStr = "";
-		if(this.length < num) { padStr = new Array(num - this.length+1).join("0"); }
-		return padStr + this;
-    }
-
-	// get extension pattern ".ext"
-	String.prototype.getFileExtension = function()
+	// var targetFolder = currentDocument ? JSUI.getDocumentFullPath() : location;
+	// var location = app.documents.length ? ( JSUI.isPhotoshop ? app.activeDocument.path) : undefined;
+	var assetsLocation = new Folder(targetFolder + "/"+ name);
+	if(createBool)
 	{
-		var match = this.trim().match(/\.[^\\.]+$/);
-		return match != null ? match[0].toLowerCase() : null; // null if no match
-	};
+		if(allowMultipleParentsCreationBool)
+		{
+			assetsLocation.create();
+		}
+		else if(assetsLocation.parent.exists)
+		{
+			assetsLocation.create();
+		}
+	}
+	// return targetFolder ? assetsLocation : undefined;
+	return assetsLocation;
+}}
 
-	// boolean indicating if string contains a ".ext" pattern
-	String.prototype.hasFileExtension = function()
-	{
-		return this.getFileExtension() != null;
-	};
+// simple wrapper for creating "-assets" folder for current document
+// only use this with app.activeDocument.name, on a document which has been saved to disk at least once
+if(!String.prototype.createAssetsFolder) { String.prototype.createAssetsFolder = function()
+{
+	return this.getAssetsFolderLocation(undefined, undefined, true);
+}}
 
-	Number.prototype.clamp = function(min, max)
-	{
-		var n = this.valueOf();
-		if(min == undefined || max == undefined) return n;
-		if(n < min) n = min;
-		if(n > max) n = max;
-		return n;
-	};
+// toggles extension pattern found at end of string
+if(!String.prototype.addRemoveExtensionSuffix) { String.prototype.addRemoveExtensionSuffix = function( str )
+{
+	var originalStr = this.trim();
 
-	Number.prototype.adjustFloatPrecision = function(tolerance)
+	if(!str)
 	{
+		return originalStr;
+	}
+
+	var match = originalStr.match(/\.[^\\.]+$/);
+
+	// var originalExt = originalStr.getFileExtension(); // need precise casing comparison
+	var originalExt = match != null ? match[0] : "";
+	var hasMatch = originalExt != null && originalExt != "";
+
+	if(hasMatch)
+	{
+		// if suffix already present, remove or replace
+		if(originalExt.toLowerCase() == str.toLowerCase())
+		{
+			return originalStr.replace(/\.[^\\.]+$/, "");
+		}
+		else
+		{
+			return originalStr.replace(/\.[^\\.]+$/, str);
+		}
+	}
+	else
+	{
+		return originalStr + str;
+	}
+}}
+
+if(!Number.prototype.clamp) { Number.prototype.clamp = function(min, max)
+{
+	var n = this.valueOf();
+	if(min == undefined || max == undefined) return n;
+	if(n < min) n = min;
+	if(n > max) n = max;
+	return n;
+}}
+
+if(!Number.prototype.adjustFloatPrecision) { Number.prototype.adjustFloatPrecision = function(tolerance)
+{
 		if(tolerance == undefined) tolerance = 0.0001;
 		var n = this.valueOf();
 		var round = Math.round(n);
 		var delta = Math.abs(round-n);
 		if(delta <= tolerance) n = round;
 		return n;
-	};
+}}
 
-	Number.prototype.isMultOf = function(m)
+if(!Number.prototype.isMultOf) { Number.prototype.isMultOf = function(m)
+{
+	if(m == undefined || isNaN(m))
 	{
-		if(m == undefined || isNaN(m))
+		return;
+	}
+	var n = this.valueOf();
+	return (Math.ceil(n/m) * m == n);
+}}
+
+if(!Number.prototype.getNextMultOf) { Number.prototype.getNextMultOf = function(m)
+{
+	var n = this.valueOf();
+	if(n.isMultOf(m)) n++;
+	return (n % m == 0) ? n : ( n + (m - (n % m)) );
+}}
+
+if(!Number.prototype.getPreviousMultOf) { Number.prototype.getPreviousMultOf = function(m)
+{
+	var n = this.valueOf();
+	if(n.isMultOf(m)) n--;
+
+	if(n % m == 0) return n;
+	else if(n < m) return m;
+	else return n - (n % m);
+}}
+
+if(!Number.prototype.isPowerOf2) { Number.prototype.isPowerOf2 = function()
+{
+	var n = this.valueOf();
+	var abs = Math.abs(n);
+
+	if(Math.floor(n) !== n) return false;
+	if(abs !== n) n = abs;
+	return n && (n & (n - 1)) === 0;
+}}
+
+if(!Array.prototype.indexOf) { Array.prototype.indexOf = function(element, start)
+{
+	if(!this.length) return -1;
+	var i = 0;
+	var idxL = this.length-1;
+	if(start == undefined) var start = i;
+	start = start.clamp(-1, idxL);
+	if(start == -1) { for(var i = idxL; i > -1; i--) { if(this[i] === element) return i; } }
+	else { for(var i = start; i < this.length; i++) { if(this[i] === element) return i; } }
+	return -1;
+}}
+
+if(!Array.prototype.lastIndexOf) { Array.prototype.lastIndexOf = function(element)
+{
+	return this.indexOf(element, -1);
+}}
+
+if(!Array.prototype.map) { Array.prototype.map = function(callback)
+{
+	var arr = [];
+	for (var i = 0; i < this.length; i++)
+		arr.push(callback(this[i], i, this));
+	return arr;
+}}
+
+if(!Array.prototype.filter) { Array.prototype.filter = function (fn)
+{
+	var filtered = [];
+	for (var i = 0; i < this.length; i++)
+	{
+		if(fn(this[i]))
 		{
-			return;
+			filtered.push(this[i]);
 		}
-		var n = this.valueOf();
-		return (Math.ceil(n/m) * m == n);
-	};
+	}
+	return filtered;
+}}
 
-	Array.prototype.indexOf = function(element, start)
+// removes duplicates in array
+if(!Array.prototype.getUnique) { Array.prototype.getUnique = function()
+{
+	var unique = [];
+	for(var i = 0; i < this.length; i++)
 	{
-		// for(var i = 0; i < this.length; i++) { if(this[i] === element) return i; }
-		if(!this.length) return -1;
-		var i = 0;
-		var idxL = this.length-1;
-		if(start == undefined) var start = i;
-		start = start.clamp(-1, idxL);
-		if(start == -1) { for(var i = idxL; i > -1; i--) { if(this[i] === element) return i; } }
-		else { for(var i = start; i < this.length; i++) { if(this[i] === element) return i; } }
-		return -1;
-	};
+		var current = this[i];
+		if(unique.indexOf(current) == -1) unique.push(current)
+	}
+	return unique;
+}}
 
-	Array.prototype.lastIndexOf = function(element)
+// from array of JSON objects, compile list of identical values and return one of each
+if(!Array.prototype.getUniqueValues) { Array.prototype.getUniqueValues = function( pname )
+{
+	if(!this.length) return this;
+	var value = this[0][pname];
+	if(value == undefined) return this;
+
+	var uniqueNames = [ value ];
+	var currValue = value;
+
+	for(var i = 0; i < this.length; i++)
 	{
-		return this.indexOf(element, -1);
-	};
+		currValue = this[i][pname];
+		if(currValue != undefined)
+		{
+			if(currValue != value)
+			{
+				uniqueNames.push(currValue);
+				value = currValue;
+			}
+		}
+	}
+	return uniqueNames;
+}}
+
+// sort indexes
+if(!Array.prototype.sortAscending) { Array.prototype.sortAscending = function()
+{
+	return this.sort(function(a, b){return a - b});
+}}
+
+if(!Array.prototype.sortDescending) { Array.prototype.sortDescending = function()
+{
+	return this.sort(function(a, b){return b - a});
+}}
+
+// [1, 2, 3, 4, 8, 10, 11, 12, 15, 16, 17, 18, 29]
+// becomes "1-4,8,10-12,15-18,29"
+if(!Array.prototype.getRanges) { Array.prototype.getRanges = function()
+{
+	var ranges = ""; // [];
+	var rstart;
+	var rend;
+	for (var i = 0; i < this.length; i++)
+	{
+		rstart = this[i];
+		rend = rstart;
+		while (this[i + 1] - this[i] == 1)
+		{
+			rend = this[i + 1]; // increment the index if the numbers sequential
+			i++;
+		}
+		ranges += ((rstart == rend ? rstart+'' : rstart + '-' + rend) + ( i+1 == this.length ? "" : "," ));
+	}
+	return ranges;
+}}
+
+// [1, 2, 3, 4, 8, 10, 11, 12, 15, 16, 17, 18, 29]
+// becomes "1-4,8,10-12,15-18,29"
+if(!Array.prototype.toSimplifiedString) { Array.prototype.toSimplifiedString = function()
+{
+	var str = "";
+	var ranges = [];
+
+	var range = [];
+
+	for(var i = 0; i < this.length; i++)
+	{	
+		var num = this[i];
+
+		// mixed array content safeguard: if not number, try to cast, skip if fails
+		if(isNaN(num)) num = parseInt(num);
+		if(isNaN(num) || num == 0) continue;
 		
-	Array.prototype.map = function(callback) {
-		var arr = [];
-		for (var i = 0; i < this.length; i++)
-			arr.push(callback(this[i], i, this));
-		return arr;
-	};
+		range.push(num);
 
-	Array.prototype.filter = function (fn)
-	{
-		var filtered = [];
-		for (var i = 0; i < this.length; i++)
-		{
-			if(fn(this[i]))
+		// if next number in array is not an increment, push array and reset count
+		// if(this[i+1] != undefined)
+		// {
+			if( (num+1) != this[i+1] )
 			{
-				filtered.push(this[i]);
+				ranges.push(range);
+				// if(this[i+1] == this[this.length-1]) ranges.push( [this[i+1]] );
+				// avoid duplication of last item in ranges!
+				if(this[i+1] == this[this.length-1] && this[i+1] != this[i]) ranges.push( [this[i+1]] );
+				range = [];
 			}
-		}
-		return filtered;
-	};
-
-	// removes duplicates in array
-	Array.prototype.getUnique = function()
-	{
-		var unique = [];
-		for(var i = 0; i < this.length; i++)
-		{
-			var current = this[i];
-			if(unique.indexOf(current) == -1) unique.push(current)
-		}
-		return unique;
-	};
-
-	// from array of JSON objects, compile list of identical values and return a one of each
-	Array.prototype.getUniqueValues = function( pname )
-	{
-		if(!this.length) return this;
-		var value = this[0][pname];
-		if(value == undefined) return this;
-
-		var uniqueNames = [ value ];
-		var currValue = value;
-
-		for(var i = 0; i < this.length; i++)
-		{
-			currValue = this[i][pname];
-			if(currValue != undefined)
-			{
-				if(currValue != value)
-				{
-					uniqueNames.push(currValue);
-					value = currValue;
-				}
-			}
-		}
-		return uniqueNames;
+		// }
 	}
 
-	// sort indexes
-	Array.prototype.sortAscending = function()
+	// reformat string
+	for(var j = 0; j < ranges.length; j++)
 	{
-		return this.sort(function(a, b){return a - b});
-	};
+		var currentRange = ranges[j];
+		var start = currentRange[0];
+		var end = currentRange[currentRange.length-1];
 
-	Array.prototype.sortDescending = function()
-	{
-		return this.sort(function(a, b){return b - a});
-	};
+		str += (start == end ? start : (start + "-" + end));
 
-	// [1, 2, 3, 4, 8, 10, 11, 12, 15, 16, 17, 18, 29]
-	// becomes "1-4,8,10-12,15-18,29"
-	Array.prototype.getRanges = function()
-	{
-		var ranges = ""; // [];
-		var rstart;
-		var rend;
-		for (var i = 0; i < this.length; i++)
+		if(j != (ranges.length-1))
 		{
-			rstart = this[i];
-			rend = rstart;
-			while (this[i + 1] - this[i] == 1)
-			{
-				rend = this[i + 1]; // increment the index if the numbers sequential
-				i++;
-			}
-			ranges += ((rstart == rend ? rstart+'' : rstart + '-' + rend) + ( i+1 == this.length ? "" : "," ));
+			str += ",";
 		}
-		return ranges;
-	};
-
-	// [1, 2, 3, 4, 8, 10, 11, 12, 15, 16, 17, 18, 29]
-	// becomes "1-4,8,10-12,15-18,29"
-	Array.prototype.toSimplifiedString = function()
-	{
-		// if($.level) $.writeln(this);
-		var str = "";
-		var ranges = [];
-
-		var range = [];
-
-		for(var i = 0; i < this.length; i++)
-		{	
-			var num = this[i];
-
-			// mixed array content safeguard: if not number, try to cast, skip if fails
-			if(isNaN(num)) num = parseInt(num);
-			if(isNaN(num) || num == 0) continue;
-			
-			range.push(num);
-
-			// if next number in array is not an increment, push array and reset count
-			// if(this[i+1] != undefined)
-			// {
-				if( (num+1) != this[i+1] )
-				{
-					ranges.push(range);
-					// if(this[i+1] == this[this.length-1]) ranges.push( [this[i+1]] );
-					// avoid duplication of last item in ranges!
-					if(this[i+1] == this[this.length-1] && this[i+1] != this[i]) ranges.push( [this[i+1]] );
-					range = [];
-				}
-			// }
-		}
-
-		// reformat string
-		for(var j = 0; j < ranges.length; j++)
-		{
-			var currentRange = ranges[j];
-			var start = currentRange[0];
-			var end = currentRange[currentRange.length-1];
-
-			str += (start == end ? start : (start + "-" + end));
-
-			if(j != (ranges.length-1))
-			{
-				str += ",";
-			}
-		}
-
-		return str.length ? str : this.toString();
-	};
-
-	// "1-4,8,10-12,15-18,29"
-	// becomes [1, 2, 3, 4, 8, 10, 11, 12, 15, 16, 17, 18, 29]
-	String.prototype.toRangesArr = function()
-	{
-		var arr = [];
-		var str = this.trim();
-		str = str.replace(/\s/g, "");
-		var tmpArr = str.split(",");
-		
-		for(var i = 0; i < tmpArr.length; i++)
-		{	
-			var r = tmpArr[i];
-			if(r == "") continue;
-			if(r.match("-") != null)
-			{
-				var range = r.split("-");
-				var start = parseInt(range[0]);
-				var end = parseInt(range[1]);
-
-				if(!isNaN(start) && !isNaN(end))
-				{
-					var rLength = end - start + 1;
-					for(var r = 0; r < rLength; r++)
-					{
-						arr.push(start+r);
-					}
-				}
-			}
-			else
-			{
-				var intgr = parseInt(r);
-				var hasInt = !isNaN(intgr);
-				if(hasInt) arr.push(intgr);
-			}
-		}
-		return arr.length ? arr.getUnique().sortAscending() : [];
-	};
-
-	// "0, 1, 2-3,4,5,10-12, 8, 29,30,31, 11, 12,65, 66, 178"
-	// becomes "1-5,8,10-12,29-31,65-66,178"
-	// does not support negative numbers 
-	String.prototype.toRangesStr = function()
-	{
-		return this.toRangesArr().toSimplifiedString();
 	}
 
-}
+	return str.length ? str : this.toString();
+}}
+
+// "1-4,8,10-12,15-18,29"
+// becomes [1, 2, 3, 4, 8, 10, 11, 12, 15, 16, 17, 18, 29]
+if (!String.prototype.toRangesArr) { String.prototype.toRangesArr = function()
+{
+	var arr = [];
+	var str = this.trim();
+	str = str.replace(/\s/g, "");
+	var tmpArr = str.split(",");
+	
+	for(var i = 0; i < tmpArr.length; i++)
+	{	
+		var r = tmpArr[i];
+		if(r == "") continue;
+		if(r.match("-") != null)
+		{
+			var range = r.split("-");
+			var start = parseInt(range[0]);
+			var end = parseInt(range[1]);
+
+			if(!isNaN(start) && !isNaN(end))
+			{
+				var rLength = end - start + 1;
+				for(var r = 0; r < rLength; r++)
+				{
+					arr.push(start+r);
+				}
+			}
+		}
+		else
+		{
+			var intgr = parseInt(r);
+			var hasInt = !isNaN(intgr);
+			if(hasInt) arr.push(intgr);
+		}
+	}
+	return arr.length ? arr.getUnique().sortAscending() : [];
+}}
+
+// "0, 1, 2-3,4,5,10-12, 8, 29,30,31, 11, 12,65, 66, 178"
+// becomes "1-5,8,10-12,29-31,65-66,178"
+// does not support negative numbers 
+if (!String.prototype.toRangesStr) { String.prototype.toRangesStr = function()
+{
+	return this.toRangesArr().toSimplifiedString();
+}}
+// }
 
 // DEBUG AREA
 

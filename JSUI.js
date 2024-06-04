@@ -66,7 +66,7 @@ if(typeof JSUI !== "object")
 }
 
 // version
-JSUI.version = "1.0.3";
+JSUI.version = "1.0.4";
 
 // do some of the stuff differently depending on $.level and software version
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -6044,17 +6044,9 @@ JSUI.quickLog = function(obj, arrDepthInt, msgStr)
 
 		if( msgStr == undefined && (typeof arrDepthInt == "string")) 
 		{
-			msgStr = arrDepthInt;
+			var msgStr = arrDepthInt;
 			arrDepthInt = 0;
 		}
-
-		// if(msgStr == undefined)
-		// {
-		// 	return;
-		// }
-
-		$.writeln(obj);
-		$.writeln(msgStr);
 
 		if(obj === 0)
 		{	
@@ -6081,8 +6073,34 @@ JSUI.quickLog = function(obj, arrDepthInt, msgStr)
 
 		if(obj instanceof Object)
 		{
-			if(JSUI.isObjectEmpty(obj)) { $.writeln(JSON.stringify(obj, null, "\t")); return; }
-			else $.writeln(JSON.stringify(obj, null, "\t"));
+			// indent+arrItem+ "    " + (typeof arrItem).toUpperCase()
+			if( (obj instanceof File) || (obj instanceof Folder))
+			{ 
+				var fsObjType = (obj instanceof File) ? 'FILE' : 'FOLDER'; 
+				var str = indent+obj.fsName + "    "+fsObjType; 
+				$.writeln( str ); 
+				return str; 
+			}
+			else
+			{
+				// var str = 
+				var str = JSON.stringify(obj, null, "\t");
+				if(str === '{\n\n}')
+				{
+					str = indent+str + "    EMPTY OBJECT";
+					$.writeln(str); 
+					return str;
+				}
+				else 
+				{
+					$.writeln(str);
+					return str;
+				}
+				
+				// if(JSUI.isObjectEmpty(obj)) { $.writeln(JSON.stringify(obj, null, "\t")); return; }
+				// else $.writeln(JSON.stringify(obj, null, "\t"));
+			}
+
 		}
 		else if(obj instanceof Array)
 		{
@@ -6116,7 +6134,7 @@ JSUI.quickLog = function(obj, arrDepthInt, msgStr)
 		return resultStr;
 	}
 	else return "";
-};
+}
 
 // high resolution timer -- used twice in a row to make sure that we are not working with a rogue / leak
 JSUI.startTimer = function()
@@ -6380,22 +6398,27 @@ JSUI.resetPreferences = function( obj, saveOnReset )
 };
 
 // test for empty object 
-Object.prototype.isEmpty = function()
+if(typeof JSON === "object")
 {
-	return JSON.stringify(this) === '{\n\n}';
+	if(!Object.prototype.isEmpty) { Object.prototype.isEmpty = function()
+	{
+		return JSON.stringify(this) === '{\n\n}';
+	}}
 }
 
 // XBytor's string trim
-String.prototype.trim = function()
+if(!String.prototype.trim) { String.prototype.trim = function()
 {
 	return this.replace(/^[\s]+|[\s]+$/g,'');
-};
+}}
 
-String.prototype.padStart = function(num, pad)
+// this does not like zeroes!
+if(!String.prototype.padStart) { String.prototype.padStart = function(num, pad)
 {
-	if(!num) num = 6;
-	if(!pad) pad = " ";
+	if(!num) var num = 6;
+	if(!pad) var pad = " ";
 	if(pad == "0") return this.zeroPad(num);
+
 	num = Math.min(num, this.length)
 	var padStr = "";
 	if(this.length < num)
@@ -6405,44 +6428,122 @@ String.prototype.padStart = function(num, pad)
 			padStr += pad;
 		}
 	}
-	return padStr + this;
-}
+	return padStr +""+ this;
+}}
 
-String.prototype.zeroPad = function(num)
+if(!String.prototype.zeroPad) { String.prototype.zeroPad = function(num)
 {
-	if(!num) num = 3;
+	if(!num) var num = 3;
 	var padStr = "";
 	if(this.length < num) { padStr = new Array(num - this.length+1).join("0"); }
-	return padStr + this;
-}
+	return padStr +""+ this;
+}}
 
 // remove special characters that will cause problem in a file system context
-String.prototype.toFileSystemSafeName = function(replaceStr)
+if(!String.prototype.toFileSystemSafeName) { String.prototype.toFileSystemSafeName = function(replaceStr)
 {
 	return this.replace(/[\s:\/\\*\?\!\"\'\<\>\|]/g, replaceStr ? replaceStr : "_");
-};
+}}
 
 // get name without extension
-String.prototype.getFileNameWithoutExtension = function()
+if(!String.prototype.getFileNameWithoutExtension) { String.prototype.getFileNameWithoutExtension = function()
 {
 	var match = this.match(/([^\.]+)/);
 	return match != null ? match[1] : null;
-};
+}}
 
-// and since this pattern is used a lot...
-String.prototype.getDocumentName = function()
+// boolean indicating if string contains a ".ext" pattern
+if(!String.prototype.hasFileExtension) { String.prototype.hasFileExtension = function()
+{
+	return this.getFileExtension() != null;
+}}
+
+// get extension pattern ".ext"
+if(!String.prototype.getFileExtension){ String.prototype.getFileExtension = function()
+{
+	var match = this.trim().match(/\.[^\\.]+$/);
+	return match != null ? match[0].toLowerCase() : null; // null if no match
+}}
+
+// toggles extension pattern found at end of string
+if(!String.prototype.addRemoveExtensionSuffix) { String.prototype.addRemoveExtensionSuffix = function( str )
+{
+	var originalStr = this.trim();
+
+	if(!str)
+	{
+		return originalStr;
+	}
+
+	var match = originalStr.match(/\.[^\\.]+$/);
+
+	// var originalExt = originalStr.getFileExtension(); // need precise casing comparison
+	var originalExt = match != null ? match[0] : "";
+	var hasMatch = originalExt != null && originalExt != "";
+
+	if(hasMatch)
+	{
+		// if suffix already present, remove or replace
+		if(originalExt.toLowerCase() == str.toLowerCase())
+		{
+			return originalStr.replace(/\.[^\\.]+$/, "");
+		}
+		else
+		{
+			return originalStr.replace(/\.[^\\.]+$/, str);
+		}
+	}
+	else
+	{
+		return originalStr + str;
+	}
+}}
+
+if(!String.prototype.swapFileObjectFileExtension)
+{
+	// must FileObj.toString(), returns File object
+	String.prototype.swapFileObjectFileExtension = function( newExtStr )
+	{
+		if(!newExtStr) return;
+		var originalStr = this;
+		var newStr = originalStr;
+
+		newStr = this.trim();
+		var match = newStr.match(/\.[^\\.]+$/);
+
+		if(match == null)
+		{
+			return originalStr;
+		}
+
+		var fileExt = newStr.getFileExtension();
+		if(originalStr == fileExt)
+		{
+			return;
+		}
+		var newFileObj = new File(newStr.replace(/\.[^\\.]+$/, newExtStr.toLowerCase()));
+		return newFileObj;
+	}
+}
+	
+// str.hasSpecificExtension(".png") // "image.png" true   "image.jpg" false
+if(!String.prototype.hasSpecificExtension) { String.prototype.hasSpecificExtension = function( str )
+{
+	return this.getFileExtension() == str;
+}}
+
+if(!String.prototype.getDocumentName) { String.prototype.getDocumentName = function()
 {
 	return this.trim().getFileNameWithoutExtension().toFileSystemSafeName();
-};
-
+}}
+	
 // an approximation! special characters are not encouraged, but allowed
-String.prototype.getAssetsFolderName = function()
+if(!String.prototype.getAssetsFolderName) {	String.prototype.getAssetsFolderName = function()
 {
 	return (this.getDocumentName() + "-assets");
-};
-
-// 
-String.prototype.getAssetsFolderLocation = function( folderUri, allowNonExistantBool, createBool, allowMultipleParentsCreationBool )
+}}
+	
+if(!String.prototype.getAssetsFolderLocation) { String.prototype.getAssetsFolderLocation = function( folderUri, allowNonExistantBool, createBool, allowMultipleParentsCreationBool )
 {
 	var name = this.getAssetsFolderName();
 
@@ -6511,102 +6612,14 @@ String.prototype.getAssetsFolderLocation = function( folderUri, allowNonExistant
 	}
 	// return targetFolder ? assetsLocation : undefined;
 	return assetsLocation;
-};
-
-
-// // simple wrapper for creating "-assets" folder for current document
-// String.prototype.getAssetsFolder = function()
-// {
-// 	return this.getAssetsFolderLocation(undefined, undefined, true);
-// };
+}}
 
 // simple wrapper for creating "-assets" folder for current document
 // only use this with app.activeDocument.name, on a document which has been saved to disk at least once
-String.prototype.createAssetsFolder = function()
+if(!String.prototype.createAssetsFolder) { String.prototype.createAssetsFolder = function()
 {
 	return this.getAssetsFolderLocation(undefined, undefined, true);
-};
-
-
-// get extension pattern ".ext"
-String.prototype.getFileExtension = function()
-{
-	var match = this.trim().match(/\.[^\\.]+$/);
-	return match != null ? match[0].toLowerCase() : null; // null if no match
-};
-
-// boolean indicating if string contains a ".ext" pattern
-String.prototype.hasFileExtension = function()
-{
-	return this.getFileExtension() != null;
-};
-
-// toggles extension pattern found at end of string
-String.prototype.addRemoveExtensionSuffix = function( str )
-{
-    var originalStr = this.trim();
-
-    if(!str)
-    {
-        return originalStr;
-    }
-
-    var match = originalStr.match(/\.[^\\.]+$/);
-
-    // var originalExt = originalStr.getFileExtension(); // need precise casing comparison
-    var originalExt = match != null ? match[0] : "";
-    var hasMatch = originalExt != null && originalExt != "";
-
-	if(hasMatch)
-	{
-        // if suffix already present, remove or replace
-        if(originalExt.toLowerCase() == str.toLowerCase())
-        {
-            // if($.level) $.writeln( "exact "+str+" match, removing" );
-            return originalStr.replace(/\.[^\\.]+$/, "");
-        }
-        else
-        {
-            // if($.level) $.writeln( "extension present: " + originalExt );
-            return originalStr.replace(/\.[^\\.]+$/, str);
-        }
-	}
-    else
-    {
-        // if($.level) $.writeln( "adding " + str );
-       return originalStr + str;
-    }
-};
-
-// must FileObj.toString(), returns File object
-String.prototype.swapFileObjectFileExtension = function( newExtStr )
-{
-	if(!newExtStr) return;
-	var originalStr = this;
-	var newStr = originalStr;
-
-	newStr = this.trim();
-	var match = newStr.match(/\.[^\\.]+$/);
-
-	if(match == null)
-	{
-		return originalStr;
-	}
-
-	var fileExt = newStr.getFileExtension();
-	if(originalStr == fileExt)
-	{
-		return;
-	}
-	var newFileObj = new File(newStr.replace(/\.[^\\.]+$/, newExtStr.toLowerCase()));
-	return newFileObj;
-};
-
-// str.hasSpecificExtension(".png") // "image.png" true   "image.jpg" false
-String.prototype.hasSpecificExtension = function( str )
-{
-	return this.getFileExtension() == str;
-};
+}}
 
 // matches hexadecimal expression "0x001234"
 String.prototype.getHexadecimalNumber = function()
@@ -6615,28 +6628,27 @@ String.prototype.getHexadecimalNumber = function()
 	str = str.match(/0[xX][0-9a-fA-F]+/);
 
 	return str;
-};
+}
 
 // works with "@2x" and "@Dark"
 String.prototype.hasAtSymbolSuffix = function( str )
 {
 	var match = this.match(/\@[^]*$/);
 	return match == str;
-};
+}
 
 String.prototype.hasAdobe2xSuffix = function()
 {
 	return this.hasAtSymbolSuffix("@2x");
-};
+}
 
 String.prototype.hasAdobeDarkSuffix = function()
 {
 	return this.hasAtSymbolSuffix("@Dark");
-};
+}
 
-Array.prototype.indexOf = function(element, start)
+if(!Array.prototype.indexOf) { Array.prototype.indexOf = function(element, start)
 {
-	// for(var i = 0; i < this.length; i++) { if(this[i] === element) return i; }
 	if(!this.length) return -1;
 	var i = 0;
 	var idxL = this.length-1;
@@ -6645,47 +6657,48 @@ Array.prototype.indexOf = function(element, start)
 	if(start == -1) { for(var i = idxL; i > -1; i--) { if(this[i] === element) return i; } }
 	else { for(var i = start; i < this.length; i++) { if(this[i] === element) return i; } }
 	return -1;
-};
+}}
 
-Array.prototype.lastIndexOf = function(element)
+if(!Array.prototype.lastIndexOf) { Array.prototype.lastIndexOf = function(element)
 {
 	return this.indexOf(element, -1);
-};
+}}
 
-Array.prototype.map = function(callback) {
-    var arr = [];
-    for (var i = 0; i < this.length; i++)
-        arr.push(callback(this[i], i, this));
-    return arr;
-};
-
-Array.prototype.filter = function (fn)
+if(!Array.prototype.map) { Array.prototype.map = function(callback)
 {
-    var filtered = [];
-    for (var i = 0; i < this.length; i++)
-    {
-        if(fn(this[i]))
-        {
-            filtered.push(this[i]);
-        }
-    }
-    return filtered;
-};
+	var arr = [];
+	for (var i = 0; i < this.length; i++)
+		arr.push(callback(this[i], i, this));
+	return arr;
+}}
+
+if(!Array.prototype.filter) { Array.prototype.filter = function (fn)
+{
+	var filtered = [];
+	for (var i = 0; i < this.length; i++)
+	{
+		if(fn(this[i]))
+		{
+			filtered.push(this[i]);
+		}
+	}
+	return filtered;
+}}
 
 // removes duplicates in array
-Array.prototype.getUnique = function()
+if(!Array.prototype.getUnique) { Array.prototype.getUnique = function()
 {
 	var unique = [];
 	for(var i = 0; i < this.length; i++)
 	{
 		var current = this[i];
-		if(unique.indexOf(current) == -1) unique.push(current);
+		if(unique.indexOf(current) == -1) unique.push(current)
 	}
 	return unique;
-};
+}}
 
-// from array of JSON objects, compile list of identical values and return a one of each
-Array.prototype.getUniqueValues = function( pname )
+// from array of JSON objects, compile list of identical values and return one of each
+if(!Array.prototype.getUniqueValues) { Array.prototype.getUniqueValues = function( pname )
 {
 	if(!this.length) return this;
 	var value = this[0][pname];
@@ -6706,46 +6719,45 @@ Array.prototype.getUniqueValues = function( pname )
 			}
 		}
 	}
-
 	return uniqueNames;
-}
+}}
 
-// ECMA3 limitations: from array of JSON objects, get bidimensional arrays containing duplicates
-Array.prototype.getObjectPropertyDuplicates = function( pname )
-{
-	if(!this.length) return this;
-	var values = this.getUniqueValues(pname);
-	var sets = [];
+// // ECMA3 limitations: from array of JSON objects, get bidimensional arrays containing duplicates
+// Array.prototype.getObjectPropertyDuplicates = function( pname )
+// {
+// 	if(!this.length) return this;
+// 	var values = this.getUniqueValues(pname);
+// 	var sets = [];
 
-	for(var i = 0; i < values.length; i++)
-	{
-		var val = values[i];
-		var set = [];
-		for(var j = 0; j < this.length; j++)
-		{
-			var obj = this[j];
-			if(!obj) continue;
-			if(obj[pname] == val) set.push(obj);
-		}
-		if(set.length) sets.push(set);
-	}
-	return sets;
-}
+// 	for(var i = 0; i < values.length; i++)
+// 	{
+// 		var val = values[i];
+// 		var set = [];
+// 		for(var j = 0; j < this.length; j++)
+// 		{
+// 			var obj = this[j];
+// 			if(!obj) continue;
+// 			if(obj[pname] == val) set.push(obj);
+// 		}
+// 		if(set.length) sets.push(set);
+// 	}
+// 	return sets;
+// }
 
 // sort indexes
-Array.prototype.sortAscending = function()
+if(!Array.prototype.sortAscending) { Array.prototype.sortAscending = function()
 {
 	return this.sort(function(a, b){return a - b});
-};
+}}
 
-Array.prototype.sortDescending = function()
+if(!Array.prototype.sortDescending) { Array.prototype.sortDescending = function()
 {
 	return this.sort(function(a, b){return b - a});
-};
+}}
 
 // [1, 2, 3, 4, 8, 10, 11, 12, 15, 16, 17, 18, 29]
 // becomes "1-4,8,10-12,15-18,29"
-Array.prototype.getRanges = function()
+if(!Array.prototype.getRanges) { Array.prototype.getRanges = function()
 {
 	var ranges = ""; // [];
 	var rstart;
@@ -6762,13 +6774,12 @@ Array.prototype.getRanges = function()
 		ranges += ((rstart == rend ? rstart+'' : rstart + '-' + rend) + ( i+1 == this.length ? "" : "," ));
 	}
 	return ranges;
-};
+}}
 
 // [1, 2, 3, 4, 8, 10, 11, 12, 15, 16, 17, 18, 29]
 // becomes "1-4,8,10-12,15-18,29"
-Array.prototype.toSimplifiedString = function()
+if(!Array.prototype.toSimplifiedString) { Array.prototype.toSimplifiedString = function()
 {
-	// if($.level) $.writeln(this);
 	var str = "";
 	var ranges = [];
 
@@ -6814,11 +6825,11 @@ Array.prototype.toSimplifiedString = function()
 	}
 
 	return str.length ? str : this.toString();
-};
+}}
 
 // "1-4,8,10-12,15-18,29"
 // becomes [1, 2, 3, 4, 8, 10, 11, 12, 15, 16, 17, 18, 29]
-String.prototype.toRangesArr = function()
+if (!String.prototype.toRangesArr) { String.prototype.toRangesArr = function()
 {
 	var arr = [];
 	var str = this.trim();
@@ -6852,34 +6863,35 @@ String.prototype.toRangesArr = function()
 		}
 	}
 	return arr.length ? arr.getUnique().sortAscending() : [];
-};
+}}
 
 // "0, 1, 2-3,4,5,10-12, 8, 29,30,31, 11, 12,65, 66, 178"
 // becomes "1-5,8,10-12,29-31,65-66,178"
 // does not support negative numbers 
-String.prototype.toRangesStr = function()
+if (!String.prototype.toRangesStr) { String.prototype.toRangesStr = function()
 {
 	return this.toRangesArr().toSimplifiedString();
-}
+}}
 
-Number.prototype.clamp = function(min, max)
+if(!Number.prototype.clamp) { Number.prototype.clamp = function(min, max)
 {
-    var n = this.valueOf();
-    if(min == undefined || max == undefined) return n;
+	var n = this.valueOf();
+	if(min == undefined || max == undefined) return n;
 	if(n < min) n = min;
 	if(n > max) n = max;
 	return n;
-};
+}}
 
-Number.prototype.adjustFloatPrecision = function(tolerance)
+if(!Number.prototype.adjustFloatPrecision) { Number.prototype.adjustFloatPrecision = function(tolerance)
 {
-	if(tolerance == undefined) tolerance = 0.0001;
-    var n = this.valueOf();
-	var round = Math.round(n);
-	var delta = Math.abs(round-n);
-	if(delta <= tolerance) n = round;
-	return n;
-};
+		if(tolerance == undefined) tolerance = 0.0001;
+		var n = this.valueOf();
+		var round = Math.round(n);
+		var delta = Math.abs(round-n);
+		if(delta <= tolerance) n = round;
+		return n;
+}}
+	
 
 Number.prototype.isPowerOf2 = function()
 {
@@ -6889,7 +6901,7 @@ Number.prototype.isPowerOf2 = function()
     if(Math.floor(n) !== n) return false;
 	if(abs !== n) n = abs;
     return n && (n & (n - 1)) === 0;
-};
+}
 
 Number.prototype.getNextPow2 = function()
 {
@@ -6902,7 +6914,7 @@ Number.prototype.getNextPow2 = function()
 		p = p * 2;
 	}
 	return p;
-};
+}
 
 Number.prototype.getPreviousPow2 = function()
 {
@@ -6916,7 +6928,7 @@ Number.prototype.getPreviousPow2 = function()
 		p = p * 2;
 	}
 	return p / 2;
-};
+}
 
 Number.prototype.isMultOf = function(m)
 {
@@ -6926,14 +6938,14 @@ Number.prototype.isMultOf = function(m)
 	}
 	var n = this.valueOf();
 	return (Math.ceil(n/m) * m == n);
-};
+}
 
 Number.prototype.getNextMultOf = function(m)
 {
 	var n = this.valueOf();
 	if(n.isMultOf(m)) n++;
 	return (n % m == 0) ? n : ( n + (m - (n % m)) );
-};
+}
 
 Number.prototype.getPreviousMultOf = function(m)
 {
@@ -6945,26 +6957,26 @@ Number.prototype.getPreviousMultOf = function(m)
 	// else if(n < m) return n.getNextMultOf(m);
 	else if(n < m) return m;
 	else return n - (n % m);
-};
+}
 
 Number.prototype.isMult4 = function()
 {
 	var n = this.valueOf();
 	return n.isMultOf(4);
-};
+}
 
 Number.prototype.getPreviousMult4 = function()
 {
 	var n = this.valueOf();
 	n = n.getPreviousMultOf(4)
 	return n;
-};
+}
 
 Number.prototype.getNextMult4 = function()
 {
 	var n = this.valueOf();
 	return n.getNextMultOf(4);
-};
+}
 
 Number.prototype.isMult8 = function()
 {
@@ -6982,7 +6994,7 @@ Number.prototype.getNextMult8 = function()
 {
 	var n = this.valueOf();
 	return n.getNextMultOf(8);
-};
+}
 
 // multiples of 16
 
@@ -6990,19 +7002,19 @@ Number.prototype.isMult16 = function()
 {
 	var n = this.valueOf();
 	return n.isMultOf(16);
-};
+}
 
 Number.prototype.getPreviousMult16 = function()
 {
 	var n = this.valueOf();
 	return n.getPreviousMultOf(16);
-};
+}
 
 Number.prototype.getNextMult16 = function()
 {
 	var n = this.valueOf();
 	return n.getNextMultOf(16);
-};
+}
 
 // multiples of 32
 
@@ -7010,19 +7022,19 @@ Number.prototype.isMult32 = function()
 {
 	var n = this.valueOf();
 	return n.isMultOf(32);
-};
+}
 
 Number.prototype.getPreviousMult32 = function()
 {
 	var n = this.valueOf();
 	return n.getPreviousMultOf(32);
-};
+}
 
 Number.prototype.getNextMult32 = function()
 {
 	var n = this.valueOf();
 	return n.getNextMultOf(32);
-};
+}
 
 function Dictionary( allowOverwrite )
 {
@@ -7094,7 +7106,7 @@ JSUI.clampValue = function(n, min, max)
 	}
 
 	return n;
-};
+}
 
 // required
 if(JSUI.isPhotoshop)
