@@ -106,14 +106,14 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.86;
+Pslib.version = 0.87;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
 Pslib.isInDesign = app.name == "Adobe InDesign";
 Pslib.isBridge = app.name == "Adobe Bridge";
 
-Pslib.isDebugging = ($.level > 0);
+// Pslib.isDebugging = ($.level > 0);
 
 Pslib.isWindows = $.os.match(/windows/i) == "Windows";
 Pslib.isPs64bits = Pslib.isPhotoshop ? (Pslib.isWindows ? BridgeTalk.appVersion.match(/\d\d$/) == '64' : true) : false; // macOS assumed x64
@@ -3168,7 +3168,6 @@ Pslib.documentToXmpArrayImage = function( obj )
 			if(specsProvided)
 			{
 				specs = adv.specsArr[i];
-				// if(id !== specs.id) continue;
 			}
 			var coords = specsProvided ? specs : Pslib.getLayerReferenceByID( id, { getCoordsObject: true, tags: obj.tags.length ? obj.tags : [], namespace: obj.namespace, converter: obj.converter, docSpecs: obj.docSpecs, filterExtension: obj.filterExtension }); 
 			if(!coords) continue;
@@ -3235,11 +3234,11 @@ Pslib.documentToXmpArrayImage = function( obj )
 		if(obj.exportImage)
 		{
 			var added = Pslib.writeXMPtoMediaFile( mediaFileOutput, xmp );
-			if(added)
-			{
+			// if(added)
+			// {
 				rObj.imageFile = mediaFileOutput;
 				rObj.imageFileFsName = mediaFileOutput.fsName;
-			}
+			// }
 		}
 
 		rObj.allItems = adv.allItems;
@@ -5592,7 +5591,7 @@ Pslib.getLayerReferenceByID = function( id, obj )
 		{
 			coords.name = ref.getString(sTID('name'));
 			coords.id = id;
-			if($.level) $.writeln("Photoshop Layer Object reference: " + coords.id);
+			// Pslib.log("Photoshop Layer Object reference: " + coords.id);
 
 			// this tells us whether we're dealing with an art layer of with a group/artboard/frame
 			var layerSection = ref.getEnumerationValue(sTID('layerSection'));
@@ -8745,9 +8744,9 @@ Pslib.getArtboardsFromSelectedItems = function( itemsArr, getPagesBool, getIndex
 		var doc = app.activeDocument;
 		var selection = doc.selection;
 		if(itemsArr == undefined) var itemsArr = selection ? selection : undefined;
-
+        var indexes = [];
 		var artboards = [];
-		// for(var j = doc.artboards.length-1; j >= 0; j--)
+
 		for(var j = 0; j < doc.artboards.length; j++)
 		{
 			var artboard = doc.artboards[j];
@@ -8760,8 +8759,12 @@ Pslib.getArtboardsFromSelectedItems = function( itemsArr, getPagesBool, getIndex
 				
 				if(artboardFound)
 				{
-					artboards.push(getPagesBool ? (j+1) : ( getIndexesBool ? j : artboard) );
-					break;
+                    if(indexes.indexOf(j) != -1)
+                    {
+                        indexes.push(j);
+                        artboards.push(getPagesBool ? (j+1) : ( getIndexesBool ? j : artboard) );
+                        break;
+                    }
 				}
 			}
 		}
@@ -14668,58 +14671,112 @@ if((typeof JSON) === "object")
 	{
 		return JSON.stringify(this) === '{\n\n}';
 	}}
-	// alert(typeof JSUI === "object");
-	if(typeof JSUI === "object")
-	{
-		Pslib.log = JSUI.quickLog;
-	}		
 }
+
+if(typeof JSUI !== "undefined")
+{
+	Pslib.log = JSUI.quickLog;
+}		
 else
 {
-	Pslib.log = function(str, depth, msg)
+	Pslib.log = function(obj, arrDepthInt, msgStr)
 	{
-		if(Pslib.isDebugging)
+		// if(Pslib.isDebugging)
+		if($.level)
 		{ 
-			// if((typeof str) != "string") return "";
-
-			// if( msg == undefined && (typeof depth == "string")) 
-			// {
-			// 	var msg = depth;
-			// 	depth = 0;
-			// }
-
-			// if(obj === 0)
-			// {	
-			// 	return Pslib.log("0", depth, msg);
-			// }
+			if(obj == undefined) return;
+			var resultStr = "";
 	
-			// if(obj === null)
-			// {	
-			// 	return Pslib.log("null", depth, msg);
-			// }
+			if( msgStr == undefined && (typeof arrDepthInt == "string")) 
+			{
+				var msgStr = arrDepthInt;
+				arrDepthInt = 0;
+			}
+	
+			if(obj === 0)
+			{	
+				return Pslib.log("0", arrDepthInt, msgStr);
+			}
+	
+			if(obj === null)
+			{	
+				return Pslib.log("null", arrDepthInt, msgStr);
+			}
+	
+			if(arrDepthInt === undefined) arrDepthInt = 0;
+			var indent = "";
+			for(var i = 1; i < arrDepthInt; i++)
+			{
+				indent += "\t";
+			}
+	
+			if(msgStr && (arrDepthInt === 0))
+			{ 
+				$.writeln( msgStr );
+				return msgStr;
+			}
 
-			// if(depth === undefined) depth = 0;
-			// var indent = "";
-			// for(var i = 1; i < depth; i++)
-			// {
-			// 	indent += "\t";
-			// }
-
-			// if(msg && (depth === 0))
-			// { 
-			// 	$.writeln( msg );
-			// 	return msg;
-			// }
-
-			$.writeln(str);
-			return str;
+			if(obj instanceof Object)
+			{
+				if( (obj instanceof File) || (obj instanceof Folder))
+				{ 
+					var fsObjType = (obj instanceof File) ? 'FILE' : 'FOLDER'; 
+					var str = indent+obj.fsName + "    "+fsObjType; 
+					$.writeln( str ); 
+					return str; 
+				}
+				else
+				{
+					var str = JSON.stringify(obj, null, "\t");
+					if(str === '{\n\n}')
+					{
+						str = indent+str + "    EMPTY OBJECT";
+						$.writeln(str); 
+						return str;
+					}
+					else 
+					{
+						$.writeln(str);
+						return str;
+					}
+				}
+			}
+			else if(obj instanceof Array)
+			{
+				resultStr += (indent+"[");
+				$.writeln(indent+"[");
+				for(var i = 0; i < obj.length; i++)
+				{
+					var arrItem = obj[i];
+					if(arrItem instanceof Object || arrItem instanceof Array)
+					{
+						var arrStr = Pslib.log(arrItem, arrDepthInt);
+						resultStr += arrStr;
+					}
+					else
+					{
+						var objStr = (indent+arrItem+ "    " + (typeof arrItem).toUpperCase());
+						$.writeln(objStr);
+						resultStr += objStr;
+					}
+				}
+				var indentStr = (indent+"]");
+				$.writeln(indentStr);
+				resultStr += indentStr;
+			}
+			// assume string/number/boolean
+			else
+			{
+				var simpleTypeStr = (indent+obj+ "    " + (typeof obj).toUpperCase());
+				$.writeln(simpleTypeStr);
+				resultStr += simpleTypeStr;
+			}
+			return resultStr;
 		}
-		else
-		{
-			return str;
-		}
+		else return "";
 	}	
 }
+
 
 // XBytor's string trim
 if(!String.prototype.trim) { String.prototype.trim = function()
