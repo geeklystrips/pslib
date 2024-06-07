@@ -109,8 +109,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.88;
-// 0.88: extending .getContainers for Illustrator
+Pslib.version = 0.89;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -3277,6 +3276,15 @@ Pslib.getContainers = function( obj )
 		// useful with operations on container collections
 		var activeItems = [];
 
+		// special condition for illustrator if no active selection
+		if(Pslib.isIllustrator)
+		{
+			selectedItems = Pslib.getArtboardsFromSelectedItems(doc.selection, false, true, false, true);
+			allItems = Pslib.getAllArtboardIndexes();
+			// activeItems = allItems.map( function(el, idx){ return el+1});
+		}
+
+
 		for(var a = 0; a < allItems.length ; a++)
 		{  
 			var item = allItems[a];
@@ -3990,6 +3998,34 @@ Pslib.getSelectedArtboardIDs = function()
 Pslib.getAllArtboardIDs = function()
 {
 	return Pslib.getSpecsForAllArtboards(true);
+}
+
+Pslib.getAllArtboardIndexes = function()
+{
+	if(!app.documents.length) return;
+	var doc = app.activeDocument;
+	var indexes = [];
+	if(Pslib.isIllustrator)
+	{
+		// var artboards = Array(doc.artboards);
+		// indexes = doc.artboards.map( function(el, idx){ return idx; });
+		// indexes = artboards.map( function(el, idx){ return idx; });
+		for(var i = 0; i < doc.artboards.length; i++) { indexes.push(i); }
+	}
+	return indexes;
+}
+
+Pslib.getAllArtboardPages = function()
+{
+	if(!app.documents.length) return;
+	var doc = app.activeDocument;
+	var pages = [];
+	if(Pslib.isIllustrator)
+	{
+		// pages = doc.artboards.map( function(el, idx){ return idx+1; });
+		for(var i = 0; i < doc.artboards.length; i++) { pages.push(i+1); }
+	}
+	return pages;
 }
 
 // TO DEPRECATE IN FAVOR OF .getContainers() / ActionManager code
@@ -5953,10 +5989,13 @@ Pslib.getArtboardCollectionCoordinates = function( ids, precise )
 		var xOffset = -x1;
 		var yOffset = y1;
 
-		// if(precise)
-		// {
+		if(precise)
+		{
+			var tolerance = (typeof precise === "number") ? precise : 0.0001;
 
-		// }
+			var xOffset = -x1.adjustFloatPrecision(tolerance);
+			var yOffset = y1.adjustFloatPrecision(tolerance);
+		}
 
 		for(var i = 0; i < artboardIds.length; i++)
 		{
@@ -7786,7 +7825,7 @@ Pslib.getArtboardsFromSelectedItems = function( itemsArr, getPagesBool, getIndex
         var indexes = [];
 		var artboards = [];
 		var a = doc.artboards.getActiveArtboardIndex();
-
+		indexes = Pslib.getAllArtboardIndexes();
 		var coordsSystem = app.coordinateSystem;
 		if(app.coordinateSystem != CoordinateSystem.DOCUMENTCOORDINATESYSTEM) app.coordinateSystem = CoordinateSystem.ARTBOARDCOORDINATESYSTEM;
 
@@ -7795,20 +7834,16 @@ Pslib.getArtboardsFromSelectedItems = function( itemsArr, getPagesBool, getIndex
 		{
 			var artboard = doc.artboards[j];
 			var artboardFound = false;
-
-			
 			for(var i = 0; i < itemsArr.length; i++)
 			{
 				var item = itemsArr[i];
 				artboardFound = Pslib.getItemsOverlapArtboard([item], artboard, false);
-
 				if(artboardFound)
 				{
                     if(indexes.indexOf(j) != -1)
                     {
                         indexes.push(j);
                         artboards.push(getPagesBool ? (j+1) : ( getIndexesBool ? j : artboard) );
-						// Pslib.log("pushing " + j);
                         break;
                     }
 				}
@@ -7833,8 +7868,6 @@ Pslib.getArtboardsFromSelectedItems = function( itemsArr, getPagesBool, getIndex
 
 		if(fallBackToActive && !artboards.length)
 		{
-			// doc.selectObjectsOnActiveArtboard();
-			// if(doc.selection) artboards = [ doc.artboards[a] ];
 			artboards.push(getPagesBool ? (a+1) : ( getIndexesBool ? a : doc.artboards[a]) );
 		}
 
@@ -7844,14 +7877,18 @@ Pslib.getArtboardsFromSelectedItems = function( itemsArr, getPagesBool, getIndex
 	}
 }
 
-Pslib.getArtboardIndexesFromSelectedItems = function()
+Pslib.getArtboardIndexesFromSelectedItems = function( items )
 {
-	return Pslib.getArtboardsFromSelectedItems( undefined, false, true, false, true);
+	if(!app.documents.length) return [];
+	if(Pslib.isIllustrator && items == undefined) var items = app.activeDocument.selection;
+	return Pslib.getArtboardsFromSelectedItems( items, false, true, false, true);
 }
 
-Pslib.getArtboardPagesFromSelectedItems = function()
+Pslib.getArtboardPagesFromSelectedItems = function( items )
 {
-	return Pslib.getArtboardsFromSelectedItems( undefined, true, false, false, true);
+	if(!app.documents.length) return [];
+	if(Pslib.isIllustrator && items == undefined) var items = app.activeDocument.selection;
+	return Pslib.getArtboardsFromSelectedItems( items, true, false, false, true);
 }
 
 Pslib.getViewCoordinates = function( view )
@@ -9947,7 +9984,6 @@ Pslib.documentToFile = function( obj )
 	var doc = app.activeDocument;
 	if(Pslib.isPhotoshop) obj.includeSVG = false;
 
-	// var extension = ".svg";
 	var extension = ".png";
 	var outputFile;
 	var svgOutputFile;
@@ -9961,23 +9997,19 @@ Pslib.documentToFile = function( obj )
 		if(obj.destination instanceof File)
 		{
 			outputFile = obj.destination;
-			// assetsUri = outputFile.parent;
 		}
 		else if(typeof obj.destination == "string")
 		{
 			outputFile = new File(obj.destination);
-			// assetsUri = outputFile.parent;
 		}
 		else
 		{
 			outputFile = new File(obj.destination + "/" + docNameNoExt + extension);
-			// assetsUri = outputFile.parent;
 		}
 	}
 	else
 	{
 		outputFile = new File( doc.name.getAssetsFolderLocation( undefined, false, true, true) + "/" + docNameNoExt + extension );	
-		// assetsUri = outputFile.parent;
 	}
 
 	assetsUri = outputFile.parent;
@@ -9994,7 +10026,7 @@ Pslib.documentToFile = function( obj )
 		if(svgOutputFile.exists) svgOutputFile.remove();
 	}
 
-	// var artboardsCount = Pslib.getArtboardsCount();
+	var artboardsCount = Pslib.getArtboardsCount();
 	// var tempRectangle;
 	
 	if(Pslib.isIllustrator)
@@ -10010,9 +10042,7 @@ Pslib.documentToFile = function( obj )
 		// here is a hack for a successful full-document export
 		// in a context where an artboard has the same name as the document
 
-
 		outputFile = new File(assetsUri + "/" + docNameNoExt + extension);
-
 		var activeArtboardIndex = doc.artboards.getActiveArtboardIndex();
 	
 		// if match found, we may have a conflict with saving document as PNG with same name.
@@ -10030,29 +10060,37 @@ Pslib.documentToFile = function( obj )
 				if(names[i] == docNameNoExt)
 				{
 					artboardNameIndex = i;
+					break;
 				}
 			}
 		}
 
-		// var tempArtboard;
-		// if(artboardNameIndex > -1)
-		// {
-		// 	// if match found, assume document image will replace artboard image
-		// 	// otherwise a solution would be to temporarily rename the artboard before exporting and renaming it back
-		// 	// this may affect correspondance
-		// }
-		// else
-		// {
-		// 	// // if we don't have a match, create temporary artboard to delete afterward
-		// 	// tempArtboard = doc.artboards.add( [ 0, 0, 1, -1 ] ); // [x1, y1, x2, y2]
-	
-		// 	// // tempArtboard.name = "TEMP_" + (Math.random() * 1000).toString(16);
-		// 	// tempArtboard.name = docNameNoExt;
-		// 	// doc.artboards.setActiveArtboardIndex(artboardsCount);
-		// 	// tempRectangle = Pslib.addArtboardRectangle(); // if you need a color reference
-		// 	// // should we also delete 
-		// 	// artboardNameIndex = artboardsCount; // last 
-		// }
+		var tempArtboard;
+		if(artboardNameIndex > -1)
+		{
+			// if match found, assume document image will replace artboard image
+			// otherwise a solution would be to temporarily rename the artboard before exporting and renaming it back
+			// this may affect correspondance
+		}
+		else
+		{
+			// // if we don't have a match, create temporary artboard to delete afterward
+			// tempArtboard = doc.artboards.add( [ 0, 0, 1, -1 ] );
+
+			var coordsSystem = app.coordinateSystem;
+			app.coordinateSystem = CoordinateSystem.DOCUMENTCOORDINATESYSTEM;
+
+			tempArtboard = doc.artboards.add( [ 4096, 4096, 4097, 4095 ] );
+		
+			// tempArtboard.name = "TEMP_" + (Math.random() * 1000).toString(16);
+			tempArtboard.name = docNameNoExt;
+			// doc.artboards.setActiveArtboardIndex(artboardsCount);
+			// tempRectangle = Pslib.addArtboardRectangle(); // if you need a color reference
+			// // should we also delete 
+			artboardNameIndex = artboardsCount; // last 
+			if(app.coordinateSystem != coordsSystem) app.coordinateSystem = coordsSystem;
+
+		}
 	
 		// User's local "Create Sub-folders" setting from Export For Screens dialog (will create "1x" subfolder if true)
 		var smartExportUICreateFoldersPreference_UserValue = app.preferences.getIntegerPreference ('plugin/SmartExportUI/CreateFoldersPreference');
