@@ -109,7 +109,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.89;
+Pslib.version = 0.90;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -134,15 +134,15 @@ if(Pslib.isPhotoshop)
 	// 	Pslib.playAction("ScriptListener", "SLCFix");
 	// }
 
-	// 
-	function selectByID(id, add) {
-		Pslib.selectLayerByID(id, add);
-	};
+	// // 
+	// function selectByID(id, add) {
+	// 	Pslib.selectLayerByID(id, add);
+	// };
 	
-	// from xbytor
-	function getActiveLayerID() {
-		Pslib.getActiveLayerID();
-	};
+	// // from xbytor
+	// function getActiveLayerID() {
+	// 	Pslib.getActiveLayerID();
+	// };
 
 	// sub-optimal (we can actually get this info without the layer being active)
 	function getArtboardBounds( id )
@@ -223,73 +223,72 @@ if(Pslib.isPhotoshop)
 	}
 
 
-    // get individual artboard metrics and info
-	// anything including XMP data requires the layer to be selected
-    function getArtboardSpecs(layer, parentFullName, namespace)
-    {
-        var doc = app.activeDocument;
+    // // get individual artboard metrics and info
+	// // anything including XMP data requires the layer to be selected
+    // function getArtboardSpecs(layer, parentFullName, namespace)
+    // {
+    //     var doc = app.activeDocument;
 
-        var obj = {};
+    //     var obj = {};
 
-        obj.name = layer.name;
-        obj.index = layer.id;
+    //     obj.name = layer.name;
+    //     obj.index = layer.id;
 
-        try
-        {        
-            var bounds = getArtboardBounds(layer.id);
+    //     try
+    //     {        
+    //         var bounds = getArtboardBounds(layer.id);
 
-            obj.x = bounds[1];
-            obj.y = bounds[0];
-            obj.width = bounds[2] - bounds[1];
-            obj.height = bounds[3] - bounds[0];
-        }
-        catch(e)
-        {
-            // if($.level) $.writeln("Error getting specs for arboard " + layer.name + " \n\n" + e); 
+    //         obj.x = bounds[1];
+    //         obj.y = bounds[0];
+    //         obj.width = bounds[2] - bounds[1];
+    //         obj.height = bounds[3] - bounds[0];
+    //     }
+    //     catch(e)
+    //     {
+    //         // if($.level) $.writeln("Error getting specs for arboard " + layer.name + " \n\n" + e); 
 
-            // force minimal specs / document W x H
-            obj.x = 0;
-            obj.y = 0;
-            obj.width = doc.width.as("px");
-            obj.height = doc.height.as("px");
-        }
+    //         // force minimal specs / document W x H
+    //         obj.x = 0;
+    //         obj.y = 0;
+    //         obj.width = doc.width.as("px");
+    //         obj.height = doc.height.as("px");
+    //     }
             
-        obj.parent = doc.name;
-        obj.parentFullName = parentFullName.toString();
+    //     obj.parent = doc.name;
+    //     obj.parentFullName = parentFullName.toString();
 
-    	// get object-level XMP
+    // 	// get object-level XMP
 
-        var dictionary = Pslib.getXmpDictionary( layer.id, { assetID: null, source: null, hierarchy: null, specs: null, custom: null }, false, false, false, namespace ? namespace : Pslib.XMPNAMESPACE);
+    //     var dictionary = Pslib.getXmpDictionary( layer.id, { assetID: null, source: null, hierarchy: null, specs: null, custom: null }, false, false, false, namespace ? namespace : Pslib.XMPNAMESPACE);
       
-       // no empty strings allowed and no null values
-        // var dictionary = Pslib.getXmpDictionary( layer, ["assetID", "source", "hierarchy", "specs", "custom" ], false, false, false);
+    //    // no empty strings allowed and no null values
+    //     // var dictionary = Pslib.getXmpDictionary( layer, ["assetID", "source", "hierarchy", "specs", "custom" ], false, false, false);
 
-        // need a version of this feature that will NOT loop through all Object.components
-        //var dictionary = Pslib.getXmpDictionary( layer, [ ["assetID", null], ["source", null], ["hierarchy", null], ["specs", null], ["custom", null] ], false);//, true, typeCaseBool)
+    //     // need a version of this feature that will NOT loop through all Object.components
+    //     //var dictionary = Pslib.getXmpDictionary( layer, [ ["assetID", null], ["source", null], ["hierarchy", null], ["specs", null], ["custom", null] ], false);//, true, typeCaseBool)
         
-        // only pass dictionary if tags are present
+    //     // only pass dictionary if tags are present
 
-        // function isEmptyObject(obj){
-        //     return JSON.stringify(obj) === '{\n\n}';
-        // }
+    //     // function isEmptyObject(obj){
+    //     //     return JSON.stringify(obj) === '{\n\n}';
+    //     // }
 
-        // if(obj.hasOwnProperty("tags"))
-        // if(!isEmptyObject(dictionary))
-        // if(!JSUI.isObjectEmpty(dictionary))
-        if(!dictionary.isEmpty(dictionary))
-        {
-            obj.tags = dictionary;
-        }
+    //     // if(obj.hasOwnProperty("tags"))
+    //     // if(!isEmptyObject(dictionary))
+    //     if(!dictionary.isEmpty(dictionary))
+    //     {
+    //         obj.tags = dictionary;
+    //     }
 
 
-        // if($.level) $.writeln("LayerID " + obj.index + ": " + obj.name + " (w:" + obj.width +" h:" + obj.height + ") (x:" + obj.x +" y:" + obj.y + ")" ); //"  rect: " + obj.artboardRect);
-        return obj;
-    }
+    //     // if($.level) $.writeln("LayerID " + obj.index + ": " + obj.name + " (w:" + obj.width +" h:" + obj.height + ") (x:" + obj.x +" y:" + obj.y + ")" ); //"  rect: " + obj.artboardRect);
+    //     return obj;
+    // }
 
-	function makeActiveByIndex( idx, visible )
-	{   
-		return Pslib.selectLayerByIndex( idx, visible );
-	}
+	// function makeActiveByIndex( idx, visible )
+	// {   
+	// 	return Pslib.selectLayerByIndex( idx, visible );
+	// }
 		
 	// return intersection between all artboards and selected artboards
 	function getSelectedArtboards()
@@ -322,12 +321,12 @@ else
 	sTID = function(){};
 	tSID = function(){};
 
-	selectByID = function(){};
-	getActiveLayerID = function(){};
+	// selectByID = function(){};
+	// getActiveLayerID = function(){};
 	getArtboardBounds = function(){};
 	getArtboards = function(){};
 	getAssetsPath = function(){};
-	getArtboardSpecs = function(){};
+	// getArtboardSpecs = function(){};
 
 	getAllArtboards = function(){};
 	getSelectedArtboards = function(){};
@@ -8512,10 +8511,12 @@ Pslib.renameDuplicateArtboards = function( obj )
 	return processed;
 }
 
-// simple function to find/replace/add text patterns in artboard names 
-// var obj = { find: "TextToFind", replace: "TextToReplaceWith", prefix: "Prefix_", suffix: "_Suffix" }
-// Ps: artboard ids
-Pslib.renameArtboards = function( artboards, obj )
+// simple function to find/replace/add text patterns in artboards/group names 
+// "find" can be a RegExp object
+// "toggle" can be a RegExp, targets a pattern at the end of the string if it isn't
+// var obj = { find: "TextToFind", replace: "TextToReplaceWith", prefix: "Prefix_", suffix: "_Suffix", toggle: "TextToToggleOn-Off" }
+
+Pslib.renameArtboards = function( containers, obj )
 {
 	if(!app.documents.length) return;
 	if(!obj) return;
@@ -8524,37 +8525,97 @@ Pslib.renameArtboards = function( artboards, obj )
 	var selection = Pslib.isPhotoshop ? Pslib.getSelectedArtboardIDs() : doc.selection;
 	var renamedArr = [];
 
-	if(!artboards)
+	if(!containers)
 	{
-		var artboards = Pslib.isPhotoshop ? Pslib.getAllArtboardIDs() : doc.artboards;
+		var containers = Pslib.isPhotoshop ? Pslib.getAllArtboardIDs() : doc.artboards;
 	}
 
-	for(var i = 0; i < artboards.length; i++)
-	{
-		var id = Pslib.isPhotoshop ? artboards[i] : Pslib.getArtboardIndex(artboards[i]);
-		var artboard = Pslib.isPhotoshop ? Pslib.selectLayerByID(artboards[i]) : artboards[i];
-		var originalStr = artboard.name;
-		var renamedStr = artboard.name.trim();
+	// if(Pslib.isPhotoshop && obj.suspendHistory)
+	// {
+	// 	var suspendObj = obj;
+	// 	suspendObj.suspendHistory = false;
+	// 	var suspendObjStr = JSON.stringify(suspendObj);
+	// 	return doc.suspendHistory('Renamed '+containers.length+' containers', 'Pslib.renameArtboards (['+containers.toString()+'], JSON.parse('+suspendObjStr+')');
+	// }
 
-		if(obj.find)
+	var usingUuids = false;
+	var usingArtboardIDs = true;
+
+	if(Pslib.isIllustrator)
+	{
+		usingUuids = containers.isIntStringArray(true);
+		if(usingUuids) usingArtboardIDs = false;
+		// Pslib.log("usingUuids: " + usingUuids);
+	}
+
+
+	for(var i = 0; i < containers.length; i++)
+	{
+		var container = containers[i];
+		var id;
+
+		// Photoshop targets containers using their IDs
+		// Illustrator can use this logic to rename artboards, groups, layers...
+		if(Pslib.isIllustrator)
 		{
-			artboard.name = artboard.name.replace(obj.find, obj.replace);
-			renamedStr = artboard.name;
+			if(usingUuids)
+			{
+				var uuidStr = container;
+				id = uuidStr;
+				container = doc.getPageItemFromUuid(uuidStr);
+			}
+		}
+		else if(Pslib.isPhotoshop)
+		{
+			// selecting layers is required when changing their names
+			id = container;
+			container = Pslib.selectLayerByID(container);
+		}
+
+		var originalStr = container.name;
+		if(!originalStr) continue;
+		var renamedStr = originalStr.trim();
+
+		if(obj.find != undefined && obj.replace != undefined)
+		{
+			container.name = renamedStr.replace(obj.find, obj.replace);
+			renamedStr = container.name;
 		}
 
 		// can be empty
 		if(obj.prefix != undefined)
 		{
-			artboard.name = obj.prefix + artboard.name;
-			renamedStr = artboard.name;
+			container.name = obj.prefix + renamedStr;
+			renamedStr = container.name;
 		}
 
 		// can be empty
 		if(obj.suffix != undefined)
 		{
-			artboard.name = artboard.name + obj.suffix;
-			renamedStr = artboard.name;
+			container.name = renamedStr + obj.suffix;
+			renamedStr = container.name;
 		}
+
+		// toggle pattern at the end of string (e.g file extension)
+		if(obj.toggle != undefined)
+		{
+			var match = null;
+			var hasMatch = false;
+			var toggleIsRegExp = (obj.toggle instanceof RegExp);
+			
+			match = toggleIsRegExp ? renamedStr.match(obj.toggle) : renamedStr.match(/\.[^\\.]+$/gi);
+			hasMatch = match != null ? match[0] : null;
+			if(hasMatch)
+			{
+				container.name = renamedStr.trim().replace( (toggleIsRegExp ? obj.toggle : /\.[^\\.]+$/gi), "");
+			}
+			else
+			{
+				container.name = renamedStr.trim() + (toggleIsRegExp ? "" : obj.toggle);
+			}
+			renamedStr = container.name.trim();
+		}
+
 		if(renamedStr != originalStr) renamedArr.push( [ id, originalStr, renamedStr ]);
 		else renamedArr.push( [ id, null, null ]);
 	}
@@ -8586,9 +8647,26 @@ Pslib.renameArtboardsWhiteSpace = function( artboards, obj )
 {
 	if(!app.documents.length) return;
 	var doc = app.activeDocument;
-	var artboards = Pslib.isPhotoshop ? Pslib.getAllArtboardIDs() : doc.artboards;
 	if(!obj){ var obj = {} }; 
-	return Pslib.renameArtboards( artboards, { find: new RegExp(/[\s]/g), replace: obj.replace != undefined ? obj.replace : "_" } );
+	var renamed = [];
+	var config = { find: new RegExp(/[\s]/g), replace: obj.replace != undefined ? obj.replace : "_" };
+	if(Pslib.isPhotoshop)
+	{
+		var ids = Pslib.getAllArtboardIDs();
+		// var ids = Pslib.getContainers( { getIDs: true, selected: true, artboards: true, groups: true } );
+
+		function _renameContainers(ids)
+		{
+			return Pslib.renameArtboards( ids, config );
+		}
+		doc.suspendHistory("Removed whitespace in "+ids.length+" container names", "_renameContainers(["+ids.toString()+"])");
+	}
+	else if(Pslib.isIllustrator)
+	{
+		var targets = artboards ? artboards : doc.artboards;
+		renamed = Pslib.renameArtboards( targets, config );
+	}
+	return renamed;
 }
 
 // deal with special characters: whitespace, slash, backslash, question, exclamation, quotes etc (default replacement is "_")
@@ -8597,9 +8675,26 @@ Pslib.renameArtboardsSystemSafe = function( artboards, obj )
 {	
 	if(!app.documents.length) return;
 	var doc = app.activeDocument;
-	var artboards = Pslib.isPhotoshop ? Pslib.getAllArtboardIDs() : doc.artboards;
 	if(!obj){ var obj = {} }; 
-	return Pslib.renameArtboards( artboards, { find: new RegExp(/[\s:\/\\*\?\!\"\'\<\>\|]/g), replace: obj.replace != undefined ? obj.replace : "_" } );
+	var renamed = [];
+	var config = { find: new RegExp(/[\s:\/\\*\?\!\"\'\<\>\|]/g), replace: obj.replace != undefined ? obj.replace : "_" };
+	if(Pslib.isPhotoshop)
+	{
+		var ids = Pslib.getAllArtboardIDs();
+		// var ids = Pslib.getContainers( { getIDs: true, selected: true, artboards: true, groups: true } );
+
+		function _renameContainers(ids)
+		{
+			return Pslib.renameArtboards( ids, config );
+		}
+		doc.suspendHistory("Replaced unsafe characters in "+ids.length+" container names", "_renameContainers(["+ids.toString()+"])");
+	}
+	else if(Pslib.isIllustrator)
+	{
+		var targets = artboards ? artboards : doc.artboards;
+		renamed = Pslib.renameArtboards( targets, config );
+	}
+	return renamed;
 }
 
 // this is broken for now!
@@ -9530,7 +9625,6 @@ Pslib.artboardsToFiles = function( obj )
 
 					var jsonFileCreated = false;
 
-					//  if( !JSUI.isObjectEmpty(artboardJsonData) ) 
 					 if( !artboardJsonData.isEmpty() ) 
 					 jsonFileCreated = JSUI.writeToFile(jsonFile, JSON.stringify(artboardJsonData, null, "\t"), "utf8");
 					
@@ -10521,24 +10615,18 @@ Pslib.getArtboardSpecsInfo = function( obj )
 
 	if(Pslib.isPhotoshop)
 	{
-		var originalActiveLayer = doc.activeLayer; // may not be an artboard!
-		// var originalActiveLayerID = getActiveLayerID();
-	
-		// if(!obj.artboards) obj.artboards = getArtboards();
-
+		var originalActiveLayer = doc.activeLayer;	
 	
 		var docSpecs = [];
 		var artboardSpecs = [];
 	
 		var docSpecs = Pslib.getXmpDictionary( app.activeDocument, { source: null, hierarchy: null, specs: null, custom: null }, false, false, false, obj.namespace ? obj.namespace : Pslib.XMPNAMESPACE);
-		// var docHasTags = !JSUI.isObjectEmpty(docSpecs);
 		var docHasTags = !docSpecs.isEmpty();
 	
 		// provide solution for exporting only active artboard specs
 		for(var i = 0; i < obj.artboards.length; i++)
 		{
-			// var artboard = selectByID(obj.artboards[i][0]); // from Pslib
-			var artboard = makeActiveByIndex(obj.artboards[i][0], false); // from Pslib
+			var artboard = Pslib.selectLayerByID(obj.artboards[i][0], false); // from Pslib
 	
 			artboard = app.activeDocument.activeLayer;
 	
@@ -10555,7 +10643,7 @@ Pslib.getArtboardSpecsInfo = function( obj )
 			// {
 				// alert(app.activeDocument.activeLayer.name);
 				// var specs = obj.artboards ? obj.artboards : getArtboardSpecs(artboard, obj.parentFullName);
-				var specs = getArtboardSpecs(artboard, obj.parentFullName);
+				var specs = Pslib.getArtboardSpecs(artboard, obj.parentFullName);
 				// alert(specs)
 				// inject document tags if needed
 				if(docHasTags)
@@ -10631,8 +10719,11 @@ Pslib.collapseAllGroups = function()
 
 	if(Pslib.isPhotoshop)
 	{
+		// try{
         app.runMenuItem(sTID('collapseAllGroupsEvent'));
         collapsed = true;
+		// }
+		// catch(e){}
     }
     // else if(Pslib.isIllustrator)
     // {
@@ -13756,7 +13847,7 @@ if(!Array.prototype.convertTags) { Array.prototype.convertTags = function( conve
 // if(typeof JSUI !== "object")
 // {
 	// only if JSON lib present
-if((typeof JSON) === "object")
+if((typeof JSON) !== "undefined")
 {
 	if(!Object.prototype.isEmpty) { Object.prototype.isEmpty = function()
 	{
@@ -13868,10 +13959,10 @@ else
 	}	
 }
 
-
 // XBytor's string trim
 if(!String.prototype.trim) { String.prototype.trim = function()
 {
+	// return this.replace(/^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/g, '');
 	return this.replace(/^[\s]+|[\s]+$/g,'');
 }}
 
@@ -14057,6 +14148,25 @@ if(!String.prototype.addRemoveExtensionSuffix) { String.prototype.addRemoveExten
 	}
 }}
 
+if(!Number.prototype.isFinite) { Number.prototype.isFinite = function()
+{
+	var n = this.valueOf();
+	if ( n === Infinity || n === -Infinity ) return false;
+	else return true;
+}}
+
+if(!Number.prototype.isInteger) { Number.prototype.isInteger = function()
+{
+	var n = this.valueOf();
+	return (Number(n) === n && (typeof n) === 'number') && isFinite(n) && (Math.floor(n) === n);
+}}
+
+if(!Number.prototype.isFloat) { Number.prototype.isFloat = function()
+{
+	var n = this.valueOf();
+	return Number(n) === n && n % 1 !== 0;
+}}
+
 if(!Number.prototype.clamp) { Number.prototype.clamp = function(min, max)
 {
 	var n = this.valueOf();
@@ -14113,6 +14223,42 @@ if(!Number.prototype.isPowerOf2) { Number.prototype.isPowerOf2 = function()
 	return n && (n & (n - 1)) === 0;
 }}
 
+if (!Array.isArray) { Array.isArray = function(arg)
+{
+	if (arg === void 0 || arg === null) {
+		return false;
+	}
+	return (arg.__class__ === 'Array');
+}}
+
+if (!Array.prototype.isIntArray) { Array.prototype.isIntArray = function( deep )
+{
+	for(var i = 0; i < (deep ? this.length : 1); i++)
+	{
+		var item = this[i];
+		if( typeof item == "number" )
+		{
+			if(!item.isInteger()) return false;	
+		}
+		else return false;
+	}
+	return true;
+}}
+
+if (!Array.prototype.isIntStringArray) { Array.prototype.isIntStringArray = function( deep )
+{
+	for(var i = 0; i < (deep ? this.length : 1); i++)
+	{
+		var item = this[i];
+		if( typeof item == "string" )
+		{
+			if(!(parseInt(item).toString() == item)) return false;	
+		}
+		else return false;
+	}
+	return true;
+}}
+
 if(!Array.prototype.indexOf) { Array.prototype.indexOf = function(element, start)
 {
 	if(!this.length) return -1;
@@ -14138,8 +14284,82 @@ if(!Array.prototype.map) { Array.prototype.map = function(callback)
 	return arr;
 }}
 
+if (!Array.prototype.forEach) { Array.prototype.forEach = function(callback, thisArg)
+{
+	if (this === void 0 || this === null) {
+		throw new TypeError('Array.prototype.forEach called on null or undefined');
+	}
+	var O = Object(this);
+	var len = O.length >>> 0;
+	if (callback.__class__ !== 'Function') {
+		throw new TypeError(callback + ' is not a function');
+	}
+	var T = (arguments.length > 1) ? thisArg : void 0;
+	for (var k = 0; k < len; k++) {
+		var kValue;
+		if (k in O) {
+			kValue = O[k];
+			callback.call(T, kValue, k, O);
+		}
+	}
+}}
+
+if (!Array.prototype.flat) { Array.prototype.flat = function ( arr )
+{
+	if(arr == undefined) var arr = [];
+	for (var i = 0; i < this.length; i++)
+	{
+		var item = this[i];
+		if (item instanceof Array){
+			item.flat(arr);
+		}else{
+			arr.push(item);
+		}
+	}
+	return arr;
+}}
+
+if (!Array.prototype.reduce) { Array.prototype.reduce = function(callback, initialValue)
+{
+	if (this === void 0 || this === null) {
+	throw new TypeError('Array.prototype.reduce called on null or undefined');
+	}
+
+	if (callback.__class__ !== 'Function') {
+	throw new TypeError(callback + ' is not a function');
+	}
+
+	var t = Object(this), len = t.length >>> 0, k = 0, value;
+
+	if (arguments.length > 1) 
+	{
+		value = initialValue;
+	} 
+	else 
+	{
+		while (k < len && !(k in t)) {
+		k++; 
+		}
+		if (k >= len) {
+		throw new TypeError('Reduce of empty array with no initial value');
+		}
+		value = t[k++];
+	}
+
+	for (; k < len; k++) {
+	if (k in t) {
+		value = callback(value, t[k], k, t);
+	}
+	}
+	return value;
+}}
+
 if(!Array.prototype.filter) { Array.prototype.filter = function (fn)
 {
+	if (fn.__class__ !== 'Function') {
+		throw new TypeError(fn + ' is not a function');
+		}
+
 	var filtered = [];
 	for (var i = 0; i < this.length; i++)
 	{

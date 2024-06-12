@@ -66,7 +66,7 @@ if(typeof JSUI !== "object")
 }
 
 // version
-JSUI.version = "1.0.4";
+JSUI.version = "1.0.5";
 
 // do some of the stuff differently depending on $.level and software version
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -6398,7 +6398,7 @@ JSUI.resetPreferences = function( obj, saveOnReset )
 };
 
 // test for empty object 
-if(typeof JSON === "object")
+if(typeof JSON !== "undefined")
 {
 	if(!Object.prototype.isEmpty) { Object.prototype.isEmpty = function()
 	{
@@ -6409,6 +6409,7 @@ if(typeof JSON === "object")
 // XBytor's string trim
 if(!String.prototype.trim) { String.prototype.trim = function()
 {
+	// return this.replace(/^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/g, '');
 	return this.replace(/^[\s]+|[\s]+$/g,'');
 }}
 
@@ -6647,6 +6648,42 @@ String.prototype.hasAdobeDarkSuffix = function()
 	return this.hasAtSymbolSuffix("@Dark");
 }
 
+if (!Array.isArray) { Array.isArray = function(arg)
+{
+	if (arg === void 0 || arg === null) {
+		return false;
+	}
+	return (arg.__class__ === 'Array');
+}}
+
+if (!Array.prototype.isIntArray) { Array.prototype.isIntArray = function( deep )
+{
+	for(var i = 0; i < (deep ? this.length : 1); i++)
+	{
+		var item = this[i];
+		if( typeof item == "number" )
+		{
+			if(!item.isInteger()) return false;	
+		}
+		else return false;
+	}
+	return true;
+}}
+
+if (!Array.prototype.isIntStringArray) { Array.prototype.isIntStringArray = function( deep )
+{
+	for(var i = 0; i < (deep ? this.length : 1); i++)
+	{
+		var item = this[i];
+		if( typeof item == "string" )
+		{
+			if(!(parseInt(item).toString() == item)) return false;	
+		}
+		else return false;
+	}
+	return true;
+}}
+
 if(!Array.prototype.indexOf) { Array.prototype.indexOf = function(element, start)
 {
 	if(!this.length) return -1;
@@ -6672,8 +6709,82 @@ if(!Array.prototype.map) { Array.prototype.map = function(callback)
 	return arr;
 }}
 
+if (!Array.prototype.forEach) { Array.prototype.forEach = function(callback, thisArg)
+{
+	if (this === void 0 || this === null) {
+		throw new TypeError('Array.prototype.forEach called on null or undefined');
+	}
+	var O = Object(this);
+	var len = O.length >>> 0;
+	if (callback.__class__ !== 'Function') {
+		throw new TypeError(callback + ' is not a function');
+	}
+	var T = (arguments.length > 1) ? thisArg : void 0;
+	for (var k = 0; k < len; k++) {
+		var kValue;
+		if (k in O) {
+			kValue = O[k];
+			callback.call(T, kValue, k, O);
+		}
+	}
+}}
+
+if (!Array.prototype.flat) { Array.prototype.flat = function ( arr )
+{
+	if(arr == undefined) var arr = [];
+	for (var i = 0; i < this.length; i++)
+	{
+		var item = this[i];
+		if (item instanceof Array){
+			item.flat(arr);
+		}else{
+			arr.push(item);
+		}
+	}
+	return arr;
+}}
+
+if (!Array.prototype.reduce) { Array.prototype.reduce = function(callback, initialValue)
+{
+	if (this === void 0 || this === null) {
+	throw new TypeError('Array.prototype.reduce called on null or undefined');
+	}
+
+	if (callback.__class__ !== 'Function') {
+	throw new TypeError(callback + ' is not a function');
+	}
+
+	var t = Object(this), len = t.length >>> 0, k = 0, value;
+
+	if (arguments.length > 1) 
+	{
+		value = initialValue;
+	} 
+	else 
+	{
+		while (k < len && !(k in t)) {
+		k++; 
+		}
+		if (k >= len) {
+		throw new TypeError('Reduce of empty array with no initial value');
+		}
+		value = t[k++];
+	}
+
+	for (; k < len; k++) {
+	if (k in t) {
+		value = callback(value, t[k], k, t);
+	}
+	}
+	return value;
+}}
+
 if(!Array.prototype.filter) { Array.prototype.filter = function (fn)
 {
+	if (fn.__class__ !== 'Function') {
+		throw new TypeError(fn + ' is not a function');
+		}
+
 	var filtered = [];
 	for (var i = 0; i < this.length; i++)
 	{
@@ -6871,6 +6982,25 @@ if (!String.prototype.toRangesArr) { String.prototype.toRangesArr = function()
 if (!String.prototype.toRangesStr) { String.prototype.toRangesStr = function()
 {
 	return this.toRangesArr().toSimplifiedString();
+}}
+
+if(!Number.prototype.isFinite) { Number.prototype.isFinite = function()
+{
+	var n = this.valueOf();
+	if ( n === Infinity || n === -Infinity ) return false;
+	else return true;
+}}
+	
+if(!Number.prototype.isInteger) { Number.prototype.isInteger = function()
+{
+	var n = this.valueOf();
+	return (Number(n) === n && (typeof n) === 'number') && isFinite(n) && (Math.floor(n) === n);
+}}
+
+if(!Number.prototype.isFloat) { Number.prototype.isFloat = function()
+{
+	var n = this.valueOf();
+	return Number(n) === n && n % 1 !== 0;
 }}
 
 if(!Number.prototype.clamp) { Number.prototype.clamp = function(min, max)
