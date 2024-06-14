@@ -109,7 +109,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.90;
+Pslib.version = 0.91;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -2557,6 +2557,27 @@ Pslib.getTags = function( item, tagsArr, namespace, converter)
 
 	var harvestedTagsArr = [];
 
+	// do we need to convert array of strings?
+	if(tagsArr.length)
+	{    
+		if(typeof tagsArr == "string")
+		{
+			tagsArr = [ [ tagsArr, null ]];
+		}
+		else if(tagsArr instanceof Array)
+		{
+			if((typeof tagsArr[0] == "string"))
+			{
+				var tempArr = []
+				for(var i = 0; i < tagsArr.length; i++)
+				{
+					tempArr.push( [ tagsArr[i], null ]);
+				}
+				tagsArr = tempArr;
+			}
+		}
+	}
+
 	if(Pslib.isIllustrator)
 	{
 		if(item == undefined)
@@ -2579,10 +2600,7 @@ Pslib.getTags = function( item, tagsArr, namespace, converter)
 			return tagsArrColl;
 		}
 	
-		// if($.level) $.writeln( "\nGetting tags on " +  item.typename + " " + item.name);
-
 		var tags = item.tags;
-	
 		if(tags.length)
 		{    
 			for(var i = 0; i < tags.length; i++)
@@ -2600,10 +2618,8 @@ Pslib.getTags = function( item, tagsArr, namespace, converter)
 					if(name == tagsArr[j][0])
 					{
 						harvestedTagsArr.push([ name, value]);
-						// harvestedTagsArr.push([ name, value, item.uuid]);
 					}
 				}
-				// if($.level) $.writeln( "\t"+ name + ": " + value );
 			}
 		}
 	}
@@ -2665,7 +2681,6 @@ Pslib.arrayToObj = function( arr, obj )
 		{
 			obj[arr[i][0]] = arr[i][1]; 
 		}
-
 	}
 	return obj;
 }
@@ -3846,7 +3861,6 @@ Pslib.getSpecsForAllArtboards = function(onlyIDs)
 {
 	if(!app.documents.length) return;
 	var doc = app.activeDocument;
-	// if(onlyIds == undefined) var onlyIDs = false;
 
 	if(Pslib.isPhotoshop)
 	{
@@ -3900,8 +3914,6 @@ Pslib.getSpecsForAllArtboards = function(onlyIDs)
 		// TODO: this is nowhere as complete as Pslib.getSpecsForSelectedArtboards()
 		// return Pslib.getArtboardCollectionCoordinates();
 
-		// var doc = app.activeDocument;
-
 		var artboardsCoords = [];
 
 		if(onlyIDs)
@@ -3913,7 +3925,6 @@ Pslib.getSpecsForAllArtboards = function(onlyIDs)
 			return artboardsCoords;
 		}
 
-
 		var initialSelection = doc.selection;
 		var artboards = Pslib.getAllArtboards();
 		var placeholder;
@@ -3924,7 +3935,6 @@ Pslib.getSpecsForAllArtboards = function(onlyIDs)
 			// var artboardIndex = Pslib.getArtboardIndex(artboard, true);
 			doc.artboards.setActiveArtboardIndex(i);
 			doc.selectObjectsOnActiveArtboard();
-
 
 			placeholder = Pslib.getArtboardItem(artboard, "#");
 			var specsObj = { name: artboard.name.toFileSystemSafeName(), id: (i+1) };
@@ -4006,11 +4016,13 @@ Pslib.getAllArtboardIndexes = function()
 	var indexes = [];
 	if(Pslib.isIllustrator)
 	{
-		// var artboards = Array(doc.artboards);
-		// indexes = doc.artboards.map( function(el, idx){ return idx; });
-		// indexes = artboards.map( function(el, idx){ return idx; });
 		for(var i = 0; i < doc.artboards.length; i++) { indexes.push(i); }
 	}
+	else if(Pslib.isPhotoshop)
+	{
+		indexes = Pslib.getContainers( { getIDs: false, getIndexes: true, selected: false, artboards: true, groups: false } );
+	}
+
 	return indexes;
 }
 
@@ -7757,12 +7769,8 @@ Pslib.getItemsOverlapArtboard = function( itemsArr, artboard, getItems )
 
 			if(thisItemOverlaps)
 			{
-				// Pslib.log(itemCoords);
-				// Pslib.log(i + " " + thisItemOverlaps);
 				overlaps = true;
 				if(getItems) overlapsArr.push(item);
-				// if not returning items, break the loop early
-				// else break; 
 				else return true; 
 			}
 		}
@@ -10460,40 +10468,39 @@ Pslib.getArtboardItem = function( artboard, nameStr, itemCollection, activate, t
 	return targetItem;
 }
 
-Pslib.getInfosForTaggedItems = function(itemCollection, pageItemType, nameStr, tagsArr, matchArtboards, artboardCollection, searchGroupItems)
+Pslib.getInfosForTaggedItems = function( obj )
 {
     if(!app.documents.length) return;
-    var doc = app.activeDocument;
-
+	var doc = app.activeDocument;
     var itemInfos = [];
 
     if(Pslib.isIllustrator)
     {
-        if(itemCollection == undefined) itemCollection = doc.pageItems;
+		if(!obj) var obj = {};
+		if(!obj.items) obj.items = doc.pageItems;
+		if(!obj.pageItemType) obj.pageItemType = "PathItem";
+		if(!obj.nameStr) obj.nameStr = "#";
+		if(!obj.tags) obj.tags = [];
+		if(obj.onlyTagged == undefined) obj.onlyTagged = false;
+		if(obj.matchArtboards == undefined) obj.matchArtboards = true;
+		if(!obj.indexes) obj.indexes = Pslib.getAllArtboardIndexes();
+		if(obj.searchGroupItems == undefined) obj.searchGroupItems = obj.pageItemType != "GroupItem";
+		if(obj.flatten == undefined) obj.flattenTags = false;
 
         var doMatchType = false;
-        if(pageItemType == undefined) pageItemType = "PathItem";
-        if(pageItemType) doMatchType = true;
-    
-        if(nameStr == undefined) nameStr = "#";
-    
+        if(obj.pageItemType) doMatchType = true;    
         var getAllTags = false;
-        if(tagsArr == undefined) tagsArr = [];
-        if(tagsArr.length == 0) getAllTags = true;
+        if(obj.tags.length == 0) getAllTags = true;
         
-        if(searchGroupItems == undefined) searchGroupItems = pageItemType != "GroupItem";
-    
         // default target name is "#", an empty string is a wildcard for any name
-        var doMatchName = nameStr.length > 0; 
+        var doMatchName = obj.nameStr.length > 0; 
     
-        if(itemCollection)
+        if(obj.items)
         {
             function _filterItems( item )
             {
-				// if($.level) $.writeln("Pslib.getInfosForTaggedItems() " + item.name);
-
                 var targetItem;
-                if( item.typename == "GroupItem" && searchGroupItems)
+                if( item.typename == "GroupItem" && obj.searchGroupItems)
                 {
                     var groupItems = item.pageItems;
                     for (var j = 0; j < groupItems.length; j++)
@@ -10505,12 +10512,12 @@ Pslib.getInfosForTaggedItems = function(itemCollection, pageItemType, nameStr, t
     
                 if(doMatchType)
                 {
-                    if(item.typename != pageItemType) return;
+                    if(item.typename != obj.pageItemType) return;
                 }
     
                 if(doMatchName)
                 {
-                    if(item.name != nameStr) return;
+                    if(item.name != obj.nameStr) return;
                 }
                 targetItem = item;
     
@@ -10518,25 +10525,21 @@ Pslib.getInfosForTaggedItems = function(itemCollection, pageItemType, nameStr, t
             }
     
             // first pass: get items with tags
-            for (var i = 0; i < itemCollection.length; i++)
+            for (var i = 0; i < obj.items.length; i++)
             {
-                var item = itemCollection[i];
-                if( item.typename == "GroupItem" && searchGroupItems)
+                var item = obj.items[i];
+                if( item.typename == "GroupItem" && obj.searchGroupItems)
                 {
                     var groupItems = item.pageItems;
-                    for (var j = 0; j < groupItems.length; j++)
+                    for (var g = 0; g < groupItems.length; g++)
                     {
-                        targetItem = _filterItems(groupItems[j]);
+                        targetItem = _filterItems(groupItems[g]);
                         if(targetItem) break;
                     }
                 }
-    
-                if(doMatchType)
-                {
-                    if(item.typename != pageItemType) continue;
-                }
-                var itemTags = getAllTags ? Pslib.getAllTags( item ) : Pslib.getTags( item, tagsArr );
-    
+
+                var itemTags = getAllTags ? Pslib.getAllTags( item ) : Pslib.getTags( item, obj.tags, undefined, obj.converter );
+
                 if(itemTags.length)
                 {
 					// filter empty tags
@@ -10546,59 +10549,76 @@ Pslib.getInfosForTaggedItems = function(itemCollection, pageItemType, nameStr, t
 					for (var t = 0; t < itemTags.length; t++)
 					{
 						var tag = itemTags[t];
-						if(tag[1].length) { 
-							var tagSet = [tag[0], tag[1]];
-							// if(tag[2] != undefined) tagSet.push(tag[2]);
-							filteredTags.push(tagSet); 
+						if(tag[1].length)
+						{ 
+							if(obj.flatten)
+							{
+								info[tag[0]] = tag[1];
+							}
+							else filteredTags.push([tag[0], tag[1]]);
+							// data type? 
 						}
 					}
 
 					if(filteredTags.length)
 					{
-						info.tags = filteredTags;
-						itemInfos.push(info);
+						if(!obj.flatten)
+						{
+							info.tags = filteredTags;
+						}
+						if(obj.onlyTagged) itemInfos.push(info);
 					}
+					if(!obj.onlyTagged) itemInfos.push(info);
                 }
             }
     
             // second pass, match tagged items to artboards
-            if(matchArtboards)
+            if(obj.matchArtboards)
             {
-                if(artboardCollection == undefined) artboardCollection = Pslib.getAllArtboards();
-                var collectionSameLength = artboardCollection.length == doc.artboards.length;
+				// quickly check if collection of integers, store and convert if so
+				if(!obj.indexes.isIntArray())
+				{
+					var indexes = [];
+					for (var i = 0; i < obj.indexes.length; i++)
+					{
+						var artboard = obj.indexes[i];
+						var artboardIndex = Pslib.getArtboardIndex(artboard);
+						indexes.push(artboardIndex);
+					}
+					obj.indexes = indexes;
+				}
+
+				var tempItemInfos = [];
                 for (var i = 0; i < itemInfos.length; i++)
                 {
                     var info = itemInfos[i];
                     var item;
+
                     if(info.uuid) item = doc.getPageItemFromUuid(info.uuid);
                     if(!item) continue;
-    
-                    // this returns first artboard found matching item bounds 
-                    for (var a = 0; a < artboardCollection.length; a++)
+
+                    for (var a = 0; a < obj.indexes.length; a++)
                     {
-                        var artboard = artboardCollection[a];
+						var index = obj.indexes[a];
+                        var artboard = doc.artboards[index];
+
                         var artboardMatch = Pslib.getItemsOverlapArtboard( [ item ], artboard, false );
                         if(artboardMatch)
                         {
-                            var artboardIndex = a;
-                            if(!collectionSameLength)
-                            {
-                                artboardIndex = Pslib.getArtboardIndex(artboard);
-                            }
-                            // update itemInfos array with artboard details
-                            itemInfos[i].index = artboardIndex;
-                            itemInfos[i].name = doc.artboards[artboardIndex].name;
-                            itemInfos[i].uuid = info.uuid;
+							info.index = index;
+							info.name = doc.artboards[index].name;
+							tempItemInfos.push(info);
+							break;
                         }
                     }
                 }
+				if(tempItemInfos.length) itemInfos = tempItemInfos;
             }
         }
     }
     return itemInfos;
 }
 
-// 
 Pslib.getArtboardSpecsInfo = function( obj )
 {
     if(!app.documents.length) return [];
@@ -10606,8 +10626,6 @@ Pslib.getArtboardSpecsInfo = function( obj )
     if(!obj)
     {
         var obj = { };
-		// obj.artboards = [];
-		// if(Pslib.isIllustrator) obj.artboards = app.activeDocument.artboards;
     }
 
     var doc = app.activeDocument;
@@ -10639,34 +10657,27 @@ Pslib.getArtboardSpecsInfo = function( obj )
 				}
 			}
 	
-			// if(artboard.name.hasSpecificExtension( obj.extension ? obj.extension : ".png"))
-			// {
-				// alert(app.activeDocument.activeLayer.name);
-				// var specs = obj.artboards ? obj.artboards : getArtboardSpecs(artboard, obj.parentFullName);
-				var specs = Pslib.getArtboardSpecs(artboard, obj.parentFullName);
-				// alert(specs)
-				// inject document tags if needed
-				if(docHasTags)
+			var specs = Pslib.getArtboardSpecs(artboard, obj.parentFullName);
+			// inject document tags if needed
+			if(docHasTags)
+			{
+				// if no tags present, force document's
+				if(!specs.hasOwnProperty("tags"))
+				{             
+					specs.tags = docSpecs;
+				}
+				// if tags object present, loop through template structure and inject as needed
+				else
 				{
-					// if no tags present, force document's
-					if(!specs.hasOwnProperty("tags"))
-					{             
-						specs.tags = docSpecs;
-					}
-					// if tags object present, loop through template structure and inject as needed
-					else
+					// source: null, hierarchy: null, specs: null, custom: null
+					// here we assume that if a value is present, it should take precedence
+					if(!specs.tags.hasOwnProperty("source"))
 					{
-						// source: null, hierarchy: null, specs: null, custom: null
-						// here we assume that if a value is present, it should take precedence
-						if(!specs.tags.hasOwnProperty("source"))
-						{
-						   specs.tags.source = docSpecs.source;
-						}
+						specs.tags.source = docSpecs.source;
 					}
 				}
-				artboardSpecs.push(specs);
-			// }
-	
+			}
+			artboardSpecs.push(specs);	
 		}
 	
 		// restore initial activeLayer
