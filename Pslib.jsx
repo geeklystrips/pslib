@@ -109,7 +109,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.92;
+Pslib.version = 0.921;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -4039,6 +4039,23 @@ Pslib.getAllArtboardPages = function()
 	return pages;
 }
 
+Pslib.getAllArtboardRects = function()
+{
+	if(!app.documents.length) return;
+	var doc = app.activeDocument;
+	var rects = [];
+	if(Pslib.isIllustrator)
+	{
+		for(var i = 0; i < doc.artboards.length; i++) { rects.push( doc.artboards[i].artboardRect ); }
+	}
+	else if(Pslib.isPhotoshop)
+	{
+		var ids = Pslib.getContainers( { getIDs: true, getIndexes: false, selected: false, artboards: true, groups: false } );
+		for(var i = 0; i < ids.length; i++) { rects.push( Pslib.getArtboardBounds(i) ) };
+	}
+	return rects;
+}
+
 // TO DEPRECATE IN FAVOR OF .getContainers() / ActionManager code
 // get more complete data set for artboards collection 
 
@@ -6011,11 +6028,17 @@ Pslib.getArtboardCollectionCoordinates = function( ids, precise, docSpecs )
 		{
 			var tolerance = (typeof precise === "number") ? precise : 0.0001;
 			var yOffset = 0;
+
+			if(docSpecs.isEmpty())
+			{
+				docSpecs = Pslib.getDocumentSpecs(true);
+			}
 			
 			if(docSpecs)
 			{
 				if(docSpecs.artboardYoffset != undefined)
 				{
+					xOffset = docSpecs.artboardXoffset;
 					yOffset = docSpecs.artboardYoffset;
 				}
 			}
@@ -6035,10 +6058,12 @@ Pslib.getArtboardCollectionCoordinates = function( ids, precise, docSpecs )
 		{
 			var index = artboardIds[i];
 			var coords = Pslib.getArtboardCoordinates( doc.artboards[index], precise, undefined, xOffset, yOffset );
-			var page = index+1;
+			// var page = index+1;
 			
 			// var obj = { name: coords.name, id: index, page: page, width: coords.width, height: coords.height, x: coords.x, y: coords.y + (coords.height/2) };
-			var obj = { name: coords.name, id: index, page: page, width: coords.width, height: coords.height, x: coords.x, y: coords.y };
+			// coords.y +=
+			var obj = { name: coords.name, id: index, page: index+1, width: coords.width, height: coords.height, x: coords.x, y: coords.y };
+			// Pslib.log(obj);
 			artboardObjArr.push(obj);
 		}
 
@@ -6191,6 +6216,9 @@ Pslib.getDocumentSpecs = function( advanced )
 		specs.pageOriginX = doc.pageOrigin[0];
 		specs.pageOriginY = doc.pageOrigin[1];
 
+		specs.rulerOrigin = doc.rulerOrigin;
+		specs.rulerOriginX = specs.rulerOrigin[0];
+		specs.rulerOriginY = specs.rulerOrigin[1];
 		if(advanced)
 		{
 			
@@ -6210,9 +6238,24 @@ Pslib.getDocumentSpecs = function( advanced )
 			// get cumulative values for visible bounds AND artboard geometry bounds
 			specs.boundsForDocumentAndArtboards = Pslib.getDocumentVisibleBounds(true);
 			var dab = specs.boundsForDocumentAndArtboards;
+			
+			specs.docXoffset = Math.abs(dab[2]+dab[0]);
+			specs.docWoffset = Math.abs(dab[2]-dab[0]);
+			// Pslib.log("docWoffset: " + specs.docWoffset);
+
 			specs.docYoffset = Math.abs(dab[3]+dab[1]);
 			specs.docHoffset = Math.abs(dab[3]-dab[1]);
+			
 			specs.artboardYoffset = (-(specs.docHoffset + specs.docYoffset));
+			specs.artboardXoffset = (-(specs.docWoffset + specs.docXoffset));
+
+			// here let's get coordinates for ACTIVE artboard
+			var r = doc.artboards[doc.artboards.getActiveArtboardIndex()].artboardRect;
+			specs.refArtboardRect = r;
+
+			// specs.artboardRectsArr = [];
+
+
 			// apply .artboardYoffset to .y coordinates in cases where document is exported as an image and "empty" artboards are meant to affect geometry
 
 		}
@@ -6306,9 +6349,14 @@ Pslib.getArtboardCoordinates = function( artboard, precise, uuidStr, xOffset, yO
 		if(index != undefined) coords.id = index;
 		if(page != undefined) coords.page = page;
 		if(uuidStr != undefined) coords.uuid = uuidStr;
+
 		coords.x = rect[0] + xOffset;
 		coords.y = (-rect[1]) + yOffset;
 
+		// coords.x = Math.abs((rect[0]) + xOffset);
+		// coords.y = Math.abs((-rect[1]) + yOffset);
+
+		// coords.width = Math.abs(rect[2] - rect[0]);
 		coords.width = rect[2] - rect[0];
 		coords.height = Math.abs(rect[3] - rect[1]);
 
@@ -10308,7 +10356,8 @@ Pslib.documentToFile = function( obj )
 		{
 			if(typeof obj.json == "boolean")
 			{
-				var docSpecs = Pslib.getDocumentSpecs();
+				var docSpecs = Pslib.getDocumentSpecs(true);
+				// Pslib.log(docSpecs);
 				jsonData = isJsonObj ? obj.json : Pslib.getArtboardCollectionCoordinates(undefined, true, docSpecs);
 			}
 		}
@@ -13928,13 +13977,23 @@ else
 		// if(Pslib.isDebugging)
 		if($.level)
 		{ 
-			if(obj == undefined) return;
+			if(obj === undefined) return;
 			var resultStr = "";
+
+			// if(typeof arrDepthInt == "string")
+			// {
+			// 	resultStr += arrDepthInt;
+			// 	return Pslib(obj, 0, resultStr);
+			// }
 	
-			if( msgStr == undefined && (typeof arrDepthInt == "string")) 
+			if( (msgStr === undefined) && ((typeof arrDepthInt) == "string")) 
 			{
 				var msgStr = arrDepthInt;
 				var arrDepthInt = 0;
+				Pslib.log(msgStr);
+				Pslib.log(obj);
+				return;
+				// return Pslib.log(obj, arrDepthInt, msgStr);
 			}
 			if(arrDepthInt === undefined) var arrDepthInt = 0;
 	
