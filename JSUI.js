@@ -66,7 +66,7 @@ if(typeof JSUI !== "object")
 }
 
 // version
-JSUI.version = "1.0.5";
+JSUI.version = "1.0.6";
 
 // do some of the stuff differently depending on $.level and software version
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -6045,8 +6045,9 @@ JSUI.quickLog = function(obj, arrDepthInt, msgStr)
 		if( msgStr == undefined && (typeof arrDepthInt == "string")) 
 		{
 			var msgStr = arrDepthInt;
-			arrDepthInt = 0;
+			var arrDepthInt = 0;
 		}
+		if(arrDepthInt === undefined) var arrDepthInt = 0;
 
 		if(obj === 0)
 		{	
@@ -6058,7 +6059,7 @@ JSUI.quickLog = function(obj, arrDepthInt, msgStr)
 			return JSUI.quickLog("null", arrDepthInt, msgStr);
 		}
 
-		if(arrDepthInt === undefined) arrDepthInt = 0;
+		// if(arrDepthInt === undefined) arrDepthInt = 0;
 		var indent = "";
 		for(var i = 1; i < arrDepthInt; i++)
 		{
