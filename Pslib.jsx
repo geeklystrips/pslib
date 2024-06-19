@@ -109,7 +109,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.93;
+Pslib.version = 0.931;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -5908,6 +5908,47 @@ Pslib.getLayerObjectTimeStamp = function ( layer, locale )
 	}
 }
 
+Pslib.copyTextToClipboard = function( str )
+{
+	if(!app.documents.length) return false;
+
+	var doc = app.activeDocument;
+
+	if(Pslib.isPhotoshop)
+	{
+		var desc = new ActionDescriptor();
+		desc.putString( cTID('TxtD', str) );
+		executeAction( sTID('textToClipboard'), desc, DialogModes.NO);
+	}
+	else if(Pslib.isIllustrator)
+	{	
+		var initialSelection = doc.selection;
+		var tempLayer = doc.layers.add();
+		var tempTextItem = tempLayer.textFrames.add();
+		tempTextItem.contents = str;
+
+		// this forces a refresh of the selection array
+		// app.redraw() also works (?)
+		try
+		{
+			app.executeMenuCommand('deselectall');
+			doc.selection = [ tempTextItem ];
+			app.cut();
+		}
+		catch(e)
+		{
+			tempLayer.remove();
+			doc.selection = initialSelection;
+			return false;
+		}
+
+		tempLayer.remove();
+		doc.selection = initialSelection;
+	}
+	
+	return true;
+}
+
 // get coordinates for specific layer object (auto-selects target, reselects initially active)
 // or abstract layer object via ID (without actively selecting object)
 Pslib.getLayerObjectCoordinates = function( layer )
@@ -10603,6 +10644,8 @@ Pslib.getInfosForTaggedItems = function( obj )
 		if(!obj.indexes) obj.indexes = Pslib.getAllArtboardIndexes();
 		if(obj.searchGroupItems == undefined) obj.searchGroupItems = obj.pageItemType != "GroupItem";
 		if(obj.flatten == undefined) obj.flatten = false;
+		if(obj.mergeInfos == undefined) obj.mergeInfos = true;
+		if(!obj.existingInfos) obj.existingInfos = [];
 
         var doMatchType = false;
         if(obj.pageItemType) doMatchType = true;    
@@ -10735,6 +10778,52 @@ Pslib.getInfosForTaggedItems = function( obj )
                 }
 				if(tempItemInfos.length) itemInfos = tempItemInfos;
             }
+
+			// assume a merge with existing .getArtboardCollectionCoordinates array
+			if(obj.matchArtboards && obj.mergeInfos)
+			{
+				if(!obj.existingInfos.length)
+				{
+					var docSpecs = Pslib.getDocumentSpecs(true, true);
+					obj.existingInfos = Pslib.getArtboardCollectionCoordinates( undefined, true, docSpecs);
+				}
+
+				if(obj.existingInfos.length)
+				{
+					var merged = [];
+					for(var i = 0; i < itemInfos.length; i++)
+					{
+						var info = itemInfos[i];
+	
+						for(var j = 0; j < obj.existingInfos.length; j++)
+						{
+							var existingInfo = obj.existingInfos[j];
+							var id = existingInfo.id;
+							var match = itemInfos.filter( function(item){ if(item.index == id) return item; });
+							if(match.length == 1)
+							{
+								var matched = match[0];
+	
+								// replace / add properties
+								matched.id = existingInfo.index;
+								matched.x = existingInfo.x;
+								matched.y = existingInfo.y;
+								matched.width = existingInfo.width;
+								matched.height = existingInfo.height;
+
+								// process tag/property name conversion info here
+
+								merged.push(matched);
+							}
+							else
+							{
+								merged.push(existingInfo);
+							}
+						}
+					}
+					if(merged.length) itemInfos = merged;
+				}
+			}
         }
     }
     return itemInfos;
