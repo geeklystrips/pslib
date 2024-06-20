@@ -10785,44 +10785,41 @@ Pslib.getInfosForTaggedItems = function( obj )
 				if(!obj.existingInfos.length)
 				{
 					var docSpecs = Pslib.getDocumentSpecs(true, true);
-					obj.existingInfos = Pslib.getArtboardCollectionCoordinates( undefined, true, docSpecs);
+					obj.existingInfos = Pslib.getArtboardCollectionCoordinates( obj.indexes.length == doc.artboards.length ? obj.indexes : undefined, true, docSpecs);
 				}
 
+				var merged = [];
 				if(obj.existingInfos.length)
 				{
-					var merged = [];
-					for(var i = 0; i < itemInfos.length; i++)
+					for(var i = 0; i < obj.existingInfos.length; i++)
 					{
-						var info = itemInfos[i];
-	
-						for(var j = 0; j < obj.existingInfos.length; j++)
+						var existingInfo = obj.existingInfos[i];
+						var id = existingInfo.id;
+						var match = itemInfos.filter( function(item){ if(item.index == id) return item; });
+						if(match.length == 1)
 						{
-							var existingInfo = obj.existingInfos[j];
-							var id = existingInfo.id;
-							var match = itemInfos.filter( function(item){ if(item.index == id) return item; });
-							if(match.length == 1)
-							{
-								var matched = match[0];
-	
-								// replace / add properties
-								matched.id = existingInfo.index;
-								matched.x = existingInfo.x;
-								matched.y = existingInfo.y;
-								matched.width = existingInfo.width;
-								matched.height = existingInfo.height;
+							var matched = match[0];
 
-								// process tag/property name conversion info here
+							// replace / add properties
+							matched.name = existingInfo.name;
+							matched.id = existingInfo.index;
+							matched.x = existingInfo.x;
+							matched.y = existingInfo.y;
+							matched.width = existingInfo.width;
+							matched.height = existingInfo.height;
 
-								merged.push(matched);
-							}
-							else
-							{
-								merged.push(existingInfo);
-							}
+							// process tag/property name conversion info here
+							// also flattening process (?)
+
+							merged.push(matched);
+						}
+						else
+						{
+							merged.push(existingInfo);
 						}
 					}
-					if(merged.length) itemInfos = merged;
 				}
+				if(merged.length) itemInfos = merged;
 			}
         }
     }
