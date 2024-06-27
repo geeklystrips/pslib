@@ -109,12 +109,12 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.931;
+Pslib.version = 0.932;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
 Pslib.isInDesign = app.name == "Adobe InDesign";
-Pslib.isBridge = app.name == "Adobe Bridge";
+Pslib.isBridge = app.name == "bridge";
 
 // Pslib.isDebugging = ($.level > 0);
 
@@ -129,209 +129,17 @@ if(Pslib.isPhotoshop)
 	sTID = function(s) {return app.stringIDToTypeID(s);}
 	tSID = function(t) {return app.typeIDToStringID(t);}
 
+	// this assumes an action was installed
 	// Pslib.optimizeScriptingListenerCode = function()
 	// {
 	// 	Pslib.playAction("ScriptListener", "SLCFix");
 	// }
-
-	// // 
-	// function selectByID(id, add) {
-	// 	Pslib.selectLayerByID(id, add);
-	// };
-	
-	// // from xbytor
-	// function getActiveLayerID() {
-	// 	Pslib.getActiveLayerID();
-	// };
-
-	// sub-optimal (we can actually get this info without the layer being active)
-	function getArtboardBounds( id )
-	{
-		var artboard = selectByID( id );
-        artboard = app.activeDocument.activeLayer;
-
-		var r    = new ActionReference();    
-		r.putProperty(sTID("property"), sTID("artboard"));
-		if (artboard) r.putIdentifier(sTID("layer"), artboard.id);
-		else       r.putEnumerated(sTID("layer"), sTID("ordinal"), sTID("targetEnum"));
-		var d = executeActionGet(r).getObjectValue(sTID("artboard")).getObjectValue(sTID("artboardRect"));
-		var bounds = new Array();
-		bounds[0] = d.getUnitDoubleValue(sTID("top"));
-		bounds[1] = d.getUnitDoubleValue(sTID("left"));
-		bounds[2] = d.getUnitDoubleValue(sTID("right"));
-		bounds[3] = d.getUnitDoubleValue(sTID("bottom"));
-		return bounds;
-	}
-
-	// get all artboards
-	function getArtboards()
-	{
-		var artboards = [];
-
-		try{
-			var ar = new ActionReference();
-			ar.putEnumerated(cTID("Dcmn"), cTID("Ordn"), cTID("Trgt"));
-			var appDesc = executeActionGet(ar);
-			var numOfLayers = appDesc.getInteger(sTID("numberOfLayers"));
-
-			for(var i = 1; i <= numOfLayers; i++) {
-				var ar = new ActionReference();
-				ar.putIndex(cTID("Lyr "), i);// 1-based!
-				var dsc = executeActionGet(ar);
-				var id = dsc.getInteger(sTID('layerID'));
-				var name = dsc.getString(sTID('name'));
-				var isAb = dsc.getBoolean(sTID("artboardEnabled"));
-
-				if (isAb) {
-					artboards.push([ id, name ]);
-					// artboards.push( { id: id, name: name });
-				}
-			}
-
-		}catch(e){
-			// if($.level) $.writeln("EXCEPTION: ", e);
-		}
-
-		return artboards;
-	}
-
-	// get asset path based from ~/generator.js if found
-	function getAssetsPath()
-	{
-		var generatorConfigFile = new File("~/generator.js");
-		var cfgObj = {};
-		var gao = {};
-		var baseDirectory = undefined;
-
-		if(generatorConfigFile.exists)
-		{
-			try
-			{
-				var str = Pslib.readFromFile(generatorConfigFile, "UTF-8");
-
-				cfgObj = JSON.parse(str.replace("module.exports = ", ""));
-				gao = cfgObj["generator-assets"];
-				baseDirectory = gao["base-directory"];
-
-			}
-			catch(e)
-			{
-				// if($.level) $.writeln("Error parsing generator.js");
-			}
-		}
-		return baseDirectory;
-	}
-
-
-    // // get individual artboard metrics and info
-	// // anything including XMP data requires the layer to be selected
-    // function getArtboardSpecs(layer, parentFullName, namespace)
-    // {
-    //     var doc = app.activeDocument;
-
-    //     var obj = {};
-
-    //     obj.name = layer.name;
-    //     obj.index = layer.id;
-
-    //     try
-    //     {        
-    //         var bounds = getArtboardBounds(layer.id);
-
-    //         obj.x = bounds[1];
-    //         obj.y = bounds[0];
-    //         obj.width = bounds[2] - bounds[1];
-    //         obj.height = bounds[3] - bounds[0];
-    //     }
-    //     catch(e)
-    //     {
-    //         // if($.level) $.writeln("Error getting specs for arboard " + layer.name + " \n\n" + e); 
-
-    //         // force minimal specs / document W x H
-    //         obj.x = 0;
-    //         obj.y = 0;
-    //         obj.width = doc.width.as("px");
-    //         obj.height = doc.height.as("px");
-    //     }
-            
-    //     obj.parent = doc.name;
-    //     obj.parentFullName = parentFullName.toString();
-
-    // 	// get object-level XMP
-
-    //     var dictionary = Pslib.getXmpDictionary( layer.id, { assetID: null, source: null, hierarchy: null, specs: null, custom: null }, false, false, false, namespace ? namespace : Pslib.XMPNAMESPACE);
-      
-    //    // no empty strings allowed and no null values
-    //     // var dictionary = Pslib.getXmpDictionary( layer, ["assetID", "source", "hierarchy", "specs", "custom" ], false, false, false);
-
-    //     // need a version of this feature that will NOT loop through all Object.components
-    //     //var dictionary = Pslib.getXmpDictionary( layer, [ ["assetID", null], ["source", null], ["hierarchy", null], ["specs", null], ["custom", null] ], false);//, true, typeCaseBool)
-        
-    //     // only pass dictionary if tags are present
-
-    //     // function isEmptyObject(obj){
-    //     //     return JSON.stringify(obj) === '{\n\n}';
-    //     // }
-
-    //     // if(obj.hasOwnProperty("tags"))
-    //     // if(!isEmptyObject(dictionary))
-    //     if(!dictionary.isEmpty(dictionary))
-    //     {
-    //         obj.tags = dictionary;
-    //     }
-
-
-    //     // if($.level) $.writeln("LayerID " + obj.index + ": " + obj.name + " (w:" + obj.width +" h:" + obj.height + ") (x:" + obj.x +" y:" + obj.y + ")" ); //"  rect: " + obj.artboardRect);
-    //     return obj;
-    // }
-
-	// function makeActiveByIndex( idx, visible )
-	// {   
-	// 	return Pslib.selectLayerByIndex( idx, visible );
-	// }
-		
-	// return intersection between all artboards and selected artboards
-	function getSelectedArtboards()
-	{
-		return Pslib.getSpecsForSelectedArtboards();
-	}
-
-
-	function getAllArtboards()
-	{
-		return Pslib.getSpecsForAllArtboards();
-	}
-
-	// get list of selected layer INDEXES 
-	// (only relevant to the current order of layers in the root stack at the moment of running the script)
-	function getSelectedLayersIdx()
-	{   
-		return Pslib.getSelectedLayerIndexes();
-	}
-
-	function isArtboard()
-	{
-		return Pslib.isArtboard();
-	}
 }
 else
 {
-	// just use placeholders for the rest
 	cTID = function(){};
 	sTID = function(){};
 	tSID = function(){};
-
-	// selectByID = function(){};
-	// getActiveLayerID = function(){};
-	getArtboardBounds = function(){};
-	getArtboards = function(){};
-	getAssetsPath = function(){};
-	// getArtboardSpecs = function(){};
-
-	getAllArtboards = function(){};
-	getSelectedArtboards = function(){};
-	getSelectedLayersIdx = function(){};
-	isArtboard = function(){};
 }
 
 // metadata is only supported by Photoshop CS4+
@@ -345,12 +153,11 @@ Pslib.isPsCS5 = (Pslib.isPhotoshop && app.version.match(/^12\./) != null);
 Pslib.isPsCS4 = (Pslib.isPhotoshop && app.version.match(/^11\./) != null);
 Pslib.isPsCS3 = (Pslib.isPhotoshop && app.version.match(/^10\./) != null);
 
-// Ps & Ai 2020+
+// Illustrator 2020+ for PageItem.uuid support
 Pslib.is2020andAbove = Pslib.isPhotoshop ? (parseInt(app.version.match(/^\d.\./)) >= 21) : (parseInt(app.version.match(/^\d.\./)) >= 24); 
 
 // 2022 for CEP 11 
 Pslib.is2022andAbove = Pslib.isPhotoshop ? (parseInt(app.version.match(/^\d.\./)) >= 23) : (parseInt(app.version.match(/^\d.\./)) >= 26); 
-
 Pslib.is2023andAbove = Pslib.isPhotoshop ? (parseInt(app.version.match(/^\d.\./)) >= 24) : (parseInt(app.version.match(/^\d.\./)) >= 27); 
 
 // default key-value pairs for document (usually XMP)
@@ -5908,27 +5715,31 @@ Pslib.getLayerObjectTimeStamp = function ( layer, locale )
 	}
 }
 
-Pslib.copyTextToClipboard = function( str )
+Pslib.copyTextToClipboard = function( str, usePhotoshop )
 {
 	if(!app.documents.length) return false;
 
-	var doc = app.activeDocument;
-
+	// AM method for Photoshop
 	if(Pslib.isPhotoshop)
 	{
+		// var doc = app.activeDocument;
 		var desc = new ActionDescriptor();
 		desc.putString( cTID('TxtD', str) );
 		executeAction( sTID('textToClipboard'), desc, DialogModes.NO);
 	}
+	// Illustrator hack: 
+	// Create temp layer, create TextFrame from string content, then have the host app "cut"
 	else if(Pslib.isIllustrator)
 	{	
+		var doc = app.activeDocument;
+
 		var initialSelection = doc.selection;
 		var tempLayer = doc.layers.add();
 		var tempTextItem = tempLayer.textFrames.add();
 		tempTextItem.contents = str;
 
 		// this forces a refresh of the selection array
-		// app.redraw() also works (?)
+		// app.redraw() could also help
 		try
 		{
 			app.executeMenuCommand('deselectall');
@@ -5948,6 +5759,7 @@ Pslib.copyTextToClipboard = function( str )
 	
 	return true;
 }
+
 
 // get coordinates for specific layer object (auto-selects target, reselects initially active)
 // or abstract layer object via ID (without actively selecting object)
@@ -10163,6 +9975,24 @@ Pslib.placeItem = function( obj )
 		}
 	}
 	return placedItem;
+}
+
+Pslib.getBridgeCollections = function( version, fnc )
+{
+    if(!version) version = "2023";
+
+    // if(Pslib.isBridge)
+    // {
+    //     if(app.version.match(/^12\./) != null) version = "2022";
+    //     else if(app.version.match(/^13\./) != null) version = "2023";
+    //     else if(app.version.match(/^14\./) != null) version = "2024";
+    // }
+
+    var bridgeVersion = "Bridge " + version;
+    var collectionsFolder = new Folder( Folder.userData + "/" + "Adobe" + "/" + bridgeVersion +"/Collections" );
+    var files = collectionsFolder.getFiles(/\.(filelist)$/i);
+
+    return fnc ? fnc(files) : files;
 }
 
 Pslib.createNewDocument = function( templateUri )

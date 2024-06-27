@@ -66,7 +66,7 @@ if(typeof JSUI !== "object")
 }
 
 // version
-JSUI.version = "1.0.6";
+JSUI.version = "1.0.7";
 
 // do some of the stuff differently depending on $.level and software version
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -587,8 +587,9 @@ JSUI.createDialog = function( obj )
 
 	obj.palette = obj.palette != undefined ? obj.palette : false;
 
-	var dlg = new Window( obj.palette ? 'palette' : 'dialog', obj.title + obj.systemInfo + "" + obj.extraInfo, undefined, { closeButton:true }); // borderless:true
+	var dlg = new Window( ((obj.palette == true) && JSUI.isIllustrator) ? 'palette' : 'dialog', obj.title + obj.systemInfo + "" + obj.extraInfo, undefined, { closeButton:true, resizeable:true }); // borderless:true
 	if(JSUI.isPhotoshop && JSUI.isCS6 && JSUI.CS6styling) dlg.darkMode();
+	dlg.opacity = obj.opacity ? obj.opacity.clamp(0, 1) : 0.95;
 
 	dlg.alignChildren = obj.alignChildren != undefined ? obj.alignChildren : "fill";
 	dlg.margins = obj.margins != undefined ? obj.margins : 20;
@@ -708,7 +709,7 @@ JSUI.createDialog = function( obj )
 			dlg.close();
 		};
 
-		dlg.center();
+		// dlg.center();
 
 		if (dlg.show() == 1)
 		{ 
@@ -743,7 +744,7 @@ JSUI.createDialog = function( obj )
 			}
 		}
 
-		dlg.center();
+		// dlg.center();
 
 		if (dlg.show() == 1)
 		{ 
@@ -771,6 +772,33 @@ JSUI.createDialog = function( obj )
 			{
 				debugButtonsGroup.addDeleteConfigButton();
 				debugButtonsGroup.addOpenConfigLocationButton();
+			}
+		}
+
+		// manage custom onShow function
+		if(obj.onShowFunction != undefined) dlg.onShow = obj.onShowFunction;
+		else
+		{
+			dlg.onShow = function()
+			{
+				// // if multiple screens, last one in array is usually the active one
+				// var display = $.screens[$.screens.length-1];
+				// if(!display.primary) { }
+
+				var w = this.bounds.right - this.bounds.left;
+				var h = this.bounds.bottom - this.bounds.top;
+				var x = 150;
+				var y = 200;
+				if(obj.bounds)
+				{
+					x = obj.bounds[0];
+					y = obj.bounds[1];
+				}
+
+				this.bounds.left = x;
+				this.bounds.top = y;
+				this.bounds.right = x+w;
+				this.bounds.bottom = y+h;
 			}
 		}
 
@@ -815,7 +843,7 @@ JSUI.alert = function( obj )
 	// either show custom alert window...
 	if(alertDlg != undefined)
 	{
-		alertDlg.center();
+		// alertDlg.center();
 		alertDlg.show();
 	}
 	// ... or fallback to default system stuff 
@@ -3593,6 +3621,26 @@ Object.prototype.addVectorGraphics = function ( obj )
 	return this.addVectorGraphicsButton( obj );
 }
 
+// wrapper for simple vector buttons with text labels
+Object.prototype.addVectorGraphicsGroupButton = function ( obj )
+{
+	if(!obj) obj = {};
+	if(!obj.label) obj.label = "ACTION";
+
+	var container = this.addColumn( { alignChildren: "center" });
+	var isDarkTheme = true;
+	isDarkTheme = JSUI.backgroundColor[0] > 0.5;
+
+	var hexValue = "#00000000"; // 100% transparent background
+	var iconHexValue = isDarkTheme ? "#3f3f3f" : "#c6c8c8";
+	var iconHexHoverValue = isDarkTheme ? "#46A0F5" : "#1473e6";
+	var iconHexDownValue = isDarkTheme ? "#FFFFFF" : "#000000";
+
+	var c = container.addVectorGraphicsButton( { simpleImage: false, hexValue: hexValue, textHexValue: iconHexValue, hoverValue: iconHexHoverValue, downValue: iconHexDownValue, shapes: obj.shapes, width: obj.width, height: obj.height, onClickFunction: obj.onClickFunction, helpTip: obj.helpTip ? obj.helpTip : obj.label });
+	container.addStaticText( { label: obj.label } );
+	return c;
+}
+
 // clickable url button
 Object.prototype.addUrlButton = function ( obj )
 {
@@ -3672,7 +3720,7 @@ Object.prototype.addVectorGraphicsButton = function ( obj )
     containerGroup.alignChildren = ['center', 'center'];
 
 	// { style: "toolbutton" } may be the issue with Windows version onhover
-    var c = containerGroup.add('iconbutton', undefined, undefined, { name: obj.name, style: 'toolbutton'});
+    var c = containerGroup.add('iconbutton', undefined, undefined, { name: obj.name, style: 'toolbutton' });
 
 	if(obj.helpTip) c.helpTip = obj.helpTip;
 
@@ -3855,6 +3903,7 @@ Object.prototype.addVectorGraphicsButton = function ( obj )
 
         // btn.onDraw();
         _updateVectorButtonOnHover(btn, iconVec, staticColor, btnBackgroundRGB, size, text);
+		if(obj.helpTip) btn.helpTip = obj.helpTip;
 		return btn;
 	}
 
