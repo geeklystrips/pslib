@@ -66,7 +66,7 @@ if(typeof JSUI !== "object")
 }
 
 // version
-JSUI.version = "1.0.7";
+JSUI.version = "1.0.8";
 
 // do some of the stuff differently depending on $.level and software version
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -587,9 +587,10 @@ JSUI.createDialog = function( obj )
 
 	obj.palette = obj.palette != undefined ? obj.palette : false;
 
-	var dlg = new Window( ((obj.palette == true) && JSUI.isIllustrator) ? 'palette' : 'dialog', obj.title + obj.systemInfo + "" + obj.extraInfo, undefined, { closeButton:true, resizeable:true }); // borderless:true
+	// palette mode does not work at all with Photoshop
+	var dlg = new Window( ((obj.palette == true) && JSUI.isIllustrator) ? 'palette' : 'dialog', obj.title + obj.systemInfo + "" + obj.extraInfo, undefined, { closeButton:true, resizeable: obj.resizeable ? obj.resizeable : false }); // borderless:true
 	if(JSUI.isPhotoshop && JSUI.isCS6 && JSUI.CS6styling) dlg.darkMode();
-	dlg.opacity = obj.opacity ? obj.opacity.clamp(0, 1) : 0.95;
+	dlg.opacity = obj.opacity ? obj.opacity.clamp(0, 1) : 1.0;
 
 	dlg.alignChildren = obj.alignChildren != undefined ? obj.alignChildren : "fill";
 	dlg.margins = obj.margins != undefined ? obj.margins : 20;
@@ -694,7 +695,6 @@ JSUI.createDialog = function( obj )
 
 		var buttons = messageContainer.addRow( { spacing: 20 } );
 		var no = buttons.addButton( { label: obj.dismissLabel ? obj.dismissLabel : "No", name: "cancel", width: 125, height: 32, alignment: "right" });
-		// var yes = buttons.addCustomButton( { label: obj.label ? obj.label : "Yes", name: "ok", width: 150, height: 32, alignment: "left" });
 		var yes = buttons.addCustomButton( { label: obj.label ? obj.label : "Yes", name: "ok", helpTip: obj.helpTip ? obj.helpTip : undefined }); // better results without a defined w+h (?)
 
 		yes.onClick = function()
@@ -779,27 +779,27 @@ JSUI.createDialog = function( obj )
 		if(obj.onShowFunction != undefined) dlg.onShow = obj.onShowFunction;
 		else
 		{
-			dlg.onShow = function()
-			{
-				// // if multiple screens, last one in array is usually the active one
-				// var display = $.screens[$.screens.length-1];
-				// if(!display.primary) { }
+			// dlg.onShow = function()
+			// {
+			// 	// // if multiple screens, last one in array is usually the active one
+			// 	// var display = $.screens[$.screens.length-1];
+			// 	// if(!display.primary) { }
 
-				var w = this.bounds.right - this.bounds.left;
-				var h = this.bounds.bottom - this.bounds.top;
-				var x = 150;
-				var y = 200;
-				if(obj.bounds)
-				{
-					x = obj.bounds[0];
-					y = obj.bounds[1];
-				}
+			// 	var w = this.bounds.right - this.bounds.left;
+			// 	var h = this.bounds.bottom - this.bounds.top;
+			// 	var x = 150;
+			// 	var y = 200;
+			// 	if(obj.bounds)
+			// 	{
+			// 		x = obj.bounds[0];
+			// 		y = obj.bounds[1];
+			// 	}
 
-				this.bounds.left = x;
-				this.bounds.top = y;
-				this.bounds.right = x+w;
-				this.bounds.bottom = y+h;
-			}
+			// 	this.bounds.left = x;
+			// 	this.bounds.top = y;
+			// 	this.bounds.right = x+w;
+			// 	this.bounds.bottom = y+h;
+			// }
 		}
 
 		return dlg;
@@ -1418,7 +1418,7 @@ Object.prototype.addColumn = function(obj)
 Object.prototype.addPanel = function(obj)
 {
 	var obj = obj != undefined ? obj : {};
-	var c = this.add('panel', undefined, obj.label ? obj.label : 'Default Panel Name');
+	var c = this.add('panel', undefined, obj.label ? obj.label : '');
 
 	c.orientation = obj.orientation ? obj.orientation : 'column'; /* row, stack	*/
 	c.alignChildren = obj.alignChildren ? obj.alignChildren : 'left'; /*  right, fill	*/
@@ -5578,6 +5578,232 @@ JSUI.componentsFromObject = function (obj, container, array, preferRadiobuttons)
 	}
 
 };
+
+// For existing dialog: adds a panel with vertical scrollbar,
+// ideal for listing JSON data quickly
+//      - automatic column widths based on strings measurements
+//      - inherent selection system (if first item value is boolean)
+//      - color indicator (if last item value matches "#RRGGBB")
+
+// { 
+//     dialog: win,         // dialog
+//     items: itemList,     // JSON items
+//     columns: undefined,  // array of column title strings
+// 	   maximumWidth: 800
+// 	   maximumHeight: 400
+//     onConfirmFunction: function(){}	// invoked when pressing confirm button
+// }
+
+
+JSUI.addScrollablePanel = function( obj )
+{
+    if(!obj) obj = {};
+
+    if(!obj.dialog) return;
+    if(!obj.items) return;
+    if(!obj.items.length) return;
+
+    // if we don't have a string array for column names, attempt to infer from provided data
+    if(!obj.columns)
+    {
+        // if first item is a JSON-like object
+        if( obj.items[0] instanceof Object)
+        {
+            var tmpArr = obj.items[0].convertToArray();
+            obj.columns = tmpArr.map( function(el){ return el[0] } );
+            obj.items = obj.items.map( function(item){ return item.convertToArray() } );
+            obj.items = obj.items.map( function(item){ return item.map(function(it){ return it[1] }) } );
+
+            if(typeof obj.items[0][0] == "boolean")
+            {
+                obj.columns[0] = "  ";
+            }
+        }
+        // otherwise if 2D array
+        else if(obj.items[0] instanceof Array)
+        {
+            if(obj.items[0].length > 1)
+            {
+                obj.columns = obj.items.map( function(el){ return el[0] } );
+            }
+        }
+        else return;
+    }
+
+    if(!obj.columns) return;
+
+    var win = obj.dialog;
+    var itemList = obj.items;
+    var headerList = obj.columns;
+    
+    if(!obj.confirmFunction) obj.confirmFunction = function(){};
+
+    // aligning content with columns require pre-processing strings before they are displayed
+    // in order to estimate the widest 
+
+    var colWidths = [];
+    var rowHeight = 20;
+    var totalTableWidth = 20;
+    var totalTableHeight = 0;
+
+    var defaultColWidth = 20;
+    var defaultColSpacing = 10;
+
+    // get list of column widths to work with when creating static text items
+    for (var h = 0; h < headerList.length; h++)
+    {
+        // default width
+        var colWidth = defaultColWidth;
+
+        // measure each column header string
+        if(headerList[h] != undefined)
+        {
+            var hStrWidth = win.graphics.measureString(headerList[h], win.graphics.font).width;
+            if(hStrWidth > itemWidth) colWidth = hStrWidth;
+        }
+
+        for (var i = 0; i < itemList.length; i++)
+        {    
+            if(i == 0) totalTableHeight += rowHeight;
+
+            var itemWidth = colWidth;
+            var item = itemList[i][h];
+            if((typeof item == "number")) item = item.toString();
+            if((typeof item) == "string")
+            {
+                var strWidth = win.graphics.measureString(item, win.graphics.font).width;
+                if(strWidth > itemWidth) colWidth = strWidth;
+                if(hStrWidth > itemWidth) colWidth = hStrWidth;
+            }
+        }
+        colWidths.push(colWidth);
+        totalTableWidth += (colWidth + defaultColSpacing);
+    }
+
+    var rows = [];
+
+    // parent container for header
+    var container = win.addColumn();
+
+    var headerRow = container.addRow( { margins: [15, 0, 0, 0], alignment: "left"});
+
+    for (var h = 0; h < headerList.length; h++)
+    {
+        var headerText = headerRow.add("statictext", undefined, headerList[h]);
+        headerText.preferredSize.width = colWidths[h] + defaultColSpacing;
+    }
+
+    var c = container.addPanel( { label: "", alignChildren: "left", alignment: "left" });
+    // c.minimumSize.width = obj.width ? obj.width : 500;
+    // c.minimumSize.height = obj.height ? obj.height : 200;
+
+    c.minimumSize.width = 400;
+    c.minimumSize.height = 200;
+
+    // if(obj.height) 
+	c.maximumSize.width = obj.maximumWidth ? obj.maximumWidth : 800;
+	c.maximumSize.height = obj.maximumHeight ? obj.maximumHeight : 400;
+
+    var col = c.addColumn( { alignChildren: "left", alignment: "left" });
+    col.maximumSize.height = itemList.length*100;
+
+    var barW = 20;
+
+    // add individual rows
+    for (var i = 0; i < itemList.length; i++)
+    {
+        var row = col.addRow( { alignChildren: "left", alignment: "left" });
+
+        for (var j = 0; j < itemList[i].length; j++)
+        {
+            // if first item in row is a boolean, interpret as dynamic checkbox
+            if(j == 0 && (typeof itemList[i][j]) == "boolean")
+            {
+                row._checkbox = row.addCheckBox( "checkb"+i, { label: " ", value: itemList[i][j] });
+                row._checkbox.onClick = function(){};
+                row._checkbox.update = function(){};
+            }
+            else if(j == (itemList[i].length-1))
+            {
+                // if last item is a string with the form "#RRGGBB", present as color indicator
+                var lastArrItem = itemList[i][j];
+                if((typeof lastArrItem == "string") && (lastArrItem.length == 7) && (lastArrItem[0]=="#"))
+                {
+                    row.addRectangle( "rect"+i, { hexValue: lastArrItem, text: "", width: 15, height: 15 });
+                }
+                else
+                {
+                    var statT = row.add("statictext", undefined, lastArrItem);
+                    statT.preferredSize.width = colWidths[j] + defaultColSpacing;
+                }
+            }
+            else
+            {
+                var statT = row.add("statictext", undefined, itemList[i][j]);
+                statT.preferredSize.width = colWidths[j] + defaultColSpacing;
+            }
+        }
+        rows.push(row);
+    }
+
+    var scrollBar = c.add("scrollbar");
+    scrollBar.stepdelta = 20;
+    scrollBar.maximumSize.height = c.maximumSize.height;
+
+    scrollBar.onChanging = function ()
+    {
+        col.location.y = -1 * this.value;
+    };
+
+    win.onShow = function()
+    {
+        scrollBar.size = [ barW, c.size.height ];
+        scrollBar.location = [ (c.size.width-barW), 0 ];
+        scrollBar.maxvalue = col.size.height - (c.size.height+barW);
+    };
+
+    var footerRow = container.addRow( { margins: [0,10,0,0], alignment: "fill" });
+
+    // if using checkboxes, include buttons to support select/deselect all
+    if( (typeof itemList[0][0]) == "boolean" )
+    {
+        footerRow.add("statictext" , undefined , "Check:").alignment = ["left", "top"];
+        var allBtn = footerRow.addButton( { label: "All", name: "all", width: 60, height: 22, alignment: ["left", "top"] });
+        var noneBtn = footerRow.addButton( { label: "None", name: "none", width: 60, height: 22, alignment: ["left", "top"] });
+    
+        allBtn.onClick = function()
+        {
+            c._rows.filter( function(el){ if(el._checkbox.value != true) { el._checkbox.value = true; return true; } });
+        }
+    
+        noneBtn.onClick = function()
+        {
+            c._rows.filter( function(el){ if(el._checkbox.value != false) { el._checkbox.value = false; return true; } });
+        }
+    }
+
+    // if confirm function provided, add CTA button to footer
+    if(obj.onConfirmFunction)
+    {
+        var dismissBtn = footerRow.addButton( { label: "Dismiss", name: "cancel", width: 125, height: 32, alignment: ["right","top"] }); 
+        var proceedBtn = footerRow.addCloseButton( { label: "Confirm", name: "ok", alignment: ["right","top"], onClickFunction: function(){ 
+            obj.onConfirmFunction();
+            win.close();
+        }} );
+        dismissBtn.active = true;
+    }
+
+    // // from definition context, individual rows are accessible using
+    //  panel._rows.map( function( item, index, array ){ 
+    //  // do something with itemList[index] etc
+    //    return el; 
+    //    });
+
+    c._rows = rows; 
+    return c;
+}
+
+
 
 /*
 	INI FILE MANAGEMENT
