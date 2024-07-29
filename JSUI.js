@@ -66,13 +66,13 @@ if(typeof JSUI !== "object")
 }
 
 // version
-JSUI.version = "1.0.8";
+JSUI.version = "1.0.9";
 
 // do some of the stuff differently depending on $.level and software version
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
 JSUI.isPhotoshop = app.name == "Adobe Photoshop";
 JSUI.isIllustrator = app.name == "Adobe Illustrator";
-JSUI.isBridge = app.name == "Adobe Bridge";
+JSUI.isBridge = app.name == "bridge";
 JSUI.isIndesign = app.name == "Adobe InDesign";
 JSUI.isAfterEffects = app.name == "Adobe AfterEffects";
 
@@ -5579,27 +5579,29 @@ JSUI.componentsFromObject = function (obj, container, array, preferRadiobuttons)
 
 };
 
-// For existing dialog: adds a panel with vertical scrollbar,
+// For existing dialog: adds a scrollable list panel,
 // ideal for listing JSON data quickly
 //      - automatic column widths based on strings measurements
 //      - inherent selection system (if first item value is boolean)
-//      - color indicator (if last item value matches "#RRGGBB")
+//      - color indicator (if last item value matches "#RRGGBB" pattern)
 
 // { 
 //     dialog: win,         // dialog
 //     items: itemList,     // JSON items
 //     columns: undefined,  // array of column title strings
-// 	   maximumWidth: 800
-// 	   maximumHeight: 400
+// 	   maximumWidth: 800,
+// 	   maximumHeight: 400,
+//	   backgroundColors: undefined	// render black text on color background
+// 	   confirmButtonLabel: "Process",
+// 	   title: " ",
 //     onConfirmFunction: function(){}	// invoked when pressing confirm button
 // }
 
-
-JSUI.addScrollablePanel = function( obj )
+JSUI.addScrollableList = function( obj )
 {
     if(!obj) obj = {};
 
-    if(!obj.dialog) return;
+    // if(!obj.dialog) return;
     if(!obj.items) return;
     if(!obj.items.length) return;
 
@@ -5632,7 +5634,18 @@ JSUI.addScrollablePanel = function( obj )
 
     if(!obj.columns) return;
 
-    var win = obj.dialog;
+	// Make panel create its own Dialog 
+	var autoDialog = false;
+	if(!obj.dialog)
+	{
+		obj.dialog = new JSUI.createDialog( { title: obj.title ? obj.title : " ", orientation: "column", margins: 15, spacing: 10, alignChildren: [ "left", "center" ], width: 600, height: 300, debugInfo:false } );
+		autoDialog = true;
+	}
+	
+	// show items and misc info
+	var statusMsg = obj.dialog.addStaticText( { text: "Item count: " + obj.items.length, multiline: true, alignment: [ "left", "top" ] } );
+	statusMsg.alignment = ["left", "top"];
+
     var itemList = obj.items;
     var headerList = obj.columns;
     
@@ -5648,6 +5661,7 @@ JSUI.addScrollablePanel = function( obj )
 
     var defaultColWidth = 20;
     var defaultColSpacing = 10;
+	var maxChar = 50;
 
     // get list of column widths to work with when creating static text items
     for (var h = 0; h < headerList.length; h++)
@@ -5658,7 +5672,7 @@ JSUI.addScrollablePanel = function( obj )
         // measure each column header string
         if(headerList[h] != undefined)
         {
-            var hStrWidth = win.graphics.measureString(headerList[h], win.graphics.font).width;
+            var hStrWidth = obj.dialog.graphics.measureString(headerList[h], obj.dialog.graphics.font).width;
             if(hStrWidth > itemWidth) colWidth = hStrWidth;
         }
 
@@ -5671,9 +5685,9 @@ JSUI.addScrollablePanel = function( obj )
             if((typeof item == "number")) item = item.toString();
             if((typeof item) == "string")
             {
-                var strWidth = win.graphics.measureString(item, win.graphics.font).width;
+                var strWidth = obj.dialog.graphics.measureString(item.length < maxChar ? item : item.substr(0, maxChar-2) + "...", obj.dialog.graphics.font).width;
                 if(strWidth > itemWidth) colWidth = strWidth;
-                if(hStrWidth > itemWidth) colWidth = hStrWidth;
+                if(hStrWidth > colWidth) colWidth = hStrWidth;
             }
         }
         colWidths.push(colWidth);
@@ -5683,7 +5697,7 @@ JSUI.addScrollablePanel = function( obj )
     var rows = [];
 
     // parent container for header
-    var container = win.addColumn();
+    var container = obj.dialog.addColumn();
 
     var headerRow = container.addRow( { margins: [15, 0, 0, 0], alignment: "left"});
 
@@ -5693,18 +5707,28 @@ JSUI.addScrollablePanel = function( obj )
         headerText.preferredSize.width = colWidths[h] + defaultColSpacing;
     }
 
-    var c = container.addPanel( { label: "", alignChildren: "left", alignment: "left" });
-    // c.minimumSize.width = obj.width ? obj.width : 500;
-    // c.minimumSize.height = obj.height ? obj.height : 200;
+    var c = container.addPanel( { label: "", alignChildren: "fill", alignment: "fill" });
 
-    c.minimumSize.width = 400;
+	c.preferredSize.width = 700;
+	c.preferredSize.height = totalTableHeight > 500 ? 500 : 200;
+
+    c.minimumSize.width = 700;
     c.minimumSize.height = 200;
 
-    // if(obj.height) 
-	c.maximumSize.width = obj.maximumWidth ? obj.maximumWidth : 800;
-	c.maximumSize.height = obj.maximumHeight ? obj.maximumHeight : 400;
+	c.maximumSize.width = 1000;
+	c.maximumSize.height = 600;
 
-    var col = c.addColumn( { alignChildren: "left", alignment: "left" });
+	if(!isNaN(obj.maximumWidth))
+	{
+		c.maximumSize.width = obj.maximumWidth;
+	}
+
+	if(!isNaN(obj.maximumHeight))
+	{
+		c.maximumSize.height = obj.maximumHeight;
+	}
+	
+    var col = c.addColumn( { alignChildren: "fill", alignment: "fill" });
     col.maximumSize.height = itemList.length*100;
 
     var barW = 20;
@@ -5723,31 +5747,38 @@ JSUI.addScrollablePanel = function( obj )
                 row._checkbox.onClick = function(){};
                 row._checkbox.update = function(){};
             }
-            else if(j == (itemList[i].length-1))
-            {
-                // if last item is a string with the form "#RRGGBB", present as color indicator
-                var lastArrItem = itemList[i][j];
-                if((typeof lastArrItem == "string") && (lastArrItem.length == 7) && (lastArrItem[0]=="#"))
-                {
-                    row.addRectangle( "rect"+i, { hexValue: lastArrItem, text: "", width: 15, height: 15 });
-                }
-                else
-                {
-                    var statT = row.add("statictext", undefined, lastArrItem);
-                    statT.preferredSize.width = colWidths[j] + defaultColSpacing;
-                }
-            }
             else
             {
-                var statT = row.add("statictext", undefined, itemList[i][j]);
-                statT.preferredSize.width = colWidths[j] + defaultColSpacing;
+				if(obj.backgroundColors)
+				{
+					if(obj.backgroundColors[i][j])
+					{
+						row.addRectangle( "rect"+i, { hexValue: obj.backgroundColors[i][j], text: itemList[i][j], width: colWidths[j], height: 15 });
+					}
+					else 
+					{
+						var displayStr = itemList[i][j] ? itemList[i][j] : "";
+						displayStr = displayStr.length < maxChar ? displayStr : displayStr.substr(0, maxChar-2) + "...";
+
+						var statT = row.add("statictext", undefined, displayStr);
+						statT.preferredSize.width = colWidths[j] + defaultColSpacing;
+					}
+				}
+				else
+				{
+					var displayStr = itemList[i][j] ? itemList[i][j] : "";
+					displayStr = displayStr.length < maxChar ? displayStr : displayStr.substr(0, maxChar-2) + "...";
+
+					var statT = row.add("statictext", undefined, displayStr);
+					statT.preferredSize.width = colWidths[j] + defaultColSpacing;
+				}
             }
         }
         rows.push(row);
     }
 
     var scrollBar = c.add("scrollbar");
-    scrollBar.stepdelta = 20;
+    scrollBar.stepdelta = 100;
     scrollBar.maximumSize.height = c.maximumSize.height;
 
     scrollBar.onChanging = function ()
@@ -5755,7 +5786,7 @@ JSUI.addScrollablePanel = function( obj )
         col.location.y = -1 * this.value;
     };
 
-    win.onShow = function()
+    obj.dialog.onShow = function()
     {
         scrollBar.size = [ barW, c.size.height ];
         scrollBar.location = [ (c.size.width-barW), 0 ];
@@ -5767,28 +5798,20 @@ JSUI.addScrollablePanel = function( obj )
     // if using checkboxes, include buttons to support select/deselect all
     if( (typeof itemList[0][0]) == "boolean" )
     {
-        footerRow.add("statictext" , undefined , "Check:").alignment = ["left", "top"];
-        var allBtn = footerRow.addButton( { label: "All", name: "all", width: 60, height: 22, alignment: ["left", "top"] });
-        var noneBtn = footerRow.addButton( { label: "None", name: "none", width: 60, height: 22, alignment: ["left", "top"] });
-    
-        allBtn.onClick = function()
-        {
-            c._rows.filter( function(el){ if(el._checkbox.value != true) { el._checkbox.value = true; return true; } });
-        }
-    
-        noneBtn.onClick = function()
-        {
-            c._rows.filter( function(el){ if(el._checkbox.value != false) { el._checkbox.value = false; return true; } });
-        }
+        footerRow.add("statictext" , undefined , "Select:").alignment = ["left", "top"];
+        var allBtn = footerRow.addButton( { label: "All", name: "all", width: 50, height: 22, alignment: ["left", "top"] });
+        var noneBtn = footerRow.addButton( { label: "None", name: "none", width: 50, height: 22, alignment: ["left", "top"] });
+        allBtn.onClick = function() { c._rows.filter( function(el){ if(el._checkbox.value != true) { el._checkbox.value = true; return true; } }); }
+        noneBtn.onClick = function() { c._rows.filter( function(el){ if(el._checkbox.value != false) { el._checkbox.value = false; return true; } }); }
     }
 
     // if confirm function provided, add CTA button to footer
     if(obj.onConfirmFunction)
     {
         var dismissBtn = footerRow.addButton( { label: "Dismiss", name: "cancel", width: 125, height: 32, alignment: ["right","top"] }); 
-        var proceedBtn = footerRow.addCloseButton( { label: "Confirm", name: "ok", alignment: ["right","top"], onClickFunction: function(){ 
+        var processBtn = footerRow.addCloseButton( { label: obj.confirmButtonLabel ? obj.confirmButtonLabel : "Process", name: "ok", alignment: ["right","top"], onClickFunction: function(){ 
             obj.onConfirmFunction();
-            win.close();
+            obj.dialog.close();
         }} );
         dismissBtn.active = true;
     }
@@ -5800,6 +5823,13 @@ JSUI.addScrollablePanel = function( obj )
     //    });
 
     c._rows = rows; 
+
+	// make panel aware of its parent
+	if(autoDialog)
+	{
+		c._window = obj.dialog;
+	}
+
     return c;
 }
 
@@ -6303,95 +6333,243 @@ JSUI.readJSONfile = function(obj, f, type)
 	return nObj;
 };
 
-JSUI.isObjectEmpty = function(obj)
+JSUI.isObjectEmpty = function(obj, getJsonStr)
 {
-	return JSON.stringify(obj) === '{\n\n}';
+	if(typeof obj == "object")
+	{
+		// will fail with any object that has a constructor that isn't "Object"
+		// with those we can safely assume they are not empty
+		var isEmpty = false;
+		var jsonStr = "";
+		if(obj instanceof Object)
+		{
+			var hasConstructor = false;
+			var constructorName = "";
+			try{
+
+				hasConstructor = obj.constructor != undefined;
+				if(hasConstructor)
+				{
+					constructorName = obj.constructor.name;
+
+					// $.writeln("NO CONSTRUCTOR");
+
+					// $.writeln("constructor name: " + constructorName);
+					if(constructorName !== "Object")
+					{
+						if(constructorName == "Array")
+						{
+							jsonStr = JSON.stringify(obj, null, "\t");
+							if(getJsonStr) return jsonStr;
+							return false;
+						}
+						// $.writeln("SPECIAL CONSTRUCT: " + constructorName);
+						// $.writeln("RETURNING PLACEHOLDER JSON STR: " + getJsonStr);
+
+						if(getJsonStr) return '{\n\n}';
+						return isEmpty;
+					}
+					else
+					{
+						// $.writeln("JSON CONSTRUCT: " + constructorName);
+						// $.writeln("RETURNING PLACEHOLDER JSON STR: " + getJsonStr);
+
+						jsonStr = JSON.stringify(obj, null, "\t");
+
+						// $.writeln("JSON STR: \n" + jsonStr);
+
+						isEmpty = jsonStr === '{\n\n}';
+						if(!isEmpty && getJsonStr) return jsonStr;
+
+						// $.writeln("EMPTY.");
+						return isEmpty;
+					}
+					// jsonStr = JSON.stringify(obj);
+					// isEmpty = jsonStr === '{\n\n}';
+					// if(!isEmpty && getJsonStr) return jsonStr;
+					// return isEmpty;
+				}
+				else
+				{
+
+				}
+
+			}catch(e){
+
+				// if(constructorName.length) 
+				// $.writeln("ERROR CATCHING CONSTRUCTOR NAME\n"+e);
+			}
+
+			// $.writeln("constructor name: " + constructorName);
+
+			try{
+				jsonStr = JSON.stringify(obj);
+				isEmpty = jsonStr === '{\n\n}';
+				if(!isEmpty && getJsonStr) return jsonStr;
+				return isEmpty;
+			}catch(e){ 
+				// $.writeln("ERROR STRINGIFYING\n"+e);
+				return false; 
+			}
+		}
+		if(!isEmpty && getJsonStr) return jsonStr;
+		else return false;
+	}
+	else return false;
 };
 
-// for quick console logging of objects (JSON) or arrays
-JSUI.quickLog = function(obj, arrDepthInt, msgStr)
+// for quick console logging of objects (JSON) or arrays -- watch out, messy.
+JSUI.quickLog = function(obj, arrDepthInt, msgStr, showType)
 {
 	if($.level)
 	{
-		// if(!obj) return;
+		if(showType == undefined) var showType = false;
 		if(obj == undefined) return;
+
 		var resultStr = "";
 
 		if( msgStr == undefined && (typeof arrDepthInt == "string")) 
 		{
 			var msgStr = arrDepthInt;
 			var arrDepthInt = 0;
+			msgStr = "";
 		}
 		if(arrDepthInt === undefined) var arrDepthInt = 0;
 
 		if(obj === 0)
 		{	
-			return JSUI.quickLog("0", arrDepthInt, msgStr);
+			return JSUI.quickLog("0", arrDepthInt, msgStr, showType);
 		}
 
 		if(obj === null)
 		{	
-			return JSUI.quickLog("null", arrDepthInt, msgStr);
+			return JSUI.quickLog("null", arrDepthInt, msgStr, showType);
 		}
 
-		// if(arrDepthInt === undefined) arrDepthInt = 0;
 		var indent = "";
 		for(var i = 1; i < arrDepthInt; i++)
 		{
 			indent += "\t";
 		}
-
-		if(msgStr && (arrDepthInt === 0))
-		{ 
-			$.writeln( msgStr );
-			return msgStr;
+		if(msgStr === undefined)
+		{
+			var msgStr = "";
 		}
 
-		if(obj instanceof Object)
+		if(msgStr.length)
+		{ 
+			$.writeln( msgStr );
+		}
+
+		var typeOfData = typeof obj;
+
+		// if object but NOT array
+		if((typeOfData == "object") && !(obj instanceof Array))
 		{
-			// indent+arrItem+ "    " + (typeof arrItem).toUpperCase()
 			if( (obj instanceof File) || (obj instanceof Folder))
 			{ 
 				var fsObjType = (obj instanceof File) ? 'FILE' : 'FOLDER'; 
-				var str = indent+obj.fsName + "    "+fsObjType; 
+				var str = indent+obj.fsName + (showType ? ("    "+fsObjType) : ""); 
 				$.writeln( str ); 
 				return str; 
 			}
+			// JSON or other type (?)
 			else
 			{
-				// var str = 
-				var str = JSON.stringify(obj, null, "\t");
-				if(str === '{\n\n}')
+				var str = "";
+
+				// "safely" check for empty JSON, lol
+				var isJSONobj = false;
+				var isEmptyJSONobj = false;
+				isEmptyJSONobj = JSUI.isObjectEmpty( obj, true );
+				var constructType = undefined;
+				var typeNameStr = undefined;
+
+				// this returns the JSON string itself (to avoid stringifying several times unless relevant)
+				if(typeof isEmptyJSONobj == "string")
 				{
-					str = indent+str + "    EMPTY OBJECT";
+					isJSONobj = isEmptyJSONobj.length > 0;
+				}
+				// if(isJSONobj && isEmptyJSONobj)
+				if(isJSONobj)
+				{
+					constructType = obj.constructor.name;				
+					var tmpJsonObj = isEmptyJSONobj;
+					str = indent+(tmpJsonObj) + (showType ? ("    JSON OBJECT") : "");
+
 					$.writeln(str); 
 					return str;
 				}
-				else 
+				else
 				{
-					$.writeln(str);
-					return str;
-				}
-				
-				// if(JSUI.isObjectEmpty(obj)) { $.writeln(JSON.stringify(obj, null, "\t")); return; }
-				// else $.writeln(JSON.stringify(obj, null, "\t"));
-			}
+					typeNameStr = obj.typename;
 
+					var objStr = "";
+					try{
+						objStr = JSON.stringify(obj, null, "\t");
+					}catch(e){
+						
+					}
+
+					try{
+						objStr = '{\n\n}';
+					}catch(e){
+
+					}
+
+					if(objStr.length && objStr != '{\n\n}')
+					{
+						str = indent+objStr + (showType ? ("    " + typeNameStr.toUpperCase()) : "");
+						$.writeln(str); 
+						return str;
+					}
+
+					// attempt to catch most constructors behaving as arrays,
+					// those will have a typename:
+					// PHSP 
+					//		Document.layers
+					// ILST 
+					// 		Document.artboards
+					//
+
+					// if( obj instanceof XMPMeta)
+					// {
+					// 	$.writeln("XMPMeta");
+					// }
+
+					if(obj.length != undefined)
+					{
+						str = indent+str + (showType ? ("    "+obj.typename) : ""); 
+
+						$.writeln(str);
+						return str;
+					}
+					// the rest should have a constructor
+					else 
+					{
+						str = indent+str + (showType ? ("    "+obj.constructor.name) : ""); 
+
+						$.writeln(str);
+						return str;
+					}
+				}
+			}
 		}
-		else if(obj instanceof Array)
+		// if dealing with array
+		else if((typeOfData == "object") && (obj instanceof Array))
 		{
 			$.writeln(indent+"[");
 			for(var i = 0; i < obj.length; i++)
 			{
 				var arrItem = obj[i];
-				if(arrItem instanceof Object || arrItem instanceof Array)
+				if((arrItem instanceof Object) || (arrItem instanceof Array))
 				{
-					var arrStr = JSUI.quickLog(arrItem, arrDepthInt);
+					var arrStr = JSUI.quickLog(indent+("\t")+arrItem, (arrDepthInt+1), msgStr, showType);
 					resultStr += arrStr;
 				}
 				else
 				{
-					var objStr = (indent+arrItem+ "    " + (typeof arrItem).toUpperCase());
+					var objStr = (indent+("\t")+arrItem+ (showType ? ("    " + (typeof arrItem).toUpperCase()) : ""));
 					$.writeln(objStr);
 					resultStr += objStr;
 				}
@@ -6401,16 +6579,28 @@ JSUI.quickLog = function(obj, arrDepthInt, msgStr)
 			resultStr += indentStr;
 		}
 		// assume string/number/boolean
+		else if(typeOfData == "string" || typeOfData == "number" || typeOfData == "boolean")
+		{
+			var simpleTypeStr = (indent+obj+ (showType ? ("    " + typeOfData.toUpperCase()) : ""));
+			$.writeln(simpleTypeStr);
+			resultStr += simpleTypeStr;
+
+		}
+		// tackle complex Object types by elimination
 		else
 		{
-			var simpleTypeStr = (indent+obj+ "    " + (typeof obj).toUpperCase());
+			var simpleTypeStr = (indent+obj+ (showType ? ("    " + typeOfData.toUpperCase()) : ""));
 			$.writeln(simpleTypeStr);
 			resultStr += simpleTypeStr;
 		}
+
 		return resultStr;
 	}
 	else return "";
 }
+
+// // quick fix if anything breaks the above function:
+// JSUI.quickLog = function(str) { if($.level) $.writeln( str.toString() ); }
 
 // high resolution timer -- used twice in a row to make sure that we are not working with a rogue / leak
 JSUI.startTimer = function()
@@ -6932,9 +7122,9 @@ if (!Array.isArray) { Array.isArray = function(arg)
 	return (arg.__class__ === 'Array');
 }}
 
-if (!Array.prototype.isIntArray) { Array.prototype.isIntArray = function( deep )
+if(!Array.prototype.isIntArray) { Array.prototype.isIntArray = function( strict )
 {
-	for(var i = 0; i < (deep ? this.length : 1); i++)
+	for(var i = 0; i < (strict ? this.length : 1); i++)
 	{
 		var item = this[i];
 		if( typeof item == "number" )
@@ -6946,9 +7136,22 @@ if (!Array.prototype.isIntArray) { Array.prototype.isIntArray = function( deep )
 	return true;
 }}
 
-if (!Array.prototype.isIntStringArray) { Array.prototype.isIntStringArray = function( deep )
+if(!Array.prototype.isStringArray) { Array.prototype.isStringArray = function( strict )
 {
-	for(var i = 0; i < (deep ? this.length : 1); i++)
+	for(var i = 0; i < (strict ? this.length : 1); i++)
+	{
+		var item = this[i];
+		if( typeof item != "string" )
+		{
+			return false;
+		}
+	}
+	return true;
+}}
+
+if(!Array.prototype.isIntStringArray) { Array.prototype.isIntStringArray = function( strict )
+{
+	for(var i = 0; i < (strict ? this.length : 1); i++)
 	{
 		var item = this[i];
 		if( typeof item == "string" )
@@ -7108,28 +7311,6 @@ if(!Array.prototype.getUniqueValues) { Array.prototype.getUniqueValues = functio
 	}
 	return uniqueNames;
 }}
-
-// // ECMA3 limitations: from array of JSON objects, get bidimensional arrays containing duplicates
-// Array.prototype.getObjectPropertyDuplicates = function( pname )
-// {
-// 	if(!this.length) return this;
-// 	var values = this.getUniqueValues(pname);
-// 	var sets = [];
-
-// 	for(var i = 0; i < values.length; i++)
-// 	{
-// 		var val = values[i];
-// 		var set = [];
-// 		for(var j = 0; j < this.length; j++)
-// 		{
-// 			var obj = this[j];
-// 			if(!obj) continue;
-// 			if(obj[pname] == val) set.push(obj);
-// 		}
-// 		if(set.length) sets.push(set);
-// 	}
-// 	return sets;
-// }
 
 // sort indexes
 if(!Array.prototype.sortAscending) { Array.prototype.sortAscending = function()
