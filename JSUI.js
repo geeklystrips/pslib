@@ -66,7 +66,7 @@ if(typeof JSUI !== "object")
 }
 
 // version
-JSUI.version = "1.0.9";
+JSUI.version = "1.1.0";
 
 // do some of the stuff differently depending on $.level and software version
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -5579,21 +5579,26 @@ JSUI.componentsFromObject = function (obj, container, array, preferRadiobuttons)
 
 };
 
-// For existing dialog: adds a scrollable list panel,
+// For existing dialog: adds a scrollable list panel
 // ideal for listing JSON data quickly
-//      - automatic column widths based on strings measurements
-//      - inherent selection system (if first item value is boolean)
-//      - color indicator (if last item value matches "#RRGGBB" pattern)
 
 // { 
-//     dialog: win,         // dialog
-//     items: itemList,     // JSON items
-//     columns: undefined,  // array of column title strings
+//     dialog: win,         	// dialog window object
+// 	   title: " ",
+//     extraInfoArr: undefined,  // optional header info (2D array)
+//     columns: undefined,  	// array of column title strings
+//     items: itemList,    	 	// array of items to display
+//     jsonObjArr: undefined,  	// optional custom json array (one for each row)
+//     enabledChunksArr: undefined,  // optional enabled status for individual StaticText objects
 // 	   maximumWidth: 800,
 // 	   maximumHeight: 400,
-//	   backgroundColors: undefined	// render black text on color background
-// 	   confirmButtonLabel: "Process",
-// 	   title: " ",
+// 	   maxCharCount: 60,		// max display string length (ellipsis added if truncated)
+// 	   measureStrings: false,	// quick estimate, true: actual ScriptUI measureString()
+//	   backgroundColors: undefined	// render black text on #rgb background
+// 	   confirmButtonLabel: "Continue",
+// 	   confirmButtonHelpTip: "Control description",
+// 	   backButton: undefined,	// onClick callback: back button added to top left of dialog (Dismiss button not added)
+
 //     onConfirmFunction: function(){}	// invoked when pressing confirm button
 // }
 
@@ -5604,6 +5609,8 @@ JSUI.addScrollableList = function( obj )
     // if(!obj.dialog) return;
     if(!obj.items) return;
     if(!obj.items.length) return;
+	if(obj.maxCharCount == undefined) obj.maxCharCount = 60;
+	if(obj.measureStr == undefined) obj.measureStr = false;
 
     // if we don't have a string array for column names, attempt to infer from provided data
     if(!obj.columns)
@@ -5612,16 +5619,16 @@ JSUI.addScrollableList = function( obj )
         if( obj.items[0] instanceof Object)
         {
             var tmpArr = obj.items[0].convertToArray();
-            obj.columns = tmpArr.map( function(el){ return el[0] } );
-            obj.items = obj.items.map( function(item){ return item.convertToArray() } );
-            obj.items = obj.items.map( function(item){ return item.map(function(it){ return it[1] }) } );
+            obj.columns = tmpArr.map( function(el){ return el[0]; } );
+            obj.items = obj.items.map( function(item){ return item.convertToArray(); } );
+            obj.items = obj.items.map( function(item){ return item.map( function(it){ return it[1]; }); } );
 
             if(typeof obj.items[0][0] == "boolean")
             {
                 obj.columns[0] = "  ";
             }
         }
-        // otherwise if 2D array
+        // otherwise if 2D array, map
         else if(obj.items[0] instanceof Array)
         {
             if(obj.items[0].length > 1)
@@ -5634,17 +5641,36 @@ JSUI.addScrollableList = function( obj )
 
     if(!obj.columns) return;
 
-	// Make panel create its own Dialog 
+	// Experimental: make panel create its own dialog
 	var autoDialog = false;
 	if(!obj.dialog)
 	{
-		obj.dialog = new JSUI.createDialog( { title: obj.title ? obj.title : " ", orientation: "column", margins: 15, spacing: 10, alignChildren: [ "left", "center" ], width: 600, height: 300, debugInfo:false } );
+		obj.dialog = new JSUI.createDialog( { title: obj.title ? obj.title : " ", orientation: "column", margins: [15, 0, 15, 15], spacing: 10, alignChildren: [ "left", "center" ], width: 600, height: 300, debugInfo:false } );
 		autoDialog = true;
 	}
 	
+	// parent container
+	var container = obj.dialog.addColumn();
+	var containerHeader = container.addRow( { margins: [0, 0, 0, 0], alignment: "left"});
+
+
+	if(obj.backButton)
+	{
+		container.addButton( { label: "<<", name: "back-button", alignment: ["left", "top"], onClickFunction: obj.backButton, helpTip: "Back" });
+	}
+	
+	// arbitrary static info 
+	if(obj.extraInfoArr)
+	{
+		obj.extraInfoArr.map(function(infoArr){
+			container.addStaticText( { text: infoArr[0] + ": " + decodeURI(infoArr[1]) });
+		});
+	}
+
 	// show items and misc info
-	var statusMsg = obj.dialog.addStaticText( { text: "Item count: " + obj.items.length, multiline: true, alignment: [ "left", "top" ] } );
-	statusMsg.alignment = ["left", "top"];
+	var statusMsg = container.addStaticText( { text: "Item count: " + obj.items.length, multiline: true, width: 150, alignment: [ "left", "top" ] } );
+	// statusMsg.alignment = ["left", "top"];
+	statusMsg.enabled = false;
 
     var itemList = obj.items;
     var headerList = obj.columns;
@@ -5652,7 +5678,8 @@ JSUI.addScrollableList = function( obj )
     if(!obj.confirmFunction) obj.confirmFunction = function(){};
 
     // aligning content with columns require pre-processing strings before they are displayed
-    // in order to estimate the widest 
+	// default behavior: measure width for one average character, then use as reference
+	var dummyCharWidth = obj.dialog.graphics.measureString("w", obj.dialog.graphics.font).width;
 
     var colWidths = [];
     var rowHeight = 20;
@@ -5661,7 +5688,9 @@ JSUI.addScrollableList = function( obj )
 
     var defaultColWidth = 20;
     var defaultColSpacing = 10;
-	var maxChar = 50;
+	var barW = 20;
+
+	var maxChar = obj.maxCharCount;
 
     // get list of column widths to work with when creating static text items
     for (var h = 0; h < headerList.length; h++)
@@ -5672,7 +5701,7 @@ JSUI.addScrollableList = function( obj )
         // measure each column header string
         if(headerList[h] != undefined)
         {
-            var hStrWidth = obj.dialog.graphics.measureString(headerList[h], obj.dialog.graphics.font).width;
+            var hStrWidth = obj.measureStrings ? obj.dialog.graphics.measureString(headerList[h], obj.dialog.graphics.font).width : (headerList[h].length * dummyCharWidth);
             if(hStrWidth > itemWidth) colWidth = hStrWidth;
         }
 
@@ -5685,7 +5714,8 @@ JSUI.addScrollableList = function( obj )
             if((typeof item == "number")) item = item.toString();
             if((typeof item) == "string")
             {
-                var strWidth = obj.dialog.graphics.measureString(item.length < maxChar ? item : item.substr(0, maxChar-2) + "...", obj.dialog.graphics.font).width;
+				var strLength = item.length;
+                var strWidth = obj.measureStrings ? obj.dialog.graphics.measureString(strLength < maxChar ? item : item.substr(0, maxChar-2) + "...", obj.dialog.graphics.font).width : ((strLength < maxChar ? item : item.substr(0, maxChar-2) + "...").length * dummyCharWidth);
                 if(strWidth > itemWidth) colWidth = strWidth;
                 if(hStrWidth > colWidth) colWidth = hStrWidth;
             }
@@ -5695,10 +5725,6 @@ JSUI.addScrollableList = function( obj )
     }
 
     var rows = [];
-
-    // parent container for header
-    var container = obj.dialog.addColumn();
-
     var headerRow = container.addRow( { margins: [15, 0, 0, 0], alignment: "left"});
 
     for (var h = 0; h < headerList.length; h++)
@@ -5731,8 +5757,12 @@ JSUI.addScrollableList = function( obj )
     var col = c.addColumn( { alignChildren: "fill", alignment: "fill" });
     col.maximumSize.height = itemList.length*100;
 
-    var barW = 20;
+	var jsonArrMatchesItemsLength = false;
+	if(obj.jsonObjArr) jsonArrMatchesItemsLength = itemList.length == obj.jsonObjArr.length;
 
+	var enabledChunksArrMatchesItemsLength = false;
+	if(obj.enabledChunksArr) enabledChunksArrMatchesItemsLength = itemList.length == obj.enabledChunksArr.length;
+	
     // add individual rows
     for (var i = 0; i < itemList.length; i++)
     {
@@ -5743,12 +5773,21 @@ JSUI.addScrollableList = function( obj )
             // if first item in row is a boolean, interpret as dynamic checkbox
             if(j == 0 && (typeof itemList[i][j]) == "boolean")
             {
-                row._checkbox = row.addCheckBox( "checkb"+i, { label: " ", value: itemList[i][j] });
+				var cbValue = itemList[i][j];
+				var cb = row.addCheckBox( "checkb"+i, { label: " ", value: cbValue });
+                row._checkbox = cb;
+				row._initialCheckboxValue = cbValue;
+
+				// store custom JSON object if provided
+				if(jsonArrMatchesItemsLength) row._jsonObj = obj.jsonObjArr[i];
+
+				// override default callbacks
                 row._checkbox.onClick = function(){};
                 row._checkbox.update = function(){};
             }
             else
             {
+				var statT = null;
 				if(obj.backgroundColors)
 				{
 					if(obj.backgroundColors[i][j])
@@ -5757,28 +5796,41 @@ JSUI.addScrollableList = function( obj )
 					}
 					else 
 					{
-						var displayStr = itemList[i][j] ? itemList[i][j] : "";
+						var displayStr = itemList[i][j] != undefined ? itemList[i][j] : "";
 						displayStr = displayStr.length < maxChar ? displayStr : displayStr.substr(0, maxChar-2) + "...";
 
-						var statT = row.add("statictext", undefined, displayStr);
+						statT = row.add("statictext", undefined, displayStr);
 						statT.preferredSize.width = colWidths[j] + defaultColSpacing;
 					}
 				}
 				else
 				{
-					var displayStr = itemList[i][j] ? itemList[i][j] : "";
+					var displayStr = itemList[i][j] != undefined ? itemList[i][j] : "";
 					displayStr = displayStr.length < maxChar ? displayStr : displayStr.substr(0, maxChar-2) + "...";
 
-					var statT = row.add("statictext", undefined, displayStr);
+					statT = row.add("statictext", undefined, displayStr);
 					statT.preferredSize.width = colWidths[j] + defaultColSpacing;
+				}
+
+				// optional: static text grayed out
+				if(statT)
+				{
+					if(enabledChunksArrMatchesItemsLength)
+					{
+						statT.enabled = obj.enabledChunksArr[i][j];
+					}
 				}
             }
         }
         rows.push(row);
     }
 
+	// multiple platform/versions support is *extremely* messy
+	// macOS scrolling: smooth, sort of
+	// Windows: ugh
+
     var scrollBar = c.add("scrollbar");
-    scrollBar.stepdelta = 100;
+    scrollBar.stepdelta = c.maximumSize.height;
     scrollBar.maximumSize.height = c.maximumSize.height;
 
     scrollBar.onChanging = function ()
@@ -5790,39 +5842,52 @@ JSUI.addScrollableList = function( obj )
     {
         scrollBar.size = [ barW, c.size.height ];
         scrollBar.location = [ (c.size.width-barW), 0 ];
-        scrollBar.maxvalue = col.size.height - (c.size.height+barW);
+        scrollBar.maxvalue = col.size.height - c.size.height;
     };
 
-    var footerRow = container.addRow( { margins: [0,10,0,0], alignment: "fill" });
+    var containerFooter = container.addRow( { margins: [0,10,0,0], alignment: "fill", alignChildren: ["left", "center"] });
 
     // if using checkboxes, include buttons to support select/deselect all
     if( (typeof itemList[0][0]) == "boolean" )
     {
-        footerRow.add("statictext" , undefined , "Select:").alignment = ["left", "top"];
-        var allBtn = footerRow.addButton( { label: "All", name: "all", width: 50, height: 22, alignment: ["left", "top"] });
-        var noneBtn = footerRow.addButton( { label: "None", name: "none", width: 50, height: 22, alignment: ["left", "top"] });
-        allBtn.onClick = function() { c._rows.filter( function(el){ if(el._checkbox.value != true) { el._checkbox.value = true; return true; } }); }
-        noneBtn.onClick = function() { c._rows.filter( function(el){ if(el._checkbox.value != false) { el._checkbox.value = false; return true; } }); }
-    }
+        containerFooter.add("statictext", undefined, "Select:");
 
-    // if confirm function provided, add CTA button to footer
+        var selectAllBtn = containerFooter.addButton( { label: "All", name: "select-all", width: 60, height: 22, helpTip: "Select all items", onClickFunction: function(){
+			c._rows.filter( function(el){ if(el._checkbox.value != true) { el._checkbox.value = true; return true; } });
+		} });
+
+        var selectNoneBtn = containerFooter.addButton( { label: "None", name: "select-none", width: 70, height: 22, helpTip: "Uncheck all items", onClickFunction: function(){ 
+			c._rows.filter( function(el){ if(el._checkbox.value != false) { el._checkbox.value = false; return true; } });
+		} });
+	
+		var restoreSelectionBtn = containerFooter.addButton( { label: "Restore", name: "restore-selection", width: 80, height: 22, helpTip: "Restore initial selection", onClickFunction: function(){ 
+			c._rows.map( function(el){ el._checkbox.value = el._initialCheckboxValue; });
+		} });
+	}
+
+    // if confirm function provided, add dismiss/continue CTA button to footer
     if(obj.onConfirmFunction)
     {
-        var dismissBtn = footerRow.addButton( { label: "Dismiss", name: "cancel", width: 125, height: 32, alignment: ["right","top"] }); 
-        var processBtn = footerRow.addCloseButton( { label: obj.confirmButtonLabel ? obj.confirmButtonLabel : "Process", name: "ok", alignment: ["right","top"], onClickFunction: function(){ 
-            obj.onConfirmFunction();
-            obj.dialog.close();
+		var dismissBtn = null;
+		if(!obj.backButton)	dismissBtn = containerFooter.addButton( { label: "Dismiss", name: "cancel", width: 125, height: 32, alignment: ["right","top"] }); 
+		
+        var continueBtn = containerFooter.addCloseButton( { label: obj.confirmButtonLabel ? obj.confirmButtonLabel : "Continue", helpTip: obj.confirmButtonHelpTip ? obj.confirmButtonHelpTip : "Process", name: "ok", alignment: ["right","top"], onClickFunction: function(){ 
+			// dialog returns results of onConfirmFunction
+            obj.dialog.close( obj.onConfirmFunction() );
         }} );
-        dismissBtn.active = true;
+
+		// default focused button closes the window without doing anything
+        if(dismissBtn) dismissBtn.active = true;
     }
+	else
+	{
+		containerFooter.addCloseButton( { alignment: ["right","top"] });
+	}
 
-    // // from definition context, individual rows are accessible using
-    //  panel._rows.map( function( item, index, array ){ 
-    //  // do something with itemList[index] etc
-    //    return el; 
-    //    });
-
+	// expose components
     c._rows = rows; 
+	c._header = containerHeader;
+	c._footer = containerFooter;
 
 	// make panel aware of its parent
 	if(autoDialog)
@@ -6485,6 +6550,8 @@ JSUI.quickLog = function(obj, arrDepthInt, msgStr, showType)
 				var constructType = undefined;
 				var typeNameStr = undefined;
 
+				// $.writeln( isEmptyJSONobj ); 
+
 				// this returns the JSON string itself (to avoid stringifying several times unless relevant)
 				if(typeof isEmptyJSONobj == "string")
 				{
@@ -6564,12 +6631,15 @@ JSUI.quickLog = function(obj, arrDepthInt, msgStr, showType)
 				var arrItem = obj[i];
 				if((arrItem instanceof Object) || (arrItem instanceof Array))
 				{
-					var arrStr = JSUI.quickLog(indent+("\t")+arrItem, (arrDepthInt+1), msgStr, showType);
+					var arrItemStr = JSON.stringify( arrItem, null, indent ? indent+'\t\t' : '\t\t');
+					arrItemStr = arrItemStr.replace('\n}', '\n\t}' + (i < obj.length-1 ? ',' : ''));
+
+					var arrStr = JSUI.quickLog(indent+("\t")+arrItemStr, (arrDepthInt+1), msgStr, showType);
 					resultStr += arrStr;
 				}
 				else
 				{
-					var objStr = (indent+("\t")+arrItem+ (showType ? ("    " + (typeof arrItem).toUpperCase()) : ""));
+					var objStr = (indent+("\t")+arrItem+ (showType ? ("    " + (typeof arrItem).toUpperCase()) : (i < obj.length-1 ? "," : "")));
 					$.writeln(objStr);
 					resultStr += objStr;
 				}

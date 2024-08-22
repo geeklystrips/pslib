@@ -110,7 +110,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.94;
+Pslib.version = 0.945;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -3245,7 +3245,7 @@ Pslib.getContainers = function( obj )
 				var id = desc.getInteger(sTID('layerID'));
 				// var name = desc.getString(sTID('name'));
 
-				if( isArtboard || isGroup )
+				if( isArtboard || isGroup || isFrame )
 				{
 					if(!obj.groups)
 					{
@@ -3553,65 +3553,32 @@ Pslib.getSpecsForSelectedArtboards = function(onlyIDs)
 	{
 	   // return intersection between all artboards and selected artboards	
 		var indexArr = Pslib.getSelectedLayerIndexes();
-		var from = Pslib.getIndexIncrement();
-		var to = Pslib.getLayerCount();
-
 		var artboards = [];
-		for (var i = from; i <= to; i++)
+		for (var i = 0; i < indexArr.length; i++)
 		{
-			// compare current ids with selected IDs, if match found, process
-			var selectedMatch = false;
-			for (var j = 0; j < indexArr.length; j++)
-			{
-				if(i == indexArr[j])
-				{
-					selectedMatch = true;
-					break;
-				}
-			}
-			if(!selectedMatch)
-			{
-				continue;
-			}
-
 			var r = new ActionReference();
-			r.putProperty(sTID('property'), sTID('artboardEnabled'));
-			r.putIndex(sTID("layer"), i);
-			var artboardEnabled = false;
+			r.putIndex( cTID( 'Lyr ' ), (indexArr[i]));
+			var desc = executeActionGet(r);
 
-			// workaround for documents without any artboards defined
-			try
+			if (desc.getBoolean(sTID('artboardEnabled')))
 			{
-				artboardEnabled = executeActionGet(r).getBoolean(sTID('artboardEnabled'));
-			}
-			catch(e)
-			{
-
-			}
-
-			if (artboardEnabled)
-			{
-				// get artboard name, ID and bounds 
-				var ref = new ActionReference();
-				ref.putIndex( cTID( 'Lyr ' ), i);
-				var layerDesc = executeActionGet(ref);
-				var artboardID = layerDesc.getInteger(cTID('LyrI'));
+				var artboardID = desc.getInteger(cTID('LyrI'));
 				// if only fetching IDs, just push int to array and skip the rest
 				if(onlyIDs)
 				{
 					artboards.push(artboardID);
 					continue;
 				}
-				var artboardName = layerDesc.getString(sTID ('name'));
-				var artboard = executeActionGet(ref).getObjectValue(sTID('artboard')),
-					artboardRect = artboard.getObjectValue(sTID('artboardRect')),
-					bounds = {
-						top: artboardRect.getDouble(sTID('top')),
-						left: artboardRect.getDouble(sTID('left')),
-						right: artboardRect.getDouble(sTID('right')),
-						bottom: artboardRect.getDouble(sTID('bottom'))
+				var artboardName = desc.getString(sTID ('name'));
+				var artboard = desc.getObjectValue(sTID('artboard'));
+				var rect = artboard.getObjectValue(sTID('artboardRect'));
+				var bounds = {
+						top: rect.getDouble(sTID('top')),
+						left: rect.getDouble(sTID('left')),
+						right: rect.getDouble(sTID('right')),
+						bottom: rect.getDouble(sTID('bottom'))
 					};
-				
+
 				artboards.push({ name: artboardName, index: i, id: artboardID, x: bounds.left, y: bounds.top, width: bounds.right - bounds.left, height: bounds.bottom - bounds.top });
 			}
 		}
@@ -3690,43 +3657,35 @@ Pslib.getSpecsForAllArtboards = function(onlyIDs)
 
 	if(Pslib.isPhotoshop)
 	{
-		var from = Pslib.getIndexIncrement();
-		var to = Pslib.getLayerCount();
+		var increment = Pslib.documentHasBackgroundLayer() ? 0 : 1;
+		var count = Pslib.getLayerCount();
 
 		var artboards = [];
-		for (var i = from; i <= to; i++)
+		for (var i = 0; i < count; i++)
 		{
 			var r = new ActionReference();
-			r.putProperty(sTID('property'), sTID('artboardEnabled'));
-			r.putIndex(sTID('layer'), i);
-			var artboardEnabled = false;
+			r.putIndex( cTID( "Lyr " ), (i+increment));
+			var desc = executeActionGet(r);
 
-			// this may slow down operations
-			try{ 
-				artboardEnabled = executeActionGet(r).getBoolean(sTID('artboardEnabled'));
-			} catch(e) { };
+			var artboardEnabled = false;
+			artboardEnabled = desc.getBoolean(sTID('artboardEnabled'));
 
 			if (artboardEnabled)
 			{
-				// get artboard name
-				var ref = new ActionReference();
-				ref.putIndex( cTID( "Lyr " ), i);
-				var layerDesc = executeActionGet(ref);
-				var artboardID = layerDesc.getInteger(cTID('LyrI'));
-				// if only fetching IDs, just push int to array and skip the rest
+				var artboardID = desc.getInteger(cTID('LyrI'));
 				if(onlyIDs)
 				{
 					artboards.push(artboardID);
 					continue;
 				}
-				var artboardName = layerDesc.getString(sTID ("name"));
-				var artboard = executeActionGet(ref).getObjectValue(sTID('artboard')),
-					artboardRect = artboard.getObjectValue(sTID('artboardRect')),
+				var artboardName = desc.getString(sTID ("name"));
+				var artboard = desc.getObjectValue(sTID('artboard')),
+					rect = artboard.getObjectValue(sTID('artboardRect')),
 					bounds = {
-						top: artboardRect.getDouble(sTID('top')),
-						left: artboardRect.getDouble(sTID('left')),
-						right: artboardRect.getDouble(sTID('right')),
-						bottom: artboardRect.getDouble(sTID('bottom'))
+						top: rect.getDouble(sTID('top')),
+						left: rect.getDouble(sTID('left')),
+						right: rect.getDouble(sTID('right')),
+						bottom: rect.getDouble(sTID('bottom'))
 					};
 
 				artboards.push({ name: artboardName, index: i, id: artboardID, x: bounds.left, y: bounds.top, width: bounds.right - bounds.left, height: bounds.bottom - bounds.top });
@@ -3815,7 +3774,7 @@ Pslib.getAllArtboards = function()
 	}
 	else if(Pslib.isIllustrator)
 	{
-		// Document.artboards is not a typical Array, use this to work around
+		// Document.artboards object is not technically an Array (can't use .map())
 		for(var i = 0; i < doc.artboards.length; i++)
 		{
 			artboards.push(doc.artboards[i]);
@@ -3859,8 +3818,8 @@ Pslib.getAllArtboardPages = function()
 	var pages = [];
 	if(Pslib.isIllustrator)
 	{
-		// pages = doc.artboards.map( function(el, idx){ return idx+1; });
-		for(var i = 0; i < doc.artboards.length; i++) { pages.push(i+1); }
+		var indexes = Pslib.getAllArtboardIndexes();
+		pages = indexes.map(function(idx){ return (idx+1); });
 	}
 	return pages;
 }
@@ -4349,25 +4308,6 @@ Pslib.duplicateObjectsToArtboards = function( objectIDsArr, artboardIDsArr)
 	// docSpecs: { } // document specs object for illustrator offsets
 // }
 
-// // wrapper 
-// Pslib.getCustomDescriptor = function( obj )
-// {
-// 	if( !obj ) var obj = { 
-// 		getCoordsObject: true, 
-// 		documentHasArtboards: true, 
-// 		filterExtension: true, 
-// 		descriptor: true };
-
-// 	// check for int string (illlustrator PathItem)
-
-
-// 	if(obj.uid == undefined) obj.uid = Pslib.getActiveArtboard().id;
-// 	if(obj.uid == undefined) return null; 
-// 	var ref = Pslib.getLayerReferenceByID( obj.uid, obj );
-// 	return ref;
-// 	// var desc = coords.descriptor;
-// }
-
 Pslib.getLayerReferenceByID = function( id, obj )
 {
 	if(!app.documents.length) return;
@@ -4411,6 +4351,7 @@ Pslib.getLayerReferenceByID = function( id, obj )
 	if(obj.getCoordsObject)
 	{
 		if(obj.docSpecs == undefined) obj.docSpecs = {};
+		obj.documentHasArtboards = obj.docSpecs.documentHasArtboards;
 	}
 
 	var mustRegisterNameSpace = false;
@@ -4751,11 +4692,12 @@ Pslib.getLayerReferenceByID = function( id, obj )
 				coords.width = rect.getDouble(sTID("right")) - coords.x;
 				coords.height = rect.getDouble(sTID("bottom")) - coords.y;
 
-				// if group in a context which also includes artboards, w+h may be reflected as document's
-				// correct this here
-				if(isGroup)
+				// if empty group in a context which also includes artboards, w+h will be reflected the same as document's
+				if(isGroup && obj.documentHasArtboards)
 				{
-					// Pslib.log( coords.id + " Group " + coords.name + " " + coords.width + "x"+ coords.height);
+					// possible solution: get specs for all visible nested layers, calculate bounds accordingly
+
+					// Pslib.log( coords.id + " Group " + coords.name + " " + coords.x + ", "+ coords.y + "  " + coords.width + "x"+ coords.height);
 				}
 
 				var type =  isArtboard ? "artboard" : (isFrame ? "frame" : "group");
@@ -6142,6 +6084,11 @@ Pslib.getDocumentSpecs = function( advanced, getOffsets )
 				default : { specs.bitsPerChannel = 8; break;}
 			}
 			
+			specs.artboardsCount = Pslib.getArtboardsCount().length;
+			specs.hasArtboards = specs.artboardsCount > 0;
+			specs.hasBackgroundLayer = Pslib.documentHasBackgroundLayer();
+			specs.layerIndexIncrement = specs.hasBackgroundLayer ? 0 : 1;
+
 			//
 			// XMP content
 			//
@@ -6187,9 +6134,12 @@ Pslib.getDocumentSpecs = function( advanced, getOffsets )
 		specs.rulerOrigin = doc.rulerOrigin;
 		specs.rulerOriginX = specs.rulerOrigin[0];
 		specs.rulerOriginY = specs.rulerOrigin[1];
+
 		if(advanced)
 		{
-			
+			specs.artboardsCount = doc.artboards.length;
+			specs.hasArtboards = specs.artboardsCount > 0;
+
 			specs.mode = doc.documentColorSpace.toString(); // DocumentColorSpace.RGB // DocumentColorSpace.CMYK
 		
 			// color profile
@@ -8634,7 +8584,10 @@ Pslib.renameArtboards = function( containers, obj )
 
 	if(!containers)
 	{
-		var containers = Pslib.isPhotoshop ? Pslib.getAllArtboardIDs() : doc.artboards;
+		// Pslib.getSelectedArtboardIDs() uses .getContainers
+		// for(var i = 0; i < doc.artboards.length; i++) { indexes.push(i); }
+		// var containers = Pslib.isPhotoshop ? Pslib.getAllArtboardIDs() : doc.artboards;
+		var containers = Pslib.getAllArtboardIDs();
 	}
 
 	var usingUuids = false;
@@ -8642,10 +8595,12 @@ Pslib.renameArtboards = function( containers, obj )
 
 	if(Pslib.isIllustrator)
 	{
-		usingUuids = containers.isIntStringArray(true);
-		if(usingUuids) usingArtboardIDs = false;
+		if(containers instanceof Array)
+		{
+			usingUuids = containers.isIntStringArray(true);
+			if(usingUuids) usingArtboardIDs = false;
+		}
 	}
-
 
 	for(var i = 0; i < containers.length; i++)
 	{
@@ -8800,8 +8755,9 @@ Pslib.renameArtboardsWhiteSpace = function( artboards, obj )
 	}
 	else if(Pslib.isIllustrator)
 	{
-		var targets = artboards ? artboards : doc.artboards;
-		renamed = Pslib.renameArtboards( targets, config );
+		var ids = artboards ? artboards : Pslib.getAllArtboardIDs();
+		// var targets = artboards ? artboards : doc.artboards;
+		renamed = Pslib.renameArtboards( ids, obj );
 	}
 	return renamed;
 }
@@ -12201,7 +12157,7 @@ Pslib.addRectangle = function ( obj )
     }
     else if(Pslib.isIllustrator)
     {
-		rectangle = doc.pathItems.rectangle( coords.x, -coords.y, coords.x+coords.width, coords.y+coords.height );
+		rectangle = doc.pathItems.rectangle( obj.coords.x, -obj.coords.y, obj.coords.x+obj.coords.width, obj.coords.y+obj.coords.height );
 
 		if(!rectangle) return
 		doc.selection = rectangle;
@@ -14441,6 +14397,7 @@ if(typeof JSUI !== "undefined")
 		var msg = "";
 		msg += Pslib.logMessage("\n" + header, 0);
 		if(title.length) msg += Pslib.log(title +"\n");
+
 		msg += Pslib.log(obj, 0, "", showType);
 		msg += Pslib.logMessage("\n" + footer + "\n", 0);
 		return msg;
@@ -14453,7 +14410,7 @@ if(typeof JSUI !== "undefined")
 }		
 else
 {
-	Pslib.log = function(str) { if($.level) $.writeln( str.toString() ); }
+	Pslib.log = function(str) { if($.level) try{ $.writeln( str.toString() ) }catch(e){ $.writeln( e ); }; }
 }
 
 // XBytor's string trim
@@ -14742,6 +14699,7 @@ if (!Array.prototype.isIntArray) { Array.prototype.isIntArray = function( strict
 	return true;
 }}
 
+// this fails with Array-like objects such as ILST Document.artboards
 if (!Array.prototype.isIntStringArray) { Array.prototype.isIntStringArray = function( strict )
 {
 	for(var i = 0; i < (strict ? this.length : 1); i++)
