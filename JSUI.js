@@ -66,7 +66,7 @@ if(typeof JSUI !== "object")
 }
 
 // version
-JSUI.version = "1.1.0";
+JSUI.version = "1.1.1";
 
 // do some of the stuff differently depending on $.level and software version
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -568,6 +568,36 @@ JSUI.getBackgroundColor = function()
 	return color;
 }
 
+JSUI.setUIbrightness = function( brightness )
+{
+	if(JSUI.isPhotoshop)
+	{
+		if(brightness === undefined) return;
+
+		switch(brightness)
+		{
+			case "light" : brightness = "kPanelBrightnessLightGray"; break;
+			case "mediumlight" : brightness = "kPanelBrightnessOriginal"; break;
+			case "mediumdark" : brightness = "kPanelBrightnessMediumGray"; break;
+			case "dark" : brightness = "kPanelBrightnessMediumGray"; break;
+			default : brightness = "kPanelBrightnessMediumGray"; break;
+		}
+
+		var brDesc = new ActionDescriptor();
+		brDesc.putEnumerated( sTID( "kuiBrightnessLevel" ), sTID( "uiBrightnessLevelEnumType" ), sTID( brightness ));
+
+		var ref = new ActionReference();
+		ref.putProperty( sTID( "property" ), sTID( "interfacePrefs" ));
+		ref.putEnumerated( sTID( "application" ), sTID( "ordinal" ), sTID( "targetEnum" ));
+
+		var desc = new ActionDescriptor();
+		desc.putReference( sTID( "null" ), ref );
+		desc.putObject( sTID( "to" ), sTID( "interfacePrefs" ), brDesc );
+		executeAction( sTID( "set" ), desc, DialogModes.NO );
+		return true;
+	}
+}
+
 JSUI.backgroundColor = JSUI.getBackgroundColor();
 
 JSUI.createDialog = function( obj )
@@ -663,11 +693,18 @@ JSUI.createDialog = function( obj )
 		}
 	}
 
-	var messageContainer = dlg.addColumn( { width: (dlg.preferredSize.width - ( img != null ? imageSize[0] : 0 ) ), alignChildren: "fill", margins: obj.margins ? obj.margins : 0, spacing: obj.spacing != undefined ? obj.spacing : 20} );
+	dlg.addColumn( { width: (dlg.preferredSize.width - ( img != null ? imageSize[0] : 0 ) ), alignChildren: "fill", margins: obj.margins ? obj.margins : 0, spacing: obj.spacing != undefined ? obj.spacing : 20} );
+	var header = dlg.addRow( { margins: [0,0,0,0], spacing: 0, alignChildren: ['left','top'], alignment: 'fill' } );
+	var messageContainer = dlg.addColumn( { margins: [0,0,0,0], spacing: 0, alignChildren: ['left','top'], alignment: 'fill' } );
+	var footer = dlg.addRow( { margins: [0,0,0,0], spacing: 0, alignChildren: ['left','top'], alignment: 'fill' } );
+
+	dlg._header = header;
+	dlg._container = messageContainer;
+	dlg._footer = footer;
 
 	if(obj.message)
 	{
-		var message = messageContainer.addStaticText( { text: obj.message, multiline: true, alignment: img != null ? "left" : "center" } );
+		var message = messageContainer.addStaticText( { text: obj.message, multiline: true, width: dlg.preferredSize.width-100, height: 40, alignment: img != null ? "left" : "center" } );
 		//message.characters = 75;
 	}
 	
@@ -677,7 +714,8 @@ JSUI.createDialog = function( obj )
 	// alert status
 	if(obj.alert)
 	{	
-		var buttons = messageContainer.addRow( { spacing: 20 } );
+		// var buttons = messageContainer.addRow( { spacing: 20 } );
+		var buttons = dlg.addRow( { spacing: 20 } );
 
 		if(obj.url != undefined)
 		{
@@ -693,7 +731,8 @@ JSUI.createDialog = function( obj )
 	{
 		var confirm = null;
 
-		var buttons = messageContainer.addRow( { spacing: 20 } );
+		// var buttons = messageContainer.addRow( { spacing: 20 } );
+		var buttons = dlg.addRow( { spacing: 20 } );
 		var no = buttons.addButton( { label: obj.dismissLabel ? obj.dismissLabel : "No", name: "cancel", width: 125, height: 32, alignment: "right" });
 		var yes = buttons.addCustomButton( { label: obj.label ? obj.label : "Yes", name: "ok", helpTip: obj.helpTip ? obj.helpTip : undefined }); // better results without a defined w+h (?)
 
@@ -726,10 +765,9 @@ JSUI.createDialog = function( obj )
 		var textfield = messageContainer.add("edittext", undefined, obj.text != undefined ? obj.text : "DEFAULT STRING");
 		textfield.characters = obj.characters != undefined ? obj.characters : 35;
 		
-		var buttons = messageContainer.addRow( { spacing: 20 } );
+		// var buttons = messageContainer.addRow( { spacing: 20 } );
+		var buttons = dlg.addRow( { spacing: 20 } );
  		var cancel = buttons.addButton( { label: obj.dismissLabel ? obj.dismissLabel : "Dismiss", name: "cancel", width: 125, height: 32, alignment: "right" });
-		// var ok = buttons.addButton( { label: obj.confirmLabel != undefined ? obj.confirmLabel : "Confirm", name: "ok", onClickFunction: obj.onClickFunction, width: 125, height: 32, alignment: "right" });
-		// var ok = buttons.addCustomButton( { label: (obj.confirmLabel ? obj.confirmLabel : ( obj.label ? obj.label : "Accept")), name: "ok", helpTip: obj.helpTip ? obj.helpTip : undefined, onClickFunction: obj.onClickFunction }); // better results without a defined w+h (?)
 		var ok = buttons.addCustomButton( { label: (obj.confirmLabel ? obj.confirmLabel : ( obj.label ? obj.label : "Accept")), name: "ok", helpTip: obj.helpTip ? obj.helpTip : undefined});
 
 		textfield.active = true;
@@ -1275,7 +1313,7 @@ JSUI.getScriptUIStates = function( obj )
 };
 
  
-/* supercharge object type to store interface element functions (hi X! )	*/
+// supercharge object type to store interface element functions
 Object.prototype.Components = new Array(); 
 
 // generic close button
@@ -1296,8 +1334,7 @@ Object.prototype.addCloseButton = function( labelStr, nameStr )
 	}
 	if(!obj.label) obj.label = "Close";
 	if(!obj.name) obj.name = "ok";
-	if(!obj.alignment) obj.alignment = "center";
-	if(!obj.width) 
+	if(!obj.alignment) obj.alignment =[ "center", "bottom" ];
 
 	// var closeButton = this.addCustomButton( { label: labelStr, name: nameStr, alignment: "center" });
 
@@ -1309,7 +1346,7 @@ Object.prototype.addCloseButton = function( labelStr, nameStr )
 	return closeButton;
 };
 
-/* Graphics treatment for CS6 (Dialog Window)*/
+// Graphics treatment for CS6 (Dialog Window)
 Object.prototype.dialogDarkMode = function()
 {
 	if(JSUI.isPhotoshop && JSUI.isCS6 && JSUI.CS6styling)
@@ -1326,7 +1363,7 @@ Object.prototype.dialogDarkMode = function()
 	}
 };
 
-/* Graphics treatment for CS6 */
+// Graphics treatment for CS6 
 Object.prototype.darkMode = function()
 {
 	if(JSUI.isPhotoshop && JSUI.isCS6 && JSUI.CS6styling)
@@ -1343,28 +1380,27 @@ Object.prototype.darkMode = function()
 	}
 };
 
-/* group component	*/
+// group component	
 Object.prototype.addGroup = function(obj)
 {
-	/* if no object available, fallback to simple group	*/
+	// if no object available, fallback to simple group	
 	if(!obj) return this.add('group');
 	
-	/*	 has label?	*/
 	if(obj.label)	
 	{
 		this.add('statictext', undefined, obj.label);
 	}
 
 	var c = this.add('group');
-	c.orientation = obj.orientation ? obj.orientation : 'row'; /* column, row, stack	*/
-	c.alignChildren = obj.alignChildren ? obj.alignChildren : 'left'; /*  left, right, fill	*/
+	c.orientation = obj.orientation ? obj.orientation : 'row';
+	c.alignChildren = obj.alignChildren ? obj.alignChildren : 'left';
 	
 	c.spacing = obj.spacing ? obj.spacing : JSUI.SPACING;
 
 	if(obj.width) c.preferredSize.width = obj.width;
 	if(obj.height) c.preferredSize.height = obj.height;
 
-	if(obj.alignment) c.alignment = obj.alignment; /* left, center, right	*/
+	if(obj.alignment) c.alignment = obj.alignment; 
 	if(obj.margins) c.margins = obj.margins;
 	
 	this.Components[obj.name] = c; 
@@ -1372,14 +1408,13 @@ Object.prototype.addGroup = function(obj)
 	return c;
 };
 
-/* add row	*/
 Object.prototype.addRow = function(obj)
 {
 	var obj = obj != undefined ? obj : {};
 	var c = this.addGroup({orientation: 'row'});
 
 	c.alignChildren = obj.alignChildren != undefined ? obj.alignChildren : 'fill';
-	c.alignment = obj.alignment != undefined ? obj.alignment : 'top'; /* bottom  center  fill */
+	c.alignment = obj.alignment != undefined ? obj.alignment : 'top';
 
 	if(obj.width) c.preferredSize.width = obj.width;
 	if(obj.height) c.preferredSize.height = obj.height;
@@ -1389,19 +1424,16 @@ Object.prototype.addRow = function(obj)
 
 	if(obj.helpTip) c.helpTip = obj.helpTip;
 
-	//, alignChildren: obj.alignChildren != undefined ? obj.alignChildren : 'fill', spacing:10});
-
 	return c;
 };
 
-/* add column	*/
 Object.prototype.addColumn = function(obj)
 {
 	var obj = obj != undefined ? obj : {};
 	var c = this.addGroup({orientation: 'column'});
 
 	c.alignChildren = obj.alignChildren != undefined ? obj.alignChildren : 'fill';
-	c.alignment = obj.alignment != undefined ? obj.alignment : 'top'; /* bottom  center  fill */
+	c.alignment = obj.alignment != undefined ? obj.alignment : 'top';
 	
 	if(obj.spacing) c.spacing = obj.spacing;
 	if(obj.margins) c.margins = obj.margins;
@@ -1414,15 +1446,14 @@ Object.prototype.addColumn = function(obj)
 	return c;
 };
 
-/* add panel 	*/
 Object.prototype.addPanel = function(obj)
 {
 	var obj = obj != undefined ? obj : {};
 	var c = this.add('panel', undefined, obj.label ? obj.label : '');
 
-	c.orientation = obj.orientation ? obj.orientation : 'column'; /* row, stack	*/
-	c.alignChildren = obj.alignChildren ? obj.alignChildren : 'left'; /*  right, fill	*/
-	c.alignment = obj.alignment != undefined ? obj.alignment : 'top'; /*  */
+	c.orientation = obj.orientation ? obj.orientation : 'column';
+	c.alignChildren = obj.alignChildren ? obj.alignChildren : 'left'; 
+	c.alignment = obj.alignment != undefined ? obj.alignment : 'top';
 	
 	if(obj.margins) c.margins = obj.margins;
 	if(obj.spacing) c.spacing = obj.spacing;
@@ -1436,14 +1467,13 @@ Object.prototype.addPanel = function(obj)
 	return c;
 };
 
-/* tabbedpanel component */
 Object.prototype.addTabbedPanel = function(obj)
 {
 	if(!obj) var obj = {};
 
 	var c = this.add('tabbedpanel');
 
-	if(obj.alignChildren) c.alignChildren = obj.alignChildren ? obj.alignChildren : 'left'; /*  right, fill	*/
+	if(obj.alignChildren) c.alignChildren = obj.alignChildren ? obj.alignChildren : 'left';
 
 	if(obj.spacing) c.spacing = obj.spacing;
 	if(obj.margins) c.margins = obj.margins;
@@ -1455,14 +1485,13 @@ Object.prototype.addTabbedPanel = function(obj)
 	return c;
 };
 
-/* tab component	*/
 Object.prototype.addTab = function(obj)
 {
 	if(!obj) return;
 	var c = this.add("tab");
 	c.text = obj.label != undefined ? obj.label : "Default Tab Name";
 	c.orientation = obj.orientation ? obj.orientation : 'column';
-	if(obj.alignChildren) c.alignChildren = obj.alignChildren ? obj.alignChildren : 'left'; /*  right, fill	*/
+	if(obj.alignChildren) c.alignChildren = obj.alignChildren ? obj.alignChildren : 'left';
 
 	if(obj.spacing) c.spacing = obj.spacing;
 	if(obj.margins) c.margins = obj.margins;
@@ -1472,7 +1501,6 @@ Object.prototype.addTab = function(obj)
 	return c;
 };
 
-/* divider component	*/
 Object.prototype.addDivider = function(obj)
 {
 	if(!obj) var obj = {};
@@ -1507,10 +1535,8 @@ Object.prototype.addDividerColumn = function()
 	return c;
 };
 
-/* checkbox image component	*/
 Object.prototype.addCheckBox = function(propName, obj)
 {
-	//if(!obj) return;
 	var obj = obj != undefined ? obj : {};
 
 	var c = this.add('checkbox', undefined, obj.label ? obj.label : propName, {name: obj.name});
@@ -1533,46 +1559,45 @@ Object.prototype.addCheckBox = function(propName, obj)
 
 	c.update = function()
 	{
-		//JSUI.PREFS[propName] = c.value;
 		c.value = JSUI.PREFS[propName];
 	};
 
 	return c;
 };
 
-/* 
-	addToggleIconButton
+// //
+// 	addToggleIconButton
 
-	usage:
-	- the first parameter must be a string that matches the name of the variable
-	- if that name matches a property which belongs to the JSUI.PREFS object, this property will be bound to the value of the checkbox/radiobutton
-	- important: binding will not happen if the variable name does not match the string variable (first param)
-	- the preset value can otherwise be passed as part of the obj parameter { value: true/false }
-	- if an array of variable names (strings) is provided, the radiobutton logic will be applied automatically
-	- images are required (minimum of one per component, full support requires six per component)
-	- component can be forced to ignore/bypass its own prefs (as in the case of addImageGrid) with obj.createProperty = false
-	- a local function can be passed 
+// 	usage:
+// 	- the first parameter must be a string that matches the name of the variable
+// 	- if that name matches a property which belongs to the JSUI.PREFS object, this property will be bound to the value of the checkbox/radiobutton
+// 	- important: binding will not happen if the variable name does not match the string variable (first param)
+// 	- the preset value can otherwise be passed as part of the obj parameter { value: true/false }
+// 	- if an array of variable names (strings) is provided, the radiobutton logic will be applied automatically
+// 	- images are required (minimum of one per component, full support requires six per component)
+// 	- component can be forced to ignore/bypass its own prefs (as in the case of addImageGrid) with obj.createProperty = false
+// 	- a local function can be passed 
 
-	//
-	var checkboxImage = container.addToggleIconButton('checkboxImage', { label: "Fallback text (shown if image is not found)", imgFile: "/img/image.png", helpTip: "Checkbox image helptip" });
+// 	//
+// 	var checkboxImage = container.addToggleIconButton('checkboxImage', { label: "Fallback text (shown if image is not found)", imgFile: "/img/image.png", helpTip: "Checkbox image helptip" });
 
-	//
-	var regularCheckbox = container.addToggleIconButton('regularCheckbox', { label: "Text", helpTip: "Regular checkbox helptip" });
+// 	//
+// 	var regularCheckbox = container.addToggleIconButton('regularCheckbox', { label: "Text", helpTip: "Regular checkbox helptip" });
 	
-	//
-	var radioButtonsArr = ['one', 'two', 'three'];
+// 	//
+// 	var radioButtonsArr = ['one', 'two', 'three'];
 
-	var one = container.addToggleIconButton('one', { label: "First RadioButton", array: radioButtonsArr, helpTip: "First RadioButton helptip" });
-	var two = container.addToggleIconButton('two', { label: "Second RadioButton", array: radioButtonsArr, helpTip: "Second RadioButton helptip" });
-	var three = container.addToggleIconButton('three', { label: "Third RadioButton", array: radioButtonsArr, helpTip: "Third RadioButton helptip" });
+// 	var one = container.addToggleIconButton('one', { label: "First RadioButton", array: radioButtonsArr, helpTip: "First RadioButton helptip" });
+// 	var two = container.addToggleIconButton('two', { label: "Second RadioButton", array: radioButtonsArr, helpTip: "Second RadioButton helptip" });
+// 	var three = container.addToggleIconButton('three', { label: "Third RadioButton", array: radioButtonsArr, helpTip: "Third RadioButton helptip" });
 
-	//
-	var radioButtonsArr = ['one', 'two', 'three'];
+// 	//
+// 	var radioButtonsArr = ['one', 'two', 'three'];
 
-	var one = container.addToggleIconButton('one', { label: "First RadioButton", array: radioButtonsArr, imgFile: "/img/image1.png", helpTip: "First RadioButton helptip" });
-	var two = container.addToggleIconButton('two', { label: "Second RadioButton", array: radioButtonsArr, imgFile: "/img/image2.png", helpTip: "Second RadioButton helptip" });
-	var three = container.addToggleIconButton('three', { label: "First RadioButton", array: radioButtonsArr, imgFile: "/img/image3.png", helpTip: "Third RadioButton helptip" });
-*/
+// 	var one = container.addToggleIconButton('one', { label: "First RadioButton", array: radioButtonsArr, imgFile: "/img/image1.png", helpTip: "First RadioButton helptip" });
+// 	var two = container.addToggleIconButton('two', { label: "Second RadioButton", array: radioButtonsArr, imgFile: "/img/image2.png", helpTip: "Second RadioButton helptip" });
+// 	var three = container.addToggleIconButton('three', { label: "First RadioButton", array: radioButtonsArr, imgFile: "/img/image3.png", helpTip: "Third RadioButton helptip" });
+
 Object.prototype.addToggleIconButton = function(propName, obj)
 {
 	// abort if no object provided
@@ -1878,26 +1903,25 @@ Object.prototype.addToggleIconButton = function(propName, obj)
 };
 
 // auto-group radiobuttons (self-sufficient)
-/*
 
-var obj = {   propertyNames: ['one', 'two', 'three'], 										// individual property names
-                        labels: ['One.', 'Two...', 'Three!'],
-                        helpTips: ['(Number one)', '(Number two)', '(Number three)'],
-						createProperties: false, 											// default is true: false will still use values from INI if present
-																							// typically for keeping individual toggleIconButton values out of the config file because they are used as part of a complex widget (such as addImageGrid)
-						panel: "Panel Label", 												// creates toggleIcons in a panel container
-						orientation: "column",												// panel orientation: default is column 
-						margins: 15,															// default margin value is 15
-						spacing: 10,														// default spacing value is 10
-						alignment: "left"
+// var obj = {   propertyNames: ['one', 'two', 'three'], 										// individual property names
+//                         labels: ['One.', 'Two...', 'Three!'],
+//                         helpTips: ['(Number one)', '(Number two)', '(Number three)'],
+// 						createProperties: false, 											// default is true: false will still use values from INI if present
+// 																							// typically for keeping individual toggleIconButton values out of the config file because they are used as part of a complex widget (such as addImageGrid)
+// 						panel: "Panel Label", 												// creates toggleIcons in a panel container
+// 						orientation: "column",												// panel orientation: default is column 
+// 						margins: 15,															// default margin value is 15
+// 						spacing: 10,														// default spacing value is 10
+// 						alignment: "left"
 
-                        images: ["img/one.png", "img/two.png","img/three.png"],
-                        selection: 0, 														// optional: make sure this does not conflict with JSUI.PREFS object properties 
-                        onClickFunction: function(){ if($.level) $.writeln("Oh HAI! Iz clicked."); }
-					};
-container.addToggleIconGroup( obj );
+//                         images: ["img/one.png", "img/two.png","img/three.png"],
+//                         selection: 0, 														// optional: make sure this does not conflict with JSUI.PREFS object properties 
+//                         onClickFunction: function(){ if($.level) $.writeln("Oh HAI! Iz clicked."); }
+// 					};
+// container.addToggleIconGroup( obj );
 
-*/
+
 Object.prototype.addToggleIconGroup = function( obj )
 {
     // abort if no object provided
@@ -2062,22 +2086,22 @@ JSUI.turnOffToggleIconButtonsArray = function(targetDialog, controlArr)
 // var propertyName = container.addImageGrid( "propertyName", { strArray: [ "0", "1", "2", "3", "4", "5", "6", "7", "8" ], imgFile: "image.png", rows: 3, columns: 3 } );
 Object.prototype.addImageGrid = function(propName, obj)
 {
-	/*
-		expected properties
-		
-		// array of strings for storing as selection
-		// for example Photoshop knows what the AnchorPosition object is, but Illustrator doesn't
-		obj.strArray = [ 
-			AnchorPosition.TOPLEFT,  AnchorPosition.TOPCENTER, AnchorPosition.TOPRIGHT,
-			AnchorPosition.MIDDLELEFT,  AnchorPosition.MIDDLECENTER, AnchorPosition.MIDDLERIGHT, 
-			AnchorPosition.BOTTOMLEFT,  AnchorPosition.BOTTOMCENTER, AnchorPosition.BOTTOMRIGHT 
-		];
-		
-		// object with active+inactive ScriptUI images)
-		obj.states = JSUI.getScriptUIStates() 
-		// if obj.states.length == strArray.length, assume a grid which uses a different set of ScriptUI images for each component
-		
-	*/
+	
+	// expected properties
+	
+	// // array of strings for storing as selection
+	// // for example Photoshop knows what the AnchorPosition object is, but Illustrator doesn't
+	// obj.strArray = [ 
+	// 	AnchorPosition.TOPLEFT,  AnchorPosition.TOPCENTER, AnchorPosition.TOPRIGHT,
+	// 	AnchorPosition.MIDDLELEFT,  AnchorPosition.MIDDLECENTER, AnchorPosition.MIDDLERIGHT, 
+	// 	AnchorPosition.BOTTOMLEFT,  AnchorPosition.BOTTOMCENTER, AnchorPosition.BOTTOMRIGHT 
+	// ];
+	
+	// // object with active+inactive ScriptUI images)
+	// obj.states = JSUI.getScriptUIStates() 
+	// // if obj.states.length == strArray.length, assume a grid which uses a different set of ScriptUI images for each component
+	
+
 	obj.rows = parseInt(obj.rows);
 	obj.columns = parseInt(obj.columns);
 
@@ -2290,15 +2314,15 @@ JSUI.matchObjectArrayIndex = function(value, objArr, defaultValue)
 	return newValue;
 };
 
-/* radiobutton component	*/
-/* 
-	var radiobuttons = win.add('group');	
-	var array = ['rb1', 'rb2', 'rb3'];
+//  radiobutton component	
 
-	var rb1 = radiobuttons.addRadioButton ( 'rb1', { label:'Radiobutton 1', value:prefs.rb1, prefs:prefs, array:['rb1', 'rb2', 'rb3'] } );
-	var rb2 = radiobuttons.addRadioButton ( 'rb2', { label:'Radiobutton 2', value:prefs.rb2, prefs:prefs, array:['rb1', 'rb2', 'rb3'] } );
-	var rb3 = radiobuttons.addRadioButton ( 'rb3', { label:'Radiobutton 3', value:prefs.rb3, prefs:prefs, array:['rb1', 'rb2', 'rb3'] } );
-*/
+// 	var radiobuttons = win.add('group');	
+// 	var array = ['rb1', 'rb2', 'rb3'];
+
+// 	var rb1 = radiobuttons.addRadioButton ( 'rb1', { label:'Radiobutton 1', value:prefs.rb1, prefs:prefs, array:['rb1', 'rb2', 'rb3'] } );
+// 	var rb2 = radiobuttons.addRadioButton ( 'rb2', { label:'Radiobutton 2', value:prefs.rb2, prefs:prefs, array:['rb1', 'rb2', 'rb3'] } );
+// 	var rb3 = radiobuttons.addRadioButton ( 'rb3', { label:'Radiobutton 3', value:prefs.rb3, prefs:prefs, array:['rb1', 'rb2', 'rb3'] } );
+
 Object.prototype.addRadioButton = function(propName, obj)
 {
 	var obj = obj != undefined ? obj : {};
@@ -2320,7 +2344,7 @@ Object.prototype.addRadioButton = function(propName, obj)
 	{
 		JSUI.PREFS[propName] = this.value;
 
-		/* if array of radiobutton variables provided, loop through corresponding preferences in object and update accordingly	*/
+		// if array of radiobutton variables provided, loop through corresponding preferences in object and update accordingly
 		if(obj.array)
 		{ 
 			for(var i = 0; i < obj.array.length; i++)
@@ -2410,32 +2434,32 @@ Object.prototype.addStaticText = function(obj)
 
 // editable text component
 // can be automatically tied to a corresponding UI button to browse folder
-//	var edittext = container.addEditText( "edittext", { text:new Folder(prefs.sourcePath).fsName, specs:{browseFile:true/*, browseFolder:true*/}, width:600, label:"Folder:"} );
+//	var edittext = container.addEditText( "edittext", { text:new Folder(prefs.sourcePath).fsName, specs:{browseFile:true}, width:600, label:"Folder:"} );
 // (note: if prefsObj has corresponding property, it is updated on the fly by OnChange event)
 // 	
 Object.prototype.addEditText = function(propName, obj)
 {	
-	/*
-		** bug with file/folder if "~/" ?
-		auto-characters: value.toString().length
-		if useGroup, option to insert in existing container? (window/panel/group?)
-		if label, auto-use group?
+	
+// 		** bug with file/folder if "~/" ?
+// 		auto-characters: value.toString().length
+// 		if useGroup, option to insert in existing container? (window/panel/group?)
+// 		if label, auto-use group?
 	
 
-Note: To make active work in CC you have to set it in a so-called callback:
+// Note: To make active work in CC you have to set it in a so-called callback:
 
-var myText = myWindow.add ("edittext", undefined, "John");
-myText.characters = 30; 
+// var myText = myWindow.add ("edittext", undefined, "John");
+// myText.characters = 30; 
 
-myWindow.onShow = function ()
-{
-	myText.active = true; 
-}
-		*/
+// myWindow.onShow = function ()
+// {
+// 	myText.active = true; 
+// }
+		
 	
 //	var obj = obj != undefined ? obj : {};
 	obj.text = obj.text != undefined ? obj.text : (JSUI.PREFS[propName] != undefined ? JSUI.PREFS[propName] : "");
-	var readonly = obj.readonly != undefined ? obj.readonly : false;
+	// var readonly = obj.readonly != undefined ? obj.readonly : false;
 	// should also support properties: scrolling/wantReturn/noecho (case-sensitive)
 
 	// setup
@@ -2572,11 +2596,19 @@ myWindow.onShow = function ()
 // note that multiline:true is not enough to display a paragraph, the height must also be set accordingly.
 	if(useGroup)
 	{
-		var c = g.add('edittext', undefined, obj.text != undefined ? decodeURI (obj.text) : propName, {multiline:obj.multiline, readonly: readonly});
+		var c = g.add('edittext', undefined, obj.text != undefined ? decodeURI (obj.text) : propName, {
+			multiline:obj.multiline ? true : false, 
+			readonly: obj.readonly ? true : false,
+			enabled: obj.enabled ? true : false
+		});
 	}
 	else 
 	{
-		var c = this.add('edittext', undefined, obj.text != undefined ? decodeURI (obj.text) : propName, {multiline:obj.multiline, readonly: readonly});
+		var c = this.add('edittext', undefined, obj.text != undefined ? decodeURI (obj.text) : propName, {
+			multiline:obj.multiline ? true : false, 
+			readonly: obj.readonly ? true : false,
+			enabled: obj.enabled ? true : false
+		});
 	}
 
 	// store previous status to be used as custom dialog onClose()
@@ -2755,7 +2787,7 @@ myWindow.onShow = function ()
 	if(obj.height) c.preferredSize.height = obj.height;
 	if(obj.alignment) c.alignment = obj.alignment;
 	if(obj.helpTip) c.helpTip = obj.helpTip;
-	if(obj.disabled) c.enabled = !obj.disabled;
+	if(obj.disabled) c.enabled = false;
 
 	if(JSUI.isCS6 && JSUI.CS6styling) c.darkMode();
 	
@@ -2881,60 +2913,22 @@ myWindow.onShow = function ()
 	return c;
 };
 
-/* add browse for folder edittext+browsebutton combo
-	var browseFolder = win.addBrowseForFolder( "browseFolder", { characters: 30} );
-*/
+// add browse for folder edittext+browsebutton combo
+// 	var browseFolder = win.addBrowseForFolder( "browseFolder", { characters: 30} );
 Object.prototype.addBrowseForFolder = function(propName, obj)
 {
 	var obj = obj != undefined ? obj : {};
-	// var c = this.addEditText(propName, { text: obj.text != undefined ? obj.text : new Folder(JSUI.PREFS[propName]).fsName, label:obj.label, characters: obj.characters ? obj.characters : 45, specs:{ browseFolder:true, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{ alignment: obj.alignment != undefined ? obj.alignment : 'right'}} } );
 	var c = this.addEditText(propName, { text: obj.text != undefined ? obj.text : new Folder(JSUI.PREFS[propName]).fsName, label:obj.label, characters: obj.characters ? obj.characters : 4, width: obj.width ? obj.width : 300, onChangingFunction: obj.onChangingFunction ? obj.onChangingFunction : undefined, specs:{ browseFolder:true, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{ alignment: obj.alignment != undefined ? obj.alignment : 'right'}} } );
 
 	return c;
 };
 
-/* add browse for folder edittext+browsebutton combo
-	var browseFile = win.addBrowseForFile("browseFile", { characters: 40, filter: "png", open: true} ); // open: false for saveDlg
-*/
+// add browse for folder edittext+browsebutton combo
+// 	var browseFile = win.addBrowseForFile("browseFile", { characters: 40, filter: "png", open: true} ); // open: false for saveDlg
 Object.prototype.addBrowseForFile = function(propName, obj)
 {
 	var obj = obj != undefined ? obj : {};
-	var c = this.addEditText(propName, { label:obj.label, /*text: obj.text != undefined ? obj.text : new File(JSUI.PREFS[propName]).fsName,*/ characters: obj.characters ? obj.characters : 45, width: obj.width ? obj.width : 300, onChangingFunction: obj.onChangingFunction ? obj.onChangingFunction : undefined, specs:{ browseFile:true, openFile: obj.openFile != undefined ? obj.openFile : true, filter:obj.filter, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{ alignment: obj.alignment != undefined ? obj.alignment : 'right', spacing: obj.spacing}, hasImage:false/*, imgFile: (JSUI.URI + "/img/BrowseForFile.png") */}, } );
-
-	/*
-			// example: get file types from array
-			var imgTypes = [];
-			var imgTypesStr = null;
-			
-			imgTypes.push("psd");
-			imgTypes.push("png");
-			imgTypes.push("tga");
-			imgTypes.push("jpg");
-			imgTypes.push("bmp");
-			imgTypes.push("gif");
-
-			// 
-			if(imgTypes.length)
-			{
-				imgTypesStr = "/\\.(";
-				
-				for(var i = 0; i < imgTypes.length; i++)
-				{
-					imgTypesStr += imgTypes[i] + (i < imgTypes.length-1 ? "|" : "");
-				}
-				imgTypesStr += ")$/i";
-			}
-			
-			if(imgTypes.length)
-			{
-				eval("images = imgFolder.getFiles(" + imgTypesStr + ");");
-			}
-			// fallback to all types with eval()
-			else
-			{
-				images = imgFolder.getFiles(/\.(jpg|psd|png|tga|bmp|gif)$/i);
-			}
-	*/
+	var c = this.addEditText(propName, { label:obj.label, characters: obj.characters ? obj.characters : 45, width: obj.width ? obj.width : 300, onChangingFunction: obj.onChangingFunction ? obj.onChangingFunction : undefined, specs:{ browseFile:true, openFile: obj.openFile != undefined ? obj.openFile : true, filter:obj.filter, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{ alignment: obj.alignment != undefined ? obj.alignment : 'right', spacing: obj.spacing}, hasImage:false }, } );
 
 	return c;
 };
@@ -2942,21 +2936,18 @@ Object.prototype.addBrowseForFile = function(propName, obj)
 Object.prototype.addBrowseForFileReplace = function(propName, obj)
 {
 	var obj = obj != undefined ? obj : {};
-	
-	// var c = this.addEditText(propName, { text: obj.text != undefined ? obj.text : new File(JSUI.PREFS[propName]).fsName, label:obj.label, characters: obj.characters ? obj.characters : 45, specs:{ browseFile:true, openFile: false, filter:obj.filter, addIndicator:true, addBrowseButton:true, useGroup:true, groupSpecs:{ alignment: obj.alignment != undefined ? obj.alignment : 'right', spacing: obj.spacing}, hasImage:false/*, imgFile: (JSUI.URI + "/img/BrowseForFile.png") */}, } );
 	var c = this.addBrowseForFile(propName, { label:obj.label, characters: obj.characters != undefined ? obj.characters : 40, filter: obj.filter, open: false} );
 	
 	return c;
 };
 
-/*
-	Add Browse for Folder Widget
-	- manages toggling between fixed folder vs dynamic folder locations
-	- includes support for optional independant onChanging and onToggle functions
 
-var browseWidget = container.addBrowseForFolderWidget( "browseWidget", { characters: 50, useFixedOption: true, imgFiles: ["img/createLocation.png", "img/openLocation.png", "img/browseWidgetUseFixed.png" ],  showFixedToggle: true, showUnsavedFileWarning: true, onChangingFunction: browseWidgetChangingFn, onToggleFixedFunction: toggleFixedExportPathFn } );
+// 	Add Browse for Folder Widget
+// 	- manages toggling between fixed folder vs dynamic folder locations
+// 	- includes support for optional independant onChanging and onToggle functions
 
-*/
+// var browseWidget = container.addBrowseForFolderWidget( "browseWidget", { characters: 50, useFixedOption: true, imgFiles: ["img/createLocation.png", "img/openLocation.png", "img/browseWidgetUseFixed.png" ],  showFixedToggle: true, showUnsavedFileWarning: true, onChangingFunction: browseWidgetChangingFn, onToggleFixedFunction: toggleFixedExportPathFn } );
+
 // JSUI prototyping
 Object.prototype.addBrowseForFolderWidget = function(propName, obj)
 {
@@ -2982,11 +2973,8 @@ Object.prototype.addBrowseForFolderWidget = function(propName, obj)
 
     openOrCreateLocation.onClick = function()
     {
-		// var testPath = new Folder( JSUI.fsname2uri( encodeURI( c.text.trim() ) ) );
 		var testPath = new Folder( c.text.trim() );
 		var pathMatchesSystem = testPath.toString().match( app.path ) != null;
-
-//		alert( testPath.fsName + "\n\npathMatchesSystem: " + pathMatchesSystem);
 
         if(testPath.exists)
         {
@@ -3012,9 +3000,7 @@ Object.prototype.addBrowseForFolderWidget = function(propName, obj)
 			JSUI.PREFS[ propName+'UseFixed' ] = this.value;
 			useFixedToggleCount++;
 			useFixedChanged = true;
-            
-            // if($.level) JSUI.debug("\n" + propName+'UseFixed' + ": " + JSUI.PREFS[propName+'UseFixed'] + "\n"+propName+'UseFixed'+".image: " + this.image); 
-            
+                        
             // when switching from UseFixed to Dynamic, the same value is assigned to both properties. What's up?
             if(JSUI.PREFS[propName+'UseFixed'])
             {
@@ -3047,8 +3033,6 @@ Object.prototype.addBrowseForFolderWidget = function(propName, obj)
                 var scriptUIStatesObj = this.scriptUIstates;
             }
 
-            // if($.level) $.writeln(propName+'UseFixed' + ": Using " + scriptUIStatesObj.active);
-
             if(JSUI.isPhotoshop && JSUI.isCS6)
             {
                 // update ScriptUI images used by mouseevents
@@ -3057,17 +3041,6 @@ Object.prototype.addBrowseForFolderWidget = function(propName, obj)
                 this.states.downState = scriptUIStatesObj.downState;
 
 				if(this.image != this.states.normalState) this.image = this.states.normalState;
-				
-				// if( this.value )
-				// {
-				// 	c.graphics.foregroundColor = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR, JSUI.dark, 1);
-				// 	c.graphics.backgroundColor = c.graphics.newBrush (c.graphics.PenType.SOLID_COLOR, JSUI.yellow, 1);
-				// }
-				// else
-				// {
-				// 	c.graphics.foregroundColor = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR, JSUI.light, 1);
-				// 	c.graphics.backgroundColor = c.graphics.newBrush (c.graphics.PenType.SOLID_COLOR, JSUI.dark, 1);
-				// }
 
 				c.graphics.foregroundColor = c.graphics.newPen (c.graphics.PenType.SOLID_COLOR, (this.value ? JSUI.dark : JSUI.light), 1);
 				c.graphics.backgroundColor = c.graphics.newBrush (c.graphics.PenType.SOLID_COLOR, (this.value ? JSUI.yellow : JSUI.foregroundDark), 1);
@@ -3075,7 +3048,6 @@ Object.prototype.addBrowseForFolderWidget = function(propName, obj)
             else
             {
                 this.image = this.value ? scriptUIStatesObj.active : scriptUIStatesObj.inactive;
-                // JSUI.debug("\n\t" + propName+'UseFixed' + ".update() " + JSUI.PREFS[propName+'UseFixed'] + "\n\timage:\t" + this.image + "\n\t\tactive:\t" + scriptUIStatesObj.active + "\n\t\tinactive:\t" + scriptUIStatesObj.inactive);
             }
 		};
 					
@@ -4313,21 +4285,21 @@ Object.prototype.addDropDownList = function(propName, obj)
 };
 
 // button component
-/*
-	EXAMPLES
 
-	var button = container.addButton( {label:"Filter Folder Content"} );
-	var iconbutton = container.addButton( { imgFile:new File("/path/to/file.png") } ); // { imgFile: "file.png" } should also work
-	var iconbuttonAlso = container.addButton( "iconbuttonAlso", { } ); // tells JSUI.getScriptUIStates() to look for "iconbuttonAlso.png"
+	// EXAMPLES
+
+	// var button = container.addButton( {label:"Filter Folder Content"} );
+	// var iconbutton = container.addButton( { imgFile:new File("/path/to/file.png") } ); // { imgFile: "file.png" } should also work
+	// var iconbuttonAlso = container.addButton( "iconbuttonAlso", { } ); // tells JSUI.getScriptUIStates() to look for "iconbuttonAlso.png"
 	
-	// couple in context with an edittext component in order to automate file/folder location functions
-	// prefsObj needs a "specs" property (Object), with a direct reference to an existing edittext var name (textfield:varname), 
-	// as well as a String that points to the prefsObj property name (prop:"propertyname")
-	// onClick and onChanging callback functions are automatically assigned, and they take care of updating the prefsObj properties.
+	// // couple in context with an edittext component in order to automate file/folder location functions
+	// // prefsObj needs a "specs" property (Object), with a direct reference to an existing edittext var name (textfield:varname), 
+	// // as well as a String that points to the prefsObj property name (prop:"propertyname")
+	// // onClick and onChanging callback functions are automatically assigned, and they take care of updating the prefsObj properties.
 	
-	var sourcepath = container.addEditText( { name:"sourcepath", text:new Folder(prefsObj.sourcepath).fsName, prefs:prefsObj } );		
-	var browsebtn = container.addButton( {label:"Browse...", prefs:prefsObj, specs:{ prefs:prefsObj, browseFolder:true, textfield:sourcepath, prop:"sourcepath"} } );
-*/
+	// var sourcepath = container.addEditText( { name:"sourcepath", text:new Folder(prefsObj.sourcepath).fsName, prefs:prefsObj } );		
+	// var browsebtn = container.addButton( {label:"Browse...", prefs:prefsObj, specs:{ prefs:prefsObj, browseFolder:true, textfield:sourcepath, prop:"sourcepath"} } );
+
 Object.prototype.addButton = function(imgNameStr, obj)
 {
 	//if(obj == undefined) return;
@@ -4543,20 +4515,6 @@ Object.prototype.addButton = function(imgNameStr, obj)
 				var testFile = new File(obj.specs.textfield.text);
 				if($.level) $.writeln("Browsing for file. Default path: " + testFile.parent.fsName);
 				if(!testFile.exists) defaultFile = "~";
-				
-		/*		// from http://www.ps-scripts.com/bb/search.php?sid=8d2ede8c78539ff6b59f4146a6cd1ccf
-				if(File.myDefaultSave)
-				{
-				   Folder.current = File.myDefaultSave;
-				}
-
-				var saveFile = File.saveDialog("Prompt", "selection"); 
-				if(saveFile)
-				{
-				   File.myDefaultSave = saveFile.parent;
-				}
-		*/	
-		//		var chosenFile = File.saveDialog(obj.specs.textfield.text, "TEXT:*.txt");
 		
 				if(File.myDefaultSave)
 				{
@@ -4836,7 +4794,6 @@ Object.prototype.addColorPicker = function(propName, obj)
 			l = this.add('statictext', undefined, label);
 		}
 	
-		// if(JSUI.STYLE) l.graphics.font = JSUI.STYLE;
 		groupObjectsArray.push( [l, propName+'Label'] );
 	}
 
@@ -4845,7 +4802,7 @@ Object.prototype.addColorPicker = function(propName, obj)
 	c.helpTip = obj.helpTip != undefined ? obj.helpTip : "Choose color using system color picker";
 
 	// Photoshop CS6 requires a width, apparently?
-	var editTextObj = { characters: 6, /*width: 50,*/ text: defaultValue, onChangingFunction: updatePicker, helpTip: "Enter hexadecimal RGB value\n(i.e: FFFFFF)", specs:{ prefsBypass: true } };
+	var editTextObj = { characters: 6, text: defaultValue, onChangingFunction: updatePicker, helpTip: "Enter hexadecimal RGB value\n(i.e: FFFFFF)", specs:{ prefsBypass: true } };
 
 	var hexEdittext = useGroup ? g.addEditText(propName+"Text", editTextObj ) : this.addEditText( propName+"Text", editTextObj );
 	hexEdittext.graphics.font = ScriptUI.newFont("Arial", "BOLD", 16);
@@ -5008,36 +4965,11 @@ Object.prototype.addSlider = function(propName, obj)
 	if(obj.disabled != undefined) c.enabled = !obj.disabled;
 	c.minvalue = obj.minvalue != undefined ? obj.minvalue : 0;
 	c.maxvalue = obj.maxvalue != undefined ? obj.maxvalue : 100;
-//~ 	if(!obj.width && obj.maxvalue < 1000) c.preferredSize.width = obj.maxvalue - obj.minvalue; // use max value if width is not available
 	c.value = obj.value != undefined ? JSUI.clampValue(obj.value, obj.minvalue, obj.maxvalue) : JSUI.clampValue(JSUI.PREFS[propName], obj.minvalue, obj.maxvalue);
 	
 	this.Components[propName] = c;
 	
 	var round = false;
-
-	if(obj.round != undefined)
-	{
-//~ 		round = obj.round;
-		
-		/* infer */
-//~ 			
-//~ 			switch(round)
-//~ 			{
-
-//~ 				default "int" :
-//~ 				{
-//~ 					
-//~ 					
-//~ 				}
-//~ 				
-//~ 				// default covers for true/false, int, etc
-//~ 				case default :
-//~ 				{
-//~ 					
-//~ 				}
-//~ 			}
-//~ 			
-	}
 	
 		var text = this.add('edittext', undefined, obj.value != undefined ? obj.value : JSUI.PREFS[propName]);
 		text.characters = obj.specs.characters != undefined ? obj.specs.characters : 6;
@@ -5060,7 +4992,6 @@ Object.prototype.addSlider = function(propName, obj)
 				var sliderValue = Number(text.text);
 				if(sliderValue < obj.minvalue) sliderValue = c.minvalue;
 				if(sliderValue > obj.maxvalue) sliderValue = c.maxvalue;
-			//	sliderValue = sliderValue < obj.minvalue && !(sliderValue > obj.maxvalue) ? obj.minvalue : obj.maxvalue;
 				if(!isNaN(sliderValue))
 				{
 					c.value = sliderValue;
@@ -5068,19 +4999,14 @@ Object.prototype.addSlider = function(propName, obj)
 				}
 			}
 		}
-//~ 	}
 
 	c.update = function()
 	{
-//~ 		JSUI.PREFS[propName] = Math.round(c.value); 
-		
 		if(obj.specs)
 		{
 			// update textfield
 			text.text = !isNaN(JSUI.PREFS[propName]) ? JSUI.PREFS[propName] : text.text;
 			
-			// also update slider
-//~ 			var num = Math.round( Number(this.Components[propName].text) );
 			var num = Number(text.text);
 			JSUI.PREFS[propName] = num;
 			c.value = num;
@@ -5107,10 +5033,7 @@ Object.prototype.addSlider = function(propName, obj)
 	return c;
 };
 
-// listbox component
-/* EXAMPLE
-	var listbox = container.addListBox( "listbox", { label:"Listbox Component:", list:["Zero", "One", "Two", "Three"], multiselect:true, width:300, height:100 } );	
-*/
+// var listbox = container.addListBox( "listbox", { label:"Listbox Component:", list:["Zero", "One", "Two", "Three"], multiselect:true, width:300, height:100 } );	
 Object.prototype.addListBox = function(propName, obj)
 {	
 	var obj = obj != undefined ? obj : {};
@@ -5128,9 +5051,7 @@ Object.prototype.addListBox = function(propName, obj)
 	if(obj.height) c.preferredSize.height = obj.height;
 	if(obj.alignment) c.alignment = obj.alignment;
 	if(obj.helpTip) c.helpTip = obj.helpTip;
-//	if(obj.enabled) c.enabled = obj.enabled;
 	if(obj.disabled) c.enabled = !obj.disabled;
-	// if(obj.disableSaving) 
 	
 	var selection = null;
 
@@ -5168,7 +5089,6 @@ Object.prototype.addListBox = function(propName, obj)
 				}
 				else
 				{
-					// selection = null;
 					break;
 				}
 			}
@@ -5193,26 +5113,12 @@ Object.prototype.addListBox = function(propName, obj)
 		}
 	}
 
-	// if selection is null
-
-//~ 	alert("obj.selection: " + obj.selection + "   " + typeof obj.selection + "  length: " + (obj.selection.length != undefined ? obj.selection.length : null) + "\n\n" + "JSUI.PREFS["+propName+"]: " + JSUI.PREFS[propName] + "   " + typeof JSUI.PREFS[propName] + "  length: " + JSUI.PREFS[propName] );
-	
-		// if obj.selection is not undefined, check for either null, empty array or number
-		
-		
-	
-//~ 	c.selection = obj.selection != undefined ? (typeof obj.selection == "number" ? [obj.selection] : obj.selection) : JSUI.PREFS[propName];
-//~ alert(selection + " " + typeof selection + "  typeof null: " + typeof null )
 	c.selection = selection;
 	c.doubleClicked = null;
 
 	// update UI based on current JSUI.PREFS[propName] array
 	c.update = function()
 	{
-			//if using update() when UI.PREFS.listbox does NOT exist, automatically selects the 0 index
-//~ 			c.selection = JSUI.PREFS[propName] ;
-//~ 			alert(JSUI.PREFS[propName] + "  " + JSUI.PREFS[propName] == undefined);
-
 		c.selection = JSUI.PREFS[propName] != undefined ? JSUI.PREFS[propName] : null;		
 	};
 
@@ -5265,13 +5171,12 @@ Object.prototype.addListBox = function(propName, obj)
 		var selectionArr = c._buildArray();
 		JSUI.PREFS[propName] = selectionArr[0];
 
-		JSUI.debug("Doubleclicked item: " + selectionArr[1]); //($.level ? selectionArr[1] : [])); 
+		JSUI.debug("Doubleclicked item: " + selectionArr[1]); 
 
 		c.doubleClicked = selectionArr[1];
 
 		if(obj.onClickFunction)
 		{
-		//	alert(selectionArr[0] + "\n" + selectionArr[1]);
 			obj.onClickFunction( );
 		}
 	};
@@ -5295,7 +5200,6 @@ Object.prototype.addProgressBar = function(obj)
 	{
 		c.msg = this.add('statictext', undefined, obj.msg);
 		if(obj.msgWidth) c.msg.preferredSize.width = obj.msgWidth;
-		//c.msg.enabled = false;
 		c.msg.graphics.font = ScriptUI.newFont(JSUI.isWindows ? "Tahoma" : "Arial", "REGULAR", 10);
 	}
 	
@@ -5303,7 +5207,6 @@ Object.prototype.addProgressBar = function(obj)
 	if(obj.height) c.preferredSize.height = obj.height;
 	if(obj.alignment) c.alignment = obj.alignment;
 	if(obj.helpTip) c.helpTip = obj.helpTip;
-//	if(obj.enabled) c.enabled = obj.enabled;	
 	if(obj.disabled) c.enabled = !obj.disabled;
 
 	if(obj.minvalue) c.minvalue = obj.minvalue;
@@ -5320,8 +5223,6 @@ Object.prototype.addProgressBar = function(obj)
 		c.isDone = true;
 		return c.isDone;
 	};
-
-//	if(progressBar.isDone) { break;}
 
 	// update progress
 	c.addProgress = function(num)
@@ -5351,7 +5252,7 @@ Object.prototype.addProgressBar = function(obj)
 			c.msg.text = str != undefined && str != "" ? str : JSUI.status.message;
 		}
 		// this will update debugTxt.text
-		if(debug /*&& $.level*/ ) JSUI.debug( "" );
+		if(debug) JSUI.debug( "" );
 
 		if(refresh) app.refresh();
 
@@ -5489,7 +5390,7 @@ JSUI.componentsFromObject = function (obj, container, array, preferRadiobuttons)
 			case "number" :
 			{			
 				if($.level) $.writeln("CREATING EDITTEXT: NUMBER");
-				c = container.addEditText(property, {/*label:"Number:", */specs:{useGroup:true}});
+				c = container.addEditText(property, {specs:{useGroup:true}});
 				if(pushToArray) array.push(c);
 				break;
 			}
@@ -5497,7 +5398,7 @@ JSUI.componentsFromObject = function (obj, container, array, preferRadiobuttons)
 			case "string" :
 			{
 				if($.level) $.writeln("CREATING EDITTEXT: STRING");
-				c = container.addEditText(property, {/*label:"String:", */specs:{useGroup:true}});
+				c = container.addEditText(property, {specs:{useGroup:true}});
 				if(pushToArray) array.push(c);
 				break;
 			}
@@ -5513,8 +5414,6 @@ JSUI.componentsFromObject = function (obj, container, array, preferRadiobuttons)
 			// arrays are considered objects
 			case "object" :
 			{
-		//		if($.level) $.writeln("CREATING DROPDOWNLIST");
-				
 				// if property has length, treat as array
 				if(value.length)
 				{
@@ -5535,8 +5434,6 @@ JSUI.componentsFromObject = function (obj, container, array, preferRadiobuttons)
 							}
 													
 							// auto-add boolean value to prefs object
-						//	JSUI.PREFS[cName] 
-							
 							c.value = JSUI.PREFS[cName] != undefined ? JSUI.PREFS[cName] : false;
 							
 							if(pushToArray) array.push(c);
@@ -5547,12 +5444,12 @@ JSUI.componentsFromObject = function (obj, container, array, preferRadiobuttons)
 					{
 						if($.level) $.writeln("CREATING DROPDOWNLIST");
 						
-						var cName = property; //+ "_ddl_selection";
+						var cName = property;
 						
 						c.selection = JSUI.PREFS[cName];
 					//	JSUI.PREFS[cName]
 						
-						c = container.addDropDownList(cName, {list:value}); // , selected: }
+						c = container.addDropDownList(cName, {list:value});
 						if(pushToArray) array.push(c);
 					}
 				}
@@ -5881,7 +5778,7 @@ JSUI.addScrollableList = function( obj )
     }
 	else
 	{
-		containerFooter.addCloseButton( { alignment: ["right","top"] });
+		containerFooter.addCloseButton( { label: obj.confirmButtonLabel ? obj.confirmButtonLabel : "Continue", helpTip: obj.confirmButtonHelpTip ? obj.confirmButtonHelpTip : "Process", name: "ok", alignment: ["right","top"] });
 	}
 
 	// expose components
@@ -5898,12 +5795,189 @@ JSUI.addScrollableList = function( obj )
     return c;
 }
 
+// wrapper for prefab textedit window
+// should support simple enum definitions such as 
+//	"portrait", "landscape", "thin", "fat", "columns"
+JSUI.createTextDisplayDialog = function( obj, str )
+{
+	if(!obj) return;
+	
+	// auto format based on content
+	if(obj instanceof Array)
+	{
+		var obj = { 
+			items: obj, 
+			text: JSON.stringify( obj, null, '\t'), 
+			count: obj.length,
+			message: (str ? ("\n" + str):''),
+		};
+	}
+	// if XMP object, auto-serialize
+	else if(obj instanceof XMPMeta)
+	{
+		var xmpStr = obj.serialize();
+		var obj = { 
+			items: [ xmpStr ], 
+			text: xmpStr, 
+			count: 0, 
+			title: "Raw XMP", 
+			// message: "Packet length: " + xmpStr.length + (str ? ("\n" + str):''), 
+			message: (str ? ("\n" + str):''), 
+			width: 800
+		};
+	}
+	// if object, let's assume JSON
+	else if( typeof obj == "object")
+	{
+		// this won't work with complex objects which have array structures
+		// such as Document.artboards
+
+		// if(obj.length) return;
+
+		var jsonStr = JSON.stringify(obj, null, '\t');
+		var obj = { 
+			items: [ jsonStr ], 
+			text: jsonStr, 
+			message: null, 
+			count: 0 
+		};
+	}
+	// basic text
+	else if( typeof obj == "string")
+	{
+		var obj = { 
+			items: [ obj ], 
+			text: obj, 
+			message: null, 
+			count: 0 
+		};
+	}
+
+	if(obj.count == undefined) obj.count = 0;
+	if(obj.doShow == undefined) obj.doShow = true;
+	
+
+	var win = new JSUI.createDialog( { 
+		title: obj.title ? obj.title : ' ', 
+		orientation: 'column', 
+		alignChildren: [ 'left', 'top'],
+		// message: "Hai this is message",
+		message: obj.message ? obj.message : ((obj.count !== 0) ? (obj.items.length + " item" + (obj.items.length>1?'s':'')) : undefined),
+		// text: JSON.stringify( specs, null, '\t'),
+		// margins: 15, 
+		// spacing: 10, 
+		// alignChildren: [ "center", "center" ], 
+		
+		// // lightweight
+		// width: 300, 
+		// height: 400, 
+
+		// // medium
+		width: obj.width ? obj.width : 500, 
+		height: obj.height ? obj.height : 700, 
+
+		debugInfo: false 
+	} );
+
+	// // basic window should have built-in header, center, footer 
+	// if(obj.message)
+	// {
+	//     var itemCountStr = ((obj.count !== 0) ? (obj.items.length + " item" + (obj.items.length>1?'s':'')) : undefined);
+	//     var rawXMPTitleStr = "Raw XMP";
+	//     var rawXMPPacketLengthStr = "Packet length: " + obj.text.length;
+
+	//     if((obj.message != itemCountStr) && (obj.message != rawXMPTitleStr) && (obj.message != rawXMPPacketLengthStr))
+	//     {
+	//         var headerText = win._header.addStaticText( { width: 300, text: obj.message, alignment: ['left','top'] } );
+	
+	//         // headerText.alignment = 'left';
+	//     }
+	// }
+
+// possibility of adding multiple columns?
+// this will complicate callback functions
+
+	var text = win._container.addEditText( undefined, { 
+		text: obj.text,
+		multiline: true,
+		// characters: 30,
+
+		// width: 275,
+		// height: 375,
+
+		// width: 475,
+		// height: 675,
+
+		// width: obj.width-25, 
+		// height: obj.height-25, 
+
+		width: obj.width ? obj.width-25 : 475, 
+		height: obj.height ? obj.height-25 : 675, 
+
+		disabled: false,
+		readonly: obj.readonly == undefined ? true : obj.readonly
+	});
+
+	// override functions to avoid clashing with JSUI prefs
+	text.onChange, text.onChanging = function(){};
+
+	//// "Commit" button instead of "Close": returns text
+	// if(obj.doReturnContent)
+	// {
+	//     var commitBtn = win._footer.addCloseButton( { label: 'Commit', helpTip: "Close dialog", width: 125, height: 26 } );
+	//     commitBtn.onClick = function ()
+	//     {
+	//         // var str = text.text;
+	//         win.close();
+	//         return text.text;
+	//     }
+	// }
+	// else
+	// {
+		// var buttonName = obj.doReturnContent ? 'ok' : 'cancel';
+		// var buttonLabel = //obj.doReturnContent ? 'Commit' : 'Dismiss';
+
+		win._footer.addCloseButton( { 
+			name: obj.doReturnContent ? 'ok' : 'cancel', 
+			label: 'Dismiss', 
+			helpTip: 'Close dialog', 
+			width: 125, 
+			height: 26, 
+			onClickFunction: obj.doReturnContent ? function(){
+				var str = text.text;
+				// check if string different?
+				var strUpdated = obj.text != str;
+				// alert("strUpdated: " + strUpdated + "\n" + str);
+				win.close();
+				return str;
+			} : undefined
+		} );
+	// }
+
+	win._textStr = text.text;
+
+	win.onShow = function(){
+
+	}
+
+	win.onClose = function(){
+		// win._textStr = text.text;
+		return text.text;
+	}
+
+	// namespace + property filter
+	// dropdown list
+
+	win._text = text;
+
+	// opportunity to further modify dialog and callbacks before showing
+	//      .onShow()   .onClose()
+	return obj.doShow ? win.show() : win;
+}
 
 
-/*
-	INI FILE MANAGEMENT
-	functions adapted from Xbytor's Stdlib.js
-*/
+// INI FILE MANAGEMENT
+// functions adapted from Xbytor's Stdlib.js
 
 throwFileError = function(f, msg)
 {
@@ -5983,39 +6057,11 @@ JSUI.toIniString = function(obj)
 
 		if (typeof val == "string" || typeof val == "number" || typeof val == "boolean" )
 		{
-/*
-			if( !isNaN(Number(val)) )
-			{
-				// Workaround for cases where "000000" which should remain as is
-				
-				// if string has more than one character, 
-				// and if first character is a zero
-				// and second character is not a dot (decimals etc)
-				// then number or string was meant to keep its exact present form 
-				
-//				if(val.length > 1 && ( (val[0] == "0" || val[0] == ".") && (val[1] != "." || val[1].toLowerCase() == "x") ) ) 
-				//obj[prop] = val;
-				// else do force number
-//				else 
-				val = Number(val);
-			}
-			else
-			{
-				val = "";
-			}
-	*/	
-//~ 			if(typeof val == "number")// && (val.toString(16)[0] == "0" && val.toString(16)[1].toLowerCase() == "x"))
-//~ 			{
-//~ 				$.writeln(val + "  " + val.toString(10) + "  " + val.toString(16));
-//~ 				
-//~ 			}
-		
 			str += (idx + ": " + val.toString() + "\n");
 		}
 
 		else if( typeof val == "object" )
 		{
-		
 			// if object has a length, it's an array!
 			if(idx.length)
 			{
@@ -6071,8 +6117,7 @@ JSUI.fromIniString = function (str, obj, type)
 			obj[prop] = value;
 		}
 		else
-		{ //unless...
-
+		{ 
 			// empty string? leave as is
 			if(value == '')
 			{
@@ -6137,8 +6182,6 @@ JSUI.fromIniString = function (str, obj, type)
 					obj[prop] = value;
 				}
 			}
-			// report!
-		//	if($.level) $.writeln("obj." + prop + " = " + value + "\t [" + typeof obj[prop] + "]");
 		}
 		
 	}
@@ -7061,7 +7104,7 @@ if(!String.prototype.swapFileObjectFileExtension)
 		var newFileObj = new File(newStr.replace(/\.[^\\.]+$/, newExtStr.toLowerCase()));
 		return newFileObj;
 	}
-}
+}		
 	
 // str.hasSpecificExtension(".png") // "image.png" true   "image.jpg" false
 if(!String.prototype.hasSpecificExtension) { String.prototype.hasSpecificExtension = function( str )
@@ -7352,7 +7395,7 @@ if(!Array.prototype.getUnique) { Array.prototype.getUnique = function()
 	for(var i = 0; i < this.length; i++)
 	{
 		var current = this[i];
-		if(unique.indexOf(current) == -1) unique.push(current)
+		if(unique.indexOf(current) == -1) unique.push(current);
 	}
 	return unique;
 }}
@@ -7549,7 +7592,6 @@ if(!Number.prototype.adjustFloatPrecision) { Number.prototype.adjustFloatPrecisi
 		return n;
 }}
 	
-
 Number.prototype.isPowerOf2 = function()
 {
 	var n = this.valueOf();
@@ -7693,6 +7735,20 @@ Number.prototype.getNextMult32 = function()
 	return n.getNextMultOf(32);
 }
 
+if(!Number.prototype.formatBytes) { Number.prototype.formatBytes = function(decimals)
+{
+	var bytes = this.valueOf();
+    if (!bytes) return '0 Bytes';
+    if(decimals == undefined) var decimals = 2;
+    var k = 1024;
+    var dm = (decimals < 0) ? 0 : decimals;
+    var sizesArr = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+    var sizeIndex = Math.floor(Math.log(bytes) / Math.log(k));
+    var num = (bytes / Math.pow(k, sizeIndex)).toFixed(dm);
+    var size = sizesArr[sizeIndex];
+    return (num+' '+size);
+}}
+
 function Dictionary( allowOverwrite )
 {
 	this.overwrite = allowOverwrite === true;
@@ -7730,13 +7786,153 @@ function Dictionary( allowOverwrite )
 			}
 		}
 	}
-	// .iterate(function(key, value){ });
+
 	this.iterate = function(func){
 		for(var i = 0; i < __k.length; i++){
 			func(__k[i], __v[i]);
 		}
 	}
 }
+
+if(!Array.prototype.convertToObject) { Array.prototype.convertToObject = function( allowNullOrUndef, recursive )
+{
+	if(!this.length) return {};
+	var obj = {};
+
+	for(var i = 0; i < this.length; i++)
+	{
+		var item = this[i];
+		var isArray = (item instanceof Array);
+
+		// if array is unidimensional, force value to null
+		if(!isArray)
+		{
+			var property = item;
+			obj[property] = null; 
+		}
+		// bidimensional+
+		else if ( isArray )
+		{
+			var property = this[i][0];
+
+			// safeguard: if not a string, abort
+			if(!(typeof property == "string"))
+			{
+				continue;
+			}
+
+			var value = this[i][1];
+	
+			var isUndef = value == undefined;
+			var isNull = value == null;
+	
+			// if undefined or null, only store if allowed
+			if(isUndef || isNull)
+			{
+				if(allowNullOrUndef)
+				{
+					obj[property] = value; 
+				}
+			}
+			// recursive object is allowed if recursive arg
+			else if(typeof value === "object")
+			{
+				if(recursive)
+				{
+					obj[property] = value; 
+				}
+				continue;
+			}
+			else
+			{
+				obj[property] = value; 
+			}
+		}
+	}
+	return obj;
+}}
+
+// simple data types object to bidimensional array
+// obj = { name1: "value1", name2: "value2"}
+// returns [ ["name1", "value1"], ["name2", "value2"]]
+if(!Object.prototype.convertToArray) { Object.prototype.convertToArray = function( allowNullOrUndef )
+{
+	if(!this) return [];
+	var arr = [];
+
+	for (var key in this)
+	{
+		// let's not go any further here if function
+		if(this[key] instanceof Function)
+		{
+			continue;
+		}
+		// watch out for reserved keywords and internal stuff
+		else if (key.charAt(0) == '_' || key == "reflect" || key == "Components" || key == "typename")
+		{
+			continue;			
+		}
+		else
+		{
+			var property = key;
+			var value = this[key];
+
+			var isUndef = value == undefined;
+			var isNull = value == null;
+			if(isUndef || isNull)
+			{
+				if(allowNullOrUndef)
+				{
+					arr.push( [ property, value ] );
+				}
+			}
+			else
+			{
+				arr.push( [ property, value ] );
+			}
+		}
+	}
+
+	return arr;
+}}
+
+// swap property names when found in bidimensional/tridimensional array
+// affects first item for each set, a third item is allowed, may be useful for presentation purposes
+//
+// var originalArr = [ [ "source", "~/file.psd"], [ "range", "1-8"], [ "destination", "./images"] ];
+// var converterArr = [ [ "source", "gitUrl" ], [ "destination", "relativeExportLocation" ] ]; 
+// var newArr =  originalArr.convertTags(converterArr); // yields [ [ "gitUrl", "~/file.psd"], [ "range", "1-8"], [ "relativeExportLocation", "./images"] ];
+//
+// then convert back with reversed flag, and content should match precisely
+// var reconvertedArr = newArr.convertTags(converterArr, true); // yields [ [ "source", "~/file.psd"], [ "range", "1-8"], [ "destination", "./images"] ]
+if(!Array.prototype.convertTags) { Array.prototype.convertTags = function( converter, reversed )
+{
+	if(!this) return [];
+	var newArr = [];
+
+	for(var i = 0; i < this.length; i++)
+	{
+		var item = this[i];
+		var matched = false;
+
+		for(var j = 0; j < converter.length; j++)
+		{
+			var convItem = converter[j];
+			if(item[0] == (reversed ? convItem[1] : convItem[0]))
+			{
+				var newItem = reversed ? [ convItem[0], item[1] ] : [ convItem[1], item[1] ];
+				if(item.length == 3) newItem.push( item[2] );
+				newArr.push( newItem );
+
+				matched = true;
+				break;
+			}
+		}
+		if(!matched) newArr.push( item );
+	}
+
+	return newArr;
+}}
 
 // to be deprecated
 JSUI.isPower2 = function(n){ return n.isPowerOf2(); };
@@ -7772,15 +7968,12 @@ if(JSUI.isPhotoshop)
 	sTID = function(s){ if(JSUI.isPhotoshop) { return app.stringIDToTypeID(s); } else { return;} };
 }
 
-/* workaround for Photoshop CS5/CS6 UI palette/dialog being weird on Windows
-	http://www.davidebarranca.com/2012/10/scriptui-window-in-photoshop-palette-vs-dialog/	*/
+// workaround for Photoshop CS5/CS6 UI palette/dialog being weird on Windows
+//	http://www.davidebarranca.com/2012/10/scriptui-window-in-photoshop-palette-vs-dialog/
 JSUI.waitForRedraw = function()
 {
 	if(JSUI.isPhotoshop)
 	{
-		//~ 		app.refresh();
-		//~ 	// or:	
-
 		  var d = new ActionDescriptor();
 		  d.putEnumerated(sTID('state'), sTID('state'), sTID('redrawComplete'));
 		  return executeAction(sTID('wait'), d, DialogModes.NO);
@@ -7791,7 +7984,7 @@ JSUI.waitForRedraw = function()
 	}
 };
 
-/* this returns full active document path without building a histogram + bypasses the 'document not yet saved' exception)*/
+// this returns full active document path without building a histogram + bypasses the 'document not yet saved' exception)
 JSUI.getDocumentFullPath = function()
 {
 	if(app.documents.length)
