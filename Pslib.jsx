@@ -110,7 +110,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.946;
+Pslib.version = 0.947;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -1565,7 +1565,7 @@ Pslib.getDocSwatches = function( xmp, asJson )
 }
 
 // get <xmpMM:Manifest> linked/placed items as array
-Pslib.getDocPlacedItems = function( xmp )
+Pslib.getDocPlacedItems = function( xmp, asJson )
 {
 	if(!xmp) xmp = Pslib.getXmp(app.activeDocument);
 	var arr = [];
@@ -1578,35 +1578,59 @@ Pslib.getDocPlacedItems = function( xmp )
 
 	var arr = Pslib.getLeafNodesArr(xmp, property_NS, property, qualifier_NS, qualifiers);
 
-		property = "Manifest"; 
-		property_NS = "http://ns.adobe.com/xap/1.0/mm/"; // "xmpMM:"
-		qualifier_NS = "http://ns.adobe.com/xap/1.0/sType/ManifestItem#"; // "stMfs:"
-		qualifiers = [ "filePath", "documentID", "instanceID" ]; // if documentID and instanceID are both 0, file is fully embedded (?)
+	property = "Manifest"; 
+	property_NS = "http://ns.adobe.com/xap/1.0/mm/"; // "xmpMM:"
+	qualifier_NS = "http://ns.adobe.com/xap/1.0/sType/ManifestItem#"; // "stMfs:"
+	qualifiers = [ "filePath", "documentID", "instanceID" ]; // if documentID and instanceID are both 0, file is fully embedded (?)
 
-		//  this will need to be adapted for custom structs
-		var manifestArr = Pslib.getLeafNodesArr(xmp, property_NS, property, qualifier_NS, qualifiers);
-		manifestArr.map(function(item){
-			arr.push(item);
-		})
+	//  this will need to be adapted for custom structs
+	var manifestArr = Pslib.getLeafNodesArr(xmp, property_NS, property, qualifier_NS, qualifiers);
+	manifestArr.map(function(item){
+		arr.push(item);
+	})
+
+	if(asJson)
+	{
+		var items = [];
+		arr.map( function( item ){ 
+			var plcObj = {};
+			item.map( function(plc){
+				plcObj[plc[0]] = plc[1];                        
+			});
+			items.push(plcObj);
+    	});
+
+		arr = items;
+	}
 	return arr;
 }
 
 // get <photoshop:TextLayers> bag as array of objects
-Pslib.getDocTextLayers = function( xmp )
+Pslib.getDocTextLayers = function( xmp, asJson )
 {
-	if(Pslib.isPhotoshop)
-	{
-		if(!xmp) xmp = Pslib.getXmp(app.activeDocument);
+	if(!xmp) xmp = Pslib.getXmp(app.activeDocument);
 
-		var property = "TextLayers"; 
-		var property_NS = "http://ns.adobe.com/photoshop/1.0/"; // "photoshop:"
-		var qualifier_NS = property_NS; // "photoshop:"
-		var qualifiers = [ "LayerName", "LayerText" ];
-	
-		var arr = Pslib.getLeafNodesArr(xmp, property_NS, property, qualifier_NS, qualifiers);
-	
-		return arr;
+	var property = "TextLayers"; 
+	var property_NS = "http://ns.adobe.com/photoshop/1.0/"; // "photoshop:"
+	var qualifier_NS = property_NS; // "photoshop:"
+	var qualifiers = [ "LayerName", "LayerText" ];
+
+	var arr = Pslib.getLeafNodesArr(xmp, property_NS, property, qualifier_NS, qualifiers);
+
+	if(asJson)
+	{
+		var textItems = [];
+		arr.map( function( item ){ 
+			var txItemObj = {};
+			item.map( function(txItem){
+				txItemObj[txItem[0]] = txItem[1];                        
+			});
+			textItems.push(txItemObj);
+    	});
+
+		arr = textItems;
 	}
+	return arr;
 }
 
 // // convert list of bidimensional qualifiers-value arrays to individual objects from XMP
@@ -3069,6 +3093,9 @@ Pslib.getAllLayerIndexes = function()
 	// groups: true,
 	// artboards: true,
 	// frames: false,
+	//
+	//		smartobjects: false,
+	//
 	// 		artboardsCollection: [],	// array of pre-processed artboard objects
 	//  	itemsCollection: [],		// array of PathItem objects to match with artboards
 	//  	specsArr: [],				// array of JSON objects to work with { id: int, uuid: string }
@@ -3094,6 +3121,7 @@ Pslib.getContainers = function( obj )
 	if(obj.groups == undefined) obj.groups = true;
 	if(obj.artboards == undefined) obj.artboards = true;
 	if(obj.frames == undefined) obj.frames = false;
+	if(obj.smartobjects == undefined) obj.smartobjects = false;
 
 	// for working with arbitrary lists of existing references
 	// Photoshop Layer ID (integers), Illustrator PageItem uuid (strings)
@@ -3238,7 +3266,7 @@ Pslib.getContainers = function( obj )
 		{   
 			var desc = descriptors[i];
 
-			// this tells us whether we're dealing with an art layer of with a group/artboard/frame
+			// this tells us whether we're dealing with an art layer or with a group/artboard/frame
 			var layerSection = desc.getEnumerationValue(sTID('layerSection'));
 			var contentIndex = tSID(layerSection).indexOf('Content');
 
@@ -3246,10 +3274,10 @@ Pslib.getContainers = function( obj )
 
 			// if 'parentLayerID' == -1, it's nested at the top-level of the document
 			var parentID = desc.getInteger(sTID('parentLayerID'));
-			var isTopLevelLayerObject = obj.level == 2 ? true : parentID < 0;
+			var isTopLevelLayerObject = (obj.level == 2) ? true : (parentID < 0);
 
 			// if nested items are allowed, flag parent for removal
-			if(obj.level == 2 && parentID)
+			if((obj.level == 2) && parentID)
 			{
 				if(hasContent)
 				{
@@ -3257,30 +3285,56 @@ Pslib.getContainers = function( obj )
 				}
 			}
 
-			// skip "regular" layer 
-			if(!hasContent && isTopLevelLayerObject)
+			// smartobjects
+			if( !hasContent && obj.smartobjects)
 			{
+				var isSmartObject = desc.getInteger(sTID('layerKind')) == 5;
+				if(!isSmartObject) continue;
+
+				var id = desc.getInteger(sTID('layerID'));
+
+				// // get more info about smartobject type
+				// var sref = desc.getObjectValue(sTID('smartObject'));
+				// var stype = tSID(sref.getEnumerationValue(sTID('placed')));
+
+				// further processing may include
+				//  - stype 'rasterizeContent' vs 'vectorData'
+				//  - fileReference + pageNumber 
+				//  - embedded or linked status
+				//  - linkMissing, linkChanged smartObjectMore
+				//  - cloud dependencies: elementReference, libraryName
+
+				// var extInfo = desc.getObjectValue(sTID('smartObjectMore'));
+                // var smartObjectID = extInfo.getString(sTID('ID'));
+				// ... more can be obtained from .getDocumentData (2015+)
+
+				if(obj.getIDs)
+				{
+					containers.push(id);
+					idsList.push(id);
+				}
+				else if(obj.getIndexes)
+				{
+					// get index from descriptor
+					containers.push( desc.getInteger(cTID('ItmI')));
+					idsList.push(id);
+				}
+				else if(obj.getDescriptors)
+				{
+					containers.push(desc);
+					idsList.push(id);
+				}
+
 				continue;
 			}
-			// else if(!hasContent && !isTopLevelLayerObject)
-			// {
-			// 	// recursively list nested, visible items
-			// 	if(!obj.advanced && obj.getNested)
-			// 	{
-			// 		if( !obj.artboards && !obj.groups || !obj.frames )
-			// 		{
-			// 			var containerParentID = parentID;
-			// 			var id = desc.getInteger(sTID('layerID'));
-			// 			var name = desc.getString(sTID('name'));
-	
-			// 			Pslib.log(i + " getting nested ID " + id + ": " + name);
-			// 			nested.push(id);
-			// 			// continue;
-			// 		}
-			// 		// get container items
 
-			// 	}
-			// }
+			// skip "regular" layer 
+			if(!hasContent && isTopLevelLayerObject)
+			// if(!hasContent && (isTopLevelLayerObject && !obj.smartobjects))
+			{
+				// continue;
+				if(!obj.smartobjects) continue;
+			}
 			// container
 			else if(hasContent && isTopLevelLayerObject)
 			{
@@ -3327,7 +3381,6 @@ Pslib.getContainers = function( obj )
 				}
 			}
 		} 
-		// Pslib.log(nested);
 	}
 	// a container can be an artboard, OR a GroupItemm, OR a clipping mask
 	else if(Pslib.isIllustrator)
@@ -4399,6 +4452,7 @@ Pslib.getLayerReferenceByID = function( id, obj )
 
 	if(obj.precision == undefined) obj.precision = 0.0001;
 	if(obj.ignoreStyles == undefined) obj.ignoreStyles = false;
+	if(obj.ignoreNesting == undefined) obj.ignoreNesting = false;
 	if(obj.skipInvisible == undefined) obj.skipInvisible = true;
 	if(obj.getAllNsProperties == undefined) obj.getAllNsProperties = false;
 	// if(obj.roundValues == undefined) obj.roundValues = true;
@@ -4534,7 +4588,10 @@ Pslib.getLayerReferenceByID = function( id, obj )
 			var rect;
 
 			// "art" layer: shape, smartobject, adjustment layer...
-			if(!hasContent && isTopLevelLayerObject)
+			// getting intricate details for nested items requires specifically ignoring nest level
+			if((!hasContent && isTopLevelLayerObject)
+			|| (!hasContent && obj.ignoreNesting)) 	// nested layers
+			// || (hasContent && obj.ignoreNesting && !isTopLevelLayerObject))	// nested layersets
 			{
 				// also test with 'boundsNoMask'
 				rect = obj.ignoreStyles ? ref.getObjectValue(sTID('boundsNoEffects')) : ref.getObjectValue(sTID('bounds'));
@@ -6222,7 +6279,7 @@ Pslib.getDocumentVisibleBounds = function( precise, getOffsetArr )
 
 // get document bounds for artboard geometry offset calculations
 // along with some other configuration specs if needed
-Pslib.getDocumentSpecs = function( advanced, getOffsets )
+Pslib.getDocumentSpecs = function( advanced, getOffsets, groups )
 {
 	if(!app.documents.length) return;
 	var doc = app.activeDocument;
@@ -6270,6 +6327,116 @@ Pslib.getDocumentSpecs = function( advanced, getOffsets )
 			// bitmap items
 			
 			// smart links
+		}
+
+		// get detailed specs for groups
+		if( groups )
+		{
+ 			var docStruct = Pslib.getDocumentData();
+			var groupStruct = [];
+			specs.groups = [];
+
+			if(groups instanceof Array)
+			{
+				if(groups.isIntArray())
+				{
+					groups.map(function( id ){
+						groupStruct.push( id );
+					});
+					
+				}
+				
+			}
+			else if(groups instanceof Boolean)
+			{
+				// fetch all groups in docStruct
+
+			}
+
+    		docStruct.layers.map( function(layer){
+				var group = [];
+				if( docStruct.selection.indexOf(layer.index) != -1)
+				{
+					if(layer.visible)
+					{
+
+						// if artboard, 
+						if(layer.type == 'artboardSection')
+						{
+							// if(layer.visible)
+							// {
+							// 	var jsO = {
+							// 		id: layer.id,
+							// 		name: layer.name,
+							// 		bounds: layer.bounds,
+							// 		x: layer.bounds.left,
+							// 		y: layer.bounds.top,
+							// 		width: layer.bounds.right - layer.bounds.left,
+							// 		height: layer.bounds.bottom - layer.bounds.top
+							// 	};
+							// 	group.push( jsO );
+							// }
+						}
+						
+						// if not artboard and layer object has its own layers, assume group
+						else if(layer.layers)
+						{
+							layer.layers.map( function( l, idx ){
+								if(l.type != 'layerSection')
+								{
+									if(l.visible)
+									{
+										// if masked, use mask bounds as reference 
+										//  if shape layer, use provided set of bounds
+										//  if clipped...
+										var bounds = l.mask ? l.mask.bounds : ( l.type == 'shapeLayer' ? l.path.bounds : l.bounds);
+										var zeroBoundsNum = bounds.top==0 && bounds.left==0 && bounds.bottom==0 && bounds.right==0;
+										if( !zeroBoundsNum )
+										{
+											var jsO = {
+												id: l.id,
+												name: l.name,
+												// bounds: bounds,
+												x: bounds.left,
+												y: bounds.top,
+												width: bounds.right - bounds.left,
+												height: bounds.bottom - bounds.top
+											}
+											group.push( jsO );
+										}
+									}
+								}
+							});
+						}
+					}
+				}
+
+				if(group.length)
+				{
+					// Pslib.log("group length: " + group.length);
+					var bounds = layer.bounds;
+
+					var containerObj = { 
+						id: layer.id, 
+						name: layer.name, 
+						// bounds: bounds,
+						x: bounds.left,
+						y: bounds.top,
+						width: bounds.right - bounds.left,
+						height: bounds.bottom - bounds.top
+					}
+
+					containerObj.x = Math.floor(containerObj.x);
+            		containerObj.y = Math.floor(containerObj.y);
+
+					// // calculate optimized bounds for non-artboard containers
+					// if(layer.type == 'layerSection')
+					// {
+					// 	containerObj.layers = group;
+					// }
+					specs.groups.push( containerObj );
+				}
+			});
 		}
 
 	}
@@ -8558,9 +8725,10 @@ Pslib.getDuplicateArtboardInfos = function( collection, getCoordsList, getIndexP
 			if(collection.length)
 			{
 				var arrItem = collection[0];
-				if(typeof arrItem == "number")
+				if((typeof arrItem) == "number")
 				{
 					coordsCollection = Pslib.getArtboardCollectionCoordinates( collection, false );
+					names = Pslib.getArtboardNames();
 				}
 				// else if(typeof arrItem == "object")
 				// {
@@ -8733,26 +8901,54 @@ Pslib.renameDuplicateArtboards = function( obj )
 // "toggle" can be a RegExp, targets a pattern at the end of the string if it isn't
 // var obj = { find: "TextToFind", replace: "TextToReplaceWith", prefix: "Prefix_", suffix: "_Suffix", toggle: "TextToToggleOn-Off" }
 
-Pslib.renameArtboards = function( containers, obj )
+Pslib.renameArtboards = function( containers, obj ) { return Pslib.renameContainers(containers, obj); }
+
+Pslib.renameContainers = function( containers, obj )
 {
 	if(!app.documents.length) return;
 	if(!obj) return;
 	
 	// decode/parse JSON if required
+	if(typeof containers == "string")
+	{
+		// will contain %5B and %5D
+		containers = JSON.parse(decodeURI(containers));
+		// alert("decoded containers: " + containers);
+	}
 	if(typeof obj == "string")
 	{
+		// will contain %7B and %7D
 		obj = JSON.parse(decodeURI(obj));
 	}
-
-	// RegExp cannot safely be serialized
-	if(obj.find == "$WHITESPACE") obj.find = new RegExp(/[\s]/g);
-	else if(obj.find == "$SYSTEMSAFE") obj.find = new RegExp(/[\s:\/\\*\?\!\"\'\<\>\|]/g);
-
-	if(obj.previewOnly == undefined) obj.previewOnly = false;
 
 	var doc = app.activeDocument;
 	var selection = Pslib.isPhotoshop ? containers : doc.selection;
 	var renamedArr = [];
+
+	if(!obj.previewOnly && obj.suspendHistory)
+	{
+		if(Pslib.isPhotoshop)
+		{
+			var _renamedArr = [];
+		    function _suspendHistory()
+            {
+			   var cfg = obj;
+			   cfg.suspendHistory = false;
+               _renamedArr = Pslib.renameContainers( containers, cfg );
+			   return true;
+            }
+			var historyStateMsgStr = obj.suspendHistoryMsg ? obj.suspendHistoryMsg : "Renaming "+containers.length+" container"+(containers.length>1?'s':'');
+			doc.suspendHistory(historyStateMsgStr, "_suspendHistory()");
+			return _renamedArr;
+		}
+	}
+
+	// RegExp cannot safely be serialized
+	if(obj.find == "$WHITESPACE") obj.find = new RegExp(/[\s]/g);
+	else if(obj.find == "$SYSTEMSAFE") obj.find = new RegExp(/[\s:\/\\*\?\!\"\'\<\>\|]/g);	// file names
+	else if(obj.find == "$COMMANDLINESAFE") obj.find = new RegExp(/[\s:\/\\*\#\$\%\@\&\?\!\"\'\`\<\>\|\(\)\[\]\{\}]/g); // characters that will make command line fail unless escaped
+
+	if(obj.previewOnly == undefined) obj.previewOnly = false;
 
 	if(!containers)
 	{
@@ -8769,6 +8965,7 @@ Pslib.renameArtboards = function( containers, obj )
 	{
 		if(containers instanceof Array)
 		{
+			// if array of integers presented as strings, we're referring to PageItems via uuid
 			usingUuids = containers.isIntStringArray(true);
 			if(usingUuids) usingArtboardIDs = false;
 		}
@@ -8777,7 +8974,7 @@ Pslib.renameArtboards = function( containers, obj )
 	for(var i = 0; i < containers.length; i++)
 	{
 		var container = containers[i];
-		var id;
+		var id = -1;
 
 		// Photoshop targets containers using their IDs
 		// Illustrator can use this logic to rename artboards, groups, layers...
@@ -8788,6 +8985,11 @@ Pslib.renameArtboards = function( containers, obj )
 				var uuidStr = container;
 				id = uuidStr;
 				container = doc.getPageItemFromUuid(uuidStr);
+			}
+			else
+			{
+				id = container;
+				container = doc.artboards[id];
 			}
 		}
 		else if(Pslib.isPhotoshop)
@@ -8814,6 +9016,7 @@ Pslib.renameArtboards = function( containers, obj )
 		// these CAN be undefined
 		if((obj.find != undefined) && (obj.replace != undefined))
 		{
+
 			if(!obj.previewOnly) 
 			{
 				container.name = renamedStr.replace(obj.find, obj.replace);
@@ -8822,7 +9025,6 @@ Pslib.renameArtboards = function( containers, obj )
 			else
 			{
 				renamedStr = renamedStr.replace(obj.find, obj.replace);
-
 			}
 		}
 
@@ -8892,7 +9094,7 @@ Pslib.renameArtboards = function( containers, obj )
 		}
 	}
 
-	// Pslib.logInfo( renamedArr );
+	// Pslib.logInfo( renamedArr.toString() );
 	return renamedArr;
 }
 
@@ -8902,7 +9104,6 @@ Pslib.renameContainersPreview = function( containers, obj)
 	var cfg = obj ? obj : { previewOnly: true, find: new RegExp(/[\s]/g), replace: "_" };
 	return Pslib.renameArtboardsWhiteSpace( containers, cfg);
 }
-
 
 // replace any whitespace characters in artboard collection names
 // default replacement is underscore, define optional object as { replace: "^-^" } to use something else
@@ -8961,13 +9162,14 @@ Pslib.renameArtboardsSystemSafe = function( artboards, obj )
 			return Pslib.renameArtboards( ids, encStr );
 		}
 
+		// suspendHistory is fragile, best used with a function declared in context
 		// doc.suspendHistory("Replaced unsafe characters in "+ids.length+" container names", "_renameContainers(["+ids.toString()+"], "+(encodedStringified)+")");
 		renamed = _renameContainers(ids, JSON.parse( decodeURI(encodedStringified) ));
 	}
 	else if(Pslib.isIllustrator)
 	{
 		var targets = artboards ? artboards : doc.artboards;
-		renamed = Pslib.renameArtboards( targets, config );
+		renamed = Pslib.renameArtboards( targets, obj );
 	}
 	return renamed;
 }
@@ -8977,6 +9179,13 @@ Pslib.renameContainersSystemSafePreview = function( containers )
 	var cfg = { previewOnly: true, find: "$SYSTEMSAFE", replace: "_" };
 	cfg = Pslib.isPhotoshop ? encodeURI(JSON.stringify(cfg)) : cfg;
 	return Pslib.renameArtboardsSystemSafe( containers, cfg);
+}
+
+Pslib.renameContainersCommandLineSafePreview = function( containers )
+{
+	var cfg = { previewOnly: true, find: "$COMMANDLINESAFE", replace: "_" };
+	cfg = Pslib.isPhotoshop ? encodeURI(JSON.stringify(cfg)) : cfg;
+	return Pslib.renameContainers( containers, cfg);
 }
 
 // this is broken for now!

@@ -66,7 +66,7 @@ if(typeof JSUI !== "object")
 }
 
 // version
-JSUI.version = "1.1.1";
+JSUI.version = "1.1.2";
 
 // do some of the stuff differently depending on $.level and software version
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -5494,7 +5494,8 @@ JSUI.componentsFromObject = function (obj, container, array, preferRadiobuttons)
 //	   backgroundColors: undefined	// render black text on #rgb background
 // 	   confirmButtonLabel: "Continue",
 // 	   confirmButtonHelpTip: "Control description",
-// 	   backButton: undefined,	// onClick callback: back button added to top left of dialog (Dismiss button not added)
+// 	   disableConfirmButton: false,	// if dialog window context is already aware that nothing will happen 
+// 	   backButton: undefined,	// onClick callback: back button added to top left of dialog (Dismiss button will not be added)
 
 //     onConfirmFunction: function(){}	// invoked when pressing confirm button
 // }
@@ -5550,15 +5551,22 @@ JSUI.addScrollableList = function( obj )
 	var container = obj.dialog.addColumn();
 	var containerHeader = container.addRow( { margins: [0, 0, 0, 0], alignment: "left"});
 
-
-	if(obj.backButton)
+	// back button added to dialog header
+	// if(obj.backButton)
+	if(obj.backButton instanceof Function)
 	{
-		container.addButton( { label: "<<", name: "back-button", alignment: ["left", "top"], onClickFunction: obj.backButton, helpTip: "Back" });
+		if(obj.dialog._header) obj.dialog._header.addButton( { label: "<<", name: "back-button", alignment: ["left", "top"], onClickFunction: obj.backButton, helpTip: "Back" });
+		else container.addButton( { label: "<<", name: "back-button", alignment: ["left", "top"], onClickFunction: obj.backButton, helpTip: "Back" });
 	}
-	
+
 	// arbitrary static info 
 	if(obj.extraInfoArr)
 	{
+		// convert JSON object to array
+		if(!(obj.extraInfoArr instanceof Array) && (obj.extraInfoArr instanceof Object))
+		{
+			obj.extraInfoArr = obj.extraInfoArr.convertToArray();
+		}
 		obj.extraInfoArr.map(function(infoArr){
 			container.addStaticText( { text: infoArr[0] + ": " + decodeURI(infoArr[1]) });
 		});
@@ -5566,7 +5574,6 @@ JSUI.addScrollableList = function( obj )
 
 	// show items and misc info
 	var statusMsg = container.addStaticText( { text: "Item count: " + obj.items.length, multiline: true, width: 150, alignment: [ "left", "top" ] } );
-	// statusMsg.alignment = ["left", "top"];
 	statusMsg.enabled = false;
 
     var itemList = obj.items;
@@ -5594,12 +5601,13 @@ JSUI.addScrollableList = function( obj )
     {
         // default width
         var colWidth = defaultColWidth;
-
+		var hStrWidth = colWidth;
+		var largest = hStrWidth;
         // measure each column header string
         if(headerList[h] != undefined)
         {
             var hStrWidth = obj.measureStrings ? obj.dialog.graphics.measureString(headerList[h], obj.dialog.graphics.font).width : (headerList[h].length * dummyCharWidth);
-            if(hStrWidth > itemWidth) colWidth = hStrWidth;
+            if(hStrWidth < defaultColWidth) hStrWidth = defaultColWidth;
         }
 
         for (var i = 0; i < itemList.length; i++)
@@ -5608,17 +5616,26 @@ JSUI.addScrollableList = function( obj )
 
             var itemWidth = colWidth;
             var item = itemList[i][h];
+			if(item == undefined) 
+			{
+				strWidth = colWidth;
+				continue;
+			}
+
+
             if((typeof item == "number")) item = item.toString();
-            if((typeof item) == "string")
+            if(typeof item == "string")
             {
 				var strLength = item.length;
                 var strWidth = obj.measureStrings ? obj.dialog.graphics.measureString(strLength < maxChar ? item : item.substr(0, maxChar-2) + "...", obj.dialog.graphics.font).width : ((strLength < maxChar ? item : item.substr(0, maxChar-2) + "...").length * dummyCharWidth);
                 if(strWidth > itemWidth) colWidth = strWidth;
                 if(hStrWidth > colWidth) colWidth = hStrWidth;
+				
             }
+			if(colWidth > largest) largest = colWidth;
         }
         colWidths.push(colWidth);
-        totalTableWidth += (colWidth + defaultColSpacing);
+        totalTableWidth += colWidth;
     }
 
     var rows = [];
@@ -5766,12 +5783,35 @@ JSUI.addScrollableList = function( obj )
     if(obj.onConfirmFunction)
     {
 		var dismissBtn = null;
-		if(!obj.backButton)	dismissBtn = containerFooter.addButton( { label: "Dismiss", name: "cancel", width: 125, height: 32, alignment: ["right","top"] }); 
+		// if(!obj.backButton)	
+		if(!(obj.backButton instanceof Function))
+		dismissBtn = containerFooter.addButton( { label: "Dismiss", name: "cancel", width: 125, height: 32, alignment: ["right","top"] }); 
 		
-        var continueBtn = containerFooter.addCloseButton( { label: obj.confirmButtonLabel ? obj.confirmButtonLabel : "Continue", helpTip: obj.confirmButtonHelpTip ? obj.confirmButtonHelpTip : "Process", name: "ok", alignment: ["right","top"], onClickFunction: function(){ 
-			// dialog returns results of onConfirmFunction
-            obj.dialog.close( obj.onConfirmFunction() );
-        }} );
+		var continueBtn = null;
+
+		// dialog may already be aware that nothing will happen, in that case, continue button should be disabled
+		var continueButtonCfg = {
+				width: 125, 
+				height: 32, 
+				label: obj.confirmButtonLabel ? obj.confirmButtonLabel : "Continue", 
+				helpTip: obj.confirmButtonHelpTip ? obj.confirmButtonHelpTip : "Process", 
+				name: "ok", 
+				alignment: ["right","top"]		 
+		};
+
+		if(obj.disableConfirmButton)
+		{
+			continueButtonCfg.disabled = true;
+			continueBtn = containerFooter.addButton( continueButtonCfg );
+		}
+		else
+		{
+			continueButtonCfg.onClickFunction = function(){ 
+			    obj.dialog.close( obj.onConfirmFunction() );
+			}
+			
+			continueBtn = containerFooter.addCloseButton( continueButtonCfg );
+		}
 
 		// default focused button closes the window without doing anything
         if(dismissBtn) dismissBtn.active = true;
