@@ -66,7 +66,7 @@ if(typeof JSUI !== "object")
 }
 
 // version
-JSUI.version = "1.1.2";
+JSUI.version = "1.1.3";
 
 // do some of the stuff differently depending on $.level and software version
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -474,10 +474,10 @@ JSUI.getCurrentTheme = function()
 		try
 		{
 			var ref = new ActionReference();
-			ref.putProperty(charIDToTypeID("Prpr"), stringIDToTypeID("interfacePrefs"));
-			ref.putEnumerated(charIDToTypeID("capp"), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
-			var desc = executeActionGet(ref).getObjectValue(stringIDToTypeID("interfacePrefs"));
-			brnessLvl = typeIDToStringID(desc.getEnumerationValue(stringIDToTypeID("kuiBrightnessLevel")));
+			ref.putProperty(cTID("Prpr"), sTID("interfacePrefs"));
+			ref.putEnumerated(cTID("capp"), cTID("Ordn"), cTID("Trgt"));
+			var desc = executeActionGet(ref).getObjectValue(sTID("interfacePrefs"));
+			brnessLvl = typeIDToStringID(desc.getEnumerationValue(sTID("kuiBrightnessLevel")));
 		}
 		catch(e)
 		{
@@ -604,12 +604,11 @@ JSUI.createDialog = function( obj )
 {
 	var obj = obj != undefined ? obj : {};
 
-	obj.title = obj.title != undefined ? obj.title : "JSUI Dialog Window";
+	obj.title = obj.title != undefined ? obj.title : " ";
 	obj.systemInfo = obj.systemInfo != undefined ?  ( obj.systemInfo ? (JSUI.is_x64 ? " x64" : " x32") : "" ) : "";
 	obj.extraInfo = obj.extraInfo != undefined ? obj.extraInfo : "";
 
 	obj.debugInfo = obj.debugInfo != undefined ? obj.debugInfo : false;
-	// obj.closeButton = obj.closeButton != undefined ? obj.closeButton : false;
 
 	obj.alert = obj.alert != undefined ? obj.alert : false;
 	obj.confirm = obj.confirm != undefined ? obj.confirm : false;
@@ -623,7 +622,7 @@ JSUI.createDialog = function( obj )
 	dlg.opacity = obj.opacity ? obj.opacity.clamp(0, 1) : 1.0;
 
 	dlg.alignChildren = obj.alignChildren != undefined ? obj.alignChildren : "fill";
-	dlg.margins = obj.margins != undefined ? obj.margins : 20;
+	dlg.margins = obj.margins != undefined ? obj.margins : [15,0,15,15];
 	dlg.spacing = obj.spacing != undefined ? obj.spacing : 15;
 
 	dlg.orientation = obj.orientation != undefined ? obj.orientation : "row";
@@ -632,7 +631,6 @@ JSUI.createDialog = function( obj )
 	dlg.preferredSize.width = obj.width != undefined ? obj.width : 600;
 	dlg.preferredSize.height = obj.height != undefined ? obj.height : 200;
 
-	//var container = dlg.addRow( { alignChildren: "fill" } ); //  margins: obj.margins ? obj.margins : 15, spacing: obj.spacing != undefined ? obj.spacing : 20
 	var img = null;
 	var imageSize = null;
 
@@ -642,13 +640,6 @@ JSUI.createDialog = function( obj )
 		var imageContainerSpecs = { margins: obj.margins ? obj.margins : 0, spacing: obj.spacing != undefined ? obj.spacing : 20};
 		// var imageContainer = obj.url != undefined ? dlg.addRow( imageContainerSpecs ) : dlg.addColumn( imageContainerSpecs );
 		var imageContainer = dlg.addColumn( imageContainerSpecs );
-			
-		// if URL is provided, let's use app icon
-		if(obj.url != undefined)
-		{
-			obj.imgFile = "/img/" + ( JSUI.isPhotoshop ? "Photoshop" : "Illustrator") + (JSUI.isPhotoshop && JSUI.isCS6 ? "CS6" : "CC" ) + "_96px.png";
-			// img = imageContainer.addImage( obj );
-		}
 
 		if(obj.shapes)
 		{
@@ -665,7 +656,7 @@ JSUI.createDialog = function( obj )
 					}
 					else
 					{
-						imageSize = [ 96, 96 ];
+						imageSize = [ 32, 32 ];
 					}
 				}
 			}
@@ -697,17 +688,31 @@ JSUI.createDialog = function( obj )
 	var header = dlg.addRow( { margins: [0,0,0,0], spacing: 0, alignChildren: ['left','top'], alignment: 'fill' } );
 	var messageContainer = dlg.addColumn( { margins: [0,0,0,0], spacing: 0, alignChildren: ['left','top'], alignment: 'fill' } );
 	var footer = dlg.addRow( { margins: [0,0,0,0], spacing: 0, alignChildren: ['left','top'], alignment: 'fill' } );
-
-	dlg._header = header;
-	dlg._container = messageContainer;
-	dlg._footer = footer;
+	var messageText = null;
 
 	if(obj.message)
 	{
-		var message = messageContainer.addStaticText( { text: obj.message, multiline: true, width: dlg.preferredSize.width-100, height: 40, alignment: img != null ? "left" : "center" } );
-		//message.characters = 75;
+		var strW = dlg.preferredSize.width;
+		var strH = 40;
+		try{
+			var msgTextSize = dlg.graphics.measureString(obj.message, dlg.graphics.font, strW);
+			strW = msgTextSize[0]; 
+			strH = msgTextSize[1]; 
+		}catch(e){}
+		messageText = messageContainer.addStaticText( { 
+			text: obj.message, 
+			multiline: true, 
+			width: strW, 
+			height: strH, 
+			alignment: img ? "left" : "center"
+		} );
 	}
 	
+	dlg._header = header;
+	dlg._container = messageContainer;
+	dlg._containerText = messageText; // update message 
+	dlg._footer = footer;
+
 	//
 	// DIALOG WINDOW PROFILES
 	//
@@ -717,9 +722,12 @@ JSUI.createDialog = function( obj )
 		// var buttons = messageContainer.addRow( { spacing: 20 } );
 		var buttons = dlg.addRow( { spacing: 20 } );
 
-		if(obj.url != undefined)
+		if(obj.url)
 		{
-			buttons.addButton( { imgFile: "img/Info_48px.png", alignment: "right", helpTip: "See documentation:\n\n"+obj.url, url: obj.url } );
+			buttons.addButton( { 
+				imgFile: "img/Info_48px.png", 
+				alignment: "right", 
+				helpTip: "See documentation:\n\n"+obj.url, url: obj.url } );
 		}
 
 		buttons.addCloseButton();
@@ -731,10 +739,9 @@ JSUI.createDialog = function( obj )
 	{
 		var confirm = null;
 
-		// var buttons = messageContainer.addRow( { spacing: 20 } );
 		var buttons = dlg.addRow( { spacing: 20 } );
-		var no = buttons.addButton( { label: obj.dismissLabel ? obj.dismissLabel : "No", name: "cancel", width: 125, height: 32, alignment: "right" });
-		var yes = buttons.addCustomButton( { label: obj.label ? obj.label : "Yes", name: "ok", helpTip: obj.helpTip ? obj.helpTip : undefined }); // better results without a defined w+h (?)
+		var no = buttons.addButton( { label: obj.dismissLabel ? obj.dismissLabel : "No", name: "cancel", width: 125, height: 26, alignment: "right" });
+		var yes = buttons.addCustomButton( { label: obj.label ? obj.label : "Yes", name: "ok", height: 26, helpTip: obj.helpTip ? obj.helpTip : undefined }); // better results without a defined w+h (?)
 
 		yes.onClick = function()
 		{
@@ -762,13 +769,13 @@ JSUI.createDialog = function( obj )
 	// prompt user with edittext + content
 	else if(obj.prompt)
 	{
-		var textfield = messageContainer.add("edittext", undefined, obj.text != undefined ? obj.text : "DEFAULT STRING");
-		textfield.characters = obj.characters != undefined ? obj.characters : 35;
+		messageContainer.spacing = 15;
+		messageContainer.alignChildren = 'fill';
+		var textfield = messageContainer.add("edittext", undefined, obj.text != undefined ? obj.text : "");
 		
-		// var buttons = messageContainer.addRow( { spacing: 20 } );
 		var buttons = dlg.addRow( { spacing: 20 } );
- 		var cancel = buttons.addButton( { label: obj.dismissLabel ? obj.dismissLabel : "Dismiss", name: "cancel", width: 125, height: 32, alignment: "right" });
-		var ok = buttons.addCustomButton( { label: (obj.confirmLabel ? obj.confirmLabel : ( obj.label ? obj.label : "Accept")), name: "ok", helpTip: obj.helpTip ? obj.helpTip : undefined});
+ 		var cancel = buttons.addButton( { label: obj.dismissLabel ? obj.dismissLabel : "Dismiss", name: "cancel", width: 125, height: 26, alignment: "right" });
+		var ok = buttons.addCustomButton( { label: (obj.confirmLabel ? obj.confirmLabel : ( obj.label ? obj.label : "Accept")), height: 26, name: "ok", helpTip: obj.helpTip ? obj.helpTip : undefined});
 
 		textfield.active = true;
 
@@ -852,23 +859,20 @@ JSUI.alert = function( obj )
 	if(typeof obj == "string") 
 	{
 		var str = obj;
-		var obj = {};
-		obj.message = str;
+		var obj = { message: str };
 	}
 	else if(typeof obj == "object" && (obj instanceof File || obj instanceof Folder))
 	{
 		var f = obj;
-		var obj = {};
-		obj.message = f.toString();
+		var obj = { message: f.toString() };
 	}
 
 	obj.alert = true;
-	obj.title = obj.title ? obj.title : ""; //"JSUI Alert Dialog";
+	obj.title = obj.title ? obj.title : " ";
 
-	obj.width = obj.width != undefined ? obj.width : 400; 
-	obj.height = obj.height != undefined ? obj.height : 150; 
+	obj.width = obj.width != undefined ? obj.width : 350; 
+	obj.height = obj.height != undefined ? obj.height : 100; 
 
-	obj.imgFile = obj.imgFile != undefined ? obj.imgFile : "/img/WarningSign_48px.png";
 	if(obj.shapes) obj.imgFile = obj.shapes;
 
 	// if(obj.dismissLabel) obj.label = obj.dismissLabel;
@@ -878,13 +882,10 @@ JSUI.alert = function( obj )
 
 	var alertDlg = JSUI.createDialog( obj );
 
-	// either show custom alert window...
 	if(alertDlg != undefined)
 	{
-		// alertDlg.center();
 		alertDlg.show();
 	}
-	// ... or fallback to default system stuff 
 	else
 	{
 		alert( obj.message, obj.title );
@@ -900,9 +901,7 @@ JSUI.message = function( messageStr ) //, urlStr)
 	}
 	else
 	{
-		var obj = {};
-		obj.message = messageStr;
-		obj.imgFile = obj.imgFile != undefined ? obj.imgFile : "/img/" + ( JSUI.isPhotoshop ? "Photoshop" : "Illustrator") + (JSUI.isPhotoshop && JSUI.isCS6 ? "CS6" : "CC" ) + "_96px.png";
+		var obj = { message: messageStr };
 	}
 
 	JSUI.alert( obj );
@@ -919,11 +918,13 @@ JSUI.showInfo = function( messageStr, urlStr, imgFile )
 	}
 	else
 	{
-		var obj = {};
-		obj.message = messageStr;
-		obj.imgFile = imgFile ? imgFile : "/img/Info_48px.png";
+		var obj = { message: messageStr };
+		if(imgFile) obj.imgFile = imgFile;
 		obj.url = urlStr;
 	}	
+
+	obj.width = 400; 
+	obj.height = 100; 
 
 	JSUI.alert( obj );
 };
@@ -936,47 +937,37 @@ JSUI.confirm = function( obj )
 	if(typeof obj == "string") 
 	{
 		var str = obj;
-		var obj = {};
-		obj.message = str;
+		var obj = { message: str };
 	}
 	else if(typeof obj == "object" && (obj instanceof File || obj instanceof Folder))
 	{
 		var f = obj;
-		var obj = {};
-		obj.message = f.toString();
+		var obj = { message: f.toString() };
 	}
 
 	obj.confirm = true;
 	obj.title = obj.title ? obj.title : "Confirm";
 
 	obj.width = obj.width != undefined ? obj.width : 400; 
-	obj.height = obj.height != undefined ? obj.height : 200; 
+	obj.height = obj.height != undefined ? obj.height : 100; 
 
-	obj.imgFile = obj.imgFile != undefined ? obj.imgFile : "/img/" + ( JSUI.isPhotoshop ? "Photoshop" : "Illustrator") + (JSUI.isPhotoshop && JSUI.isCS6 ? "CS6" : "CC" ) + "_96px.png";
 	if(obj.shapes) obj.imgFile = obj.shapes;
 
 	obj.orientation = "column";
 	obj.alignChildren = "left";
 
+	var confirmDlg = null;
+
 	try
 	{
-		var confirmDlg = JSUI.createDialog( obj );
+		confirmDlg = JSUI.createDialog( obj );
 	}
 	catch(e)
 	{
 		return confirm( obj.message, undefined, obj.title );
 	}
 
-	// either show custom confirm window...
-	if(confirmDlg != undefined)
-	{
-		return confirmDlg;
-	}
-	// ... or fallback to default system stuff 
-	// else
-	// {	
-	// 	return confirm( obj.message, undefined, obj.title );
-	// }
+	return confirmDlg;
 };
 
 // prompt user
@@ -987,63 +978,37 @@ JSUI.prompt = function( obj )
 	if(typeof obj == "string") 
 	{
 		var str = obj;
-		var obj = {};
-		obj.message = str;
+		var obj = { message: str};
 	}
 	else if(typeof obj == "object" && (obj instanceof File || obj instanceof Folder))
 	{
 		var f = obj;
-		var obj = {};
-		obj.message = f.toString();
+		var obj = { message: f.toString() };
 	}
 
 	obj.prompt = true;
 	obj.title = obj.title ? obj.title : "Prompt Dialog";
-	obj.text = obj.text ? obj.text : "Prompt Text";
+	obj.text = obj.text != undefined ? obj.text : "";
 
-	obj.width = obj.width != undefined ? obj.width : 500; 
-	obj.height = obj.height != undefined ? obj.height : 200; 
+	obj.width = obj.width != undefined ? obj.width : 400; 
+	obj.height = obj.height != undefined ? obj.height : 100; 
 
-	obj.imgFile = obj.imgFile != undefined ? obj.imgFile : "/img/" + (JSUI.isPhotoshop ? "Photoshop" : "Illustrator") + (JSUI.isCS6 ? "CS6" : "CC" ) + "_96px.png";
 	if(obj.shapes) obj.imgFile = obj.shapes;
 
 	obj.orientation = "column";
 	obj.alignChildren = "right";
 
-	// var promptDlg = JSUI.createDialog( obj );
+	var promptDlg = null;
+	try
+	{
+		promptDlg = JSUI.createDialog( obj );
+	}
+	catch(e)
+	{
+		return prompt( obj.message, obj.text, obj.title );
+	}
 
-	// either show custom confirm window...
-// 	if(promptDlg != undefined || promptDlg == null)
-// 	{
-// 		return promptDlg;
-// 	}
-// 	// ... or fallback to default system stuff 
-// 	else if( promptDlg != null)
-// 	{
-// 		return prompt( obj.message, obj.text, obj.title );
-// 	}
-// //
-//
-try
-{
-	var promptDlg = JSUI.createDialog( obj );
-}
-catch(e)
-{
-	//alert("error!")
-	return prompt( obj.message, obj.text, obj.title );
-}
-
-// either show custom confirm window...
-// if(promptDlg != undefined)
-// {
 	return promptDlg;
-// }
-
-
-
-
-	//return JSUI.createDialog( obj );
 };
 
 // extendscript only (relative to script file)
@@ -5902,7 +5867,7 @@ JSUI.createTextDisplayDialog = function( obj, str )
 		orientation: 'column', 
 		alignChildren: [ 'left', 'top'],
 		// message: "Hai this is message",
-		message: obj.message ? obj.message : ((obj.count !== 0) ? (obj.items.length + " item" + (obj.items.length>1?'s':'')) : undefined),
+		message: (obj.message != undefined) ? obj.message : ((obj.count !== 0) ? (obj.items.length + " item" + (obj.items.length>1?'s':'')) : undefined),
 		// text: JSON.stringify( specs, null, '\t'),
 		// margins: 15, 
 		// spacing: 10, 
@@ -5987,7 +5952,6 @@ JSUI.createTextDisplayDialog = function( obj, str )
 				var str = text.text;
 				// check if string different?
 				var strUpdated = obj.text != str;
-				// alert("strUpdated: " + strUpdated + "\n" + str);
 				win.close();
 				return str;
 			} : undefined

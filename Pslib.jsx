@@ -110,7 +110,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.947;
+Pslib.version = 0.948;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -1570,18 +1570,20 @@ Pslib.getDocPlacedItems = function( xmp, asJson )
 	if(!xmp) xmp = Pslib.getXmp(app.activeDocument);
 	var arr = [];
 
-	// "Ingredients" bag: placed items
+	// <xmpMM:Ingredients>
 	var property = "Ingredients"; 
 	var property_NS = "http://ns.adobe.com/xap/1.0/mm/"; // "xmpMM:"
 	var qualifier_NS = "http://ns.adobe.com/xap/1.0/sType/ResourceRef#"; // "stRef:"
-	var qualifiers = [ "linkForm", "filePath", "DocumentID" ];
+	var qualifiers = [ "linkForm", "filePath", "DocumentID", "documentID", "instanceID" ];
 
 	var arr = Pslib.getLeafNodesArr(xmp, property_NS, property, qualifier_NS, qualifiers);
 
+	// <xmpMM:Manifest>
+	// documentID: 0,  instanceID: 0 - embedded file
 	property = "Manifest"; 
 	property_NS = "http://ns.adobe.com/xap/1.0/mm/"; // "xmpMM:"
 	qualifier_NS = "http://ns.adobe.com/xap/1.0/sType/ManifestItem#"; // "stMfs:"
-	qualifiers = [ "filePath", "documentID", "instanceID" ]; // if documentID and instanceID are both 0, file is fully embedded (?)
+	qualifiers = [ "filePath", "documentID", "instanceID" ];
 
 	//  this will need to be adapted for custom structs
 	var manifestArr = Pslib.getLeafNodesArr(xmp, property_NS, property, qualifier_NS, qualifiers);
@@ -1675,13 +1677,10 @@ Pslib.getLeafNodesArr = function(xmp, ns, property, leafNs, qualifiersArr)
 		}
 
 		var itemsCount = xmp.countArrayItems(ns, property);
-		// Pslib.log( "getLeafNodesArr: " + itemsCount + " items");
 
 		for(var i = 1; i <= itemsCount; i++)
 		{
 			var itemArr = [];
-
-			// Pslib.log("\n"+ i+": ");
 
 			for(var q = 0; q < qualifiersArr.length; q++)
 			{
@@ -1695,7 +1694,6 @@ Pslib.getLeafNodesArr = function(xmp, ns, property, leafNs, qualifiersArr)
 					{
 						var arrQualifierPath = (property+"["+i+"]/"+leafNsPrefix+qualifier[0]);
 						var qualifiersItemsCount = xmp.countArrayItems(ns, arrQualifierPath);
-						// Pslib.log( "qualifiersItemsCount: " + qualifiersItemsCount);
 
 						var structContainer = [ qualifier[0] ];
 						for(var s = 1; s <= qualifiersItemsCount; s++)
@@ -1712,7 +1710,7 @@ Pslib.getLeafNodesArr = function(xmp, ns, property, leafNs, qualifiersArr)
 								{
 									var subLeafNodeStr = xmp.getProperty(ns, subArrQualifierPath).toString();
 
-									if(subLeafNodeStr != undefined)
+									if(subLeafNodeStr != null)
 									{
 										subItemArr.push([ subQualifier, subLeafNodeStr ]);
 										// Pslib.log("  sub " + subQualifier+": " + subLeafNodeStr);
@@ -1732,16 +1730,12 @@ Pslib.getLeafNodesArr = function(xmp, ns, property, leafNs, qualifiersArr)
 					// if qualifier found, must be a Seq
 					if(qualifierExists)
 					{
-						// this is how you get details for Seq (ordered) array items
-						// leafNodeStr = xmp.getQualifier(ns, property+"["+i+"]", leafNs, qualifier).toString();
 						leafNodeStr = xmp.getProperty(ns, property+"["+i+"]/"+leafNsPrefix+qualifier).toString();
-
 						leafNodeStr = Pslib.autoTypeDataValue(leafNodeStr, false, false); // empty string allowed, null not allowed 
+						
 						if( leafNodeStr != null )
 						{
 							itemArr.push([qualifier, leafNodeStr]);
-							// (property+"["+i+"]/"+leafNsPrefix+qualifier)
-							// Pslib.log("Seq/Bag " + qualifier+": " + leafNodeStr);
 						}
 					}
 				}
@@ -2554,7 +2548,7 @@ Pslib.setTags = function( pageItem, tagsArr )
 			return;
 		}
 
-		var success = false;
+		var added = 0;
 
 		for(var i = 0; i < tagsArr.length; i++)
 		{
@@ -2564,17 +2558,16 @@ Pslib.setTags = function( pageItem, tagsArr )
 			var value = tagArr[1];
 
 			// "" (empty string) should be considered valid
-			if(value != undefined && value != null && value != "BBAccumRotation")
+			if((value != undefined) && (value != null) && (value != "BBAccumRotation"))
 			{
 				var tag = pageItem.tags.add();
 				tag.name = name;
 				tag.value = value;
+				added++;
 			}
 		}
 
-		success = true;
-
-		return success;
+		return added > 0;
 	}
 }
 
@@ -2588,7 +2581,7 @@ Pslib.removeTags = function( pageItem, tagsArr )
 			return
 		}
 
-		var success = false;
+		var removed = 0;
 
 		// remove tags by matching names, starting from the last
 		for(var i = pageItem.tags.length-1; i > (-1); i--)
@@ -2601,13 +2594,12 @@ Pslib.removeTags = function( pageItem, tagsArr )
 				{
 					if(tag.name == "BBAccumRotation") continue; // skip this one
 					pageItem.tags[i].remove();
+					removed++;
 				}
 			}
 		}
 
-		success = true;
-
-		return success;
+		return removed > 0;
 	}
 }
 
@@ -2620,7 +2612,7 @@ Pslib.removeAllTags = function( pageItem )
 			return;
 		}
 	
-		var success = false;
+		var removed = false;
 	
 		if(pageItem.tags.length)
 		{
@@ -2629,9 +2621,9 @@ Pslib.removeAllTags = function( pageItem )
 				if(pageItem.tags[i].name == "BBAccumRotation") continue; // don't touch this one
 				pageItem.tags[i].remove();
 			}
-			success = true;
+			removed = true;
 		}
-		return success;
+		return removed;
 	}
 }
 
@@ -2684,7 +2676,7 @@ Pslib.scanItemsForTags = function( items, filter )
 				if(matchesFilter)
 				{
 					var tags = item.tags;
-					if($.level && tags.length) $.writeln( i + "  " + item.name + " \t" + typename);
+					// if($.level && tags.length) $.writeln( i + "  " + item.name + " \t" + typename);
 
 					for(var j = 0; j < tags.length; j++)
 					{
@@ -11140,7 +11132,7 @@ Pslib.getArtboardItem = function( artboard, nameStr, itemCollection, activate, t
 	if(firstMatch == undefined) firstMatch = true;
 
 	var doc = app.activeDocument;
-	var targetItem;
+	var targetItem = null;
 
 	if(Pslib.isPhotoshop)
 	{
@@ -11176,7 +11168,7 @@ Pslib.getArtboardItem = function( artboard, nameStr, itemCollection, activate, t
 				if(!item) return;
 				if(itemNameStr == undefined) var itemNameStr = "#";
 				if(tagNameStr == undefined) var tagNameStr = "assetID";
-				var targetItem;
+				var targetItem = null;
 				var matchedItems = [];
 				// think of solution for CompoundPath type
 				if(item.typename == "PathItem" && item.name == itemNameStr)
@@ -11186,7 +11178,6 @@ Pslib.getArtboardItem = function( artboard, nameStr, itemCollection, activate, t
 				else if( item.typename == "GroupItem")
 				{
 					var groupItems = item.pageItems;
-					// for (var j = 0; j < groupItems.length; j++)
 					for (var g = groupItems.length-1; g > -1; g--)
 					{
 						var targetGroupItem = _loopItems(groupItems[g], itemNameStr, tagNameStr, firstMatch);
@@ -11227,7 +11218,6 @@ Pslib.getArtboardItem = function( artboard, nameStr, itemCollection, activate, t
 											{
 												targetItem = match;
 												return targetItem;
-												// break;
 											}
 										}
 									}
@@ -11269,7 +11259,7 @@ Pslib.getArtboardItem = function( artboard, nameStr, itemCollection, activate, t
 					var item = selection[i];
 		
 					// if artboard has only one item, and item is a group
-					if( i == 0 && selection.length == 1 && item.typename == "GroupItem")
+					if( (i == 0) && (selection.length == 1) && (item.typename == "GroupItem"))
 					{
 						// enter isolation mode
 						if(activate) item.isIsolated = true;
@@ -14756,7 +14746,7 @@ if((typeof JSON) !== "undefined")
 	}}
 }
 
-if(typeof JSUI !== "undefined")
+if((typeof JSUI) !== "undefined")
 {
 	Pslib.log = JSUI.quickLog;
 	Pslib.logMessage = function(str, indent)
