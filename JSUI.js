@@ -66,7 +66,7 @@ if(typeof JSUI !== "object")
 }
 
 // version
-JSUI.version = "1.1.3";
+JSUI.version = "1.1.4";
 
 // do some of the stuff differently depending on $.level and software version
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -614,7 +614,7 @@ JSUI.createDialog = function( obj )
 	obj.confirm = obj.confirm != undefined ? obj.confirm : false;
 	obj.prompt = obj.prompt != undefined ? obj.prompt : false;
 
-	obj.palette = obj.palette != undefined ? obj.palette : false;
+	obj.palette = JSUI.isPhotoshop ? false : (obj.palette != undefined ? obj.palette : false);
 
 	// palette mode does not work at all with Photoshop
 	var dlg = new Window( ((obj.palette == true) && JSUI.isIllustrator) ? 'palette' : 'dialog', obj.title + obj.systemInfo + "" + obj.extraInfo, undefined, { closeButton:true, resizeable: obj.resizeable ? obj.resizeable : false }); // borderless:true
@@ -625,21 +625,35 @@ JSUI.createDialog = function( obj )
 	dlg.margins = obj.margins != undefined ? obj.margins : [15,0,15,15];
 	dlg.spacing = obj.spacing != undefined ? obj.spacing : 15;
 
-	dlg.orientation = obj.orientation != undefined ? obj.orientation : "row";
+	// if message included, container should not be wider than (dialogWidth - margins[0]+margins[2])
+	if(obj.maxMessageWidth == undefined) obj.maxMessageWidth = 570;
 
-	// these must be handled after all other properties?
-	dlg.preferredSize.width = obj.width != undefined ? obj.width : 600;
-	dlg.preferredSize.height = obj.height != undefined ? obj.height : 200;
+	// these can be accessed by other contexts
+	// var header = dlg.addRow( { margins: [0,0,0,0], spacing: 0, alignChildren: ['left','top'], alignment: 'fill' } );
+	var header = dlg.addRow( { margins: [0,0,0,0], spacing: 0, alignChildren: 'fill', alignment:['left','top'] } );
 
-	var img = null;
-	var imageSize = null;
+	var img = {};
+	var imageSize = [ 32, 32 ];
 
 	// display image?
 	if(obj.imgFile)
 	{
-		var imageContainerSpecs = { margins: obj.margins ? obj.margins : 0, spacing: obj.spacing != undefined ? obj.spacing : 20};
-		// var imageContainer = obj.url != undefined ? dlg.addRow( imageContainerSpecs ) : dlg.addColumn( imageContainerSpecs );
-		var imageContainer = dlg.addColumn( imageContainerSpecs );
+		var imageContainerSpecs = { 
+				margins: obj.margins ? obj.margins : [0,0,0,0], 
+				spacing: obj.spacing != undefined ? obj.spacing : 0,
+				alignChildren: 'fill', 
+				alignment:['center','center']
+			};
+		var imageContainer = header.addColumn( imageContainerSpecs );
+
+		if(obj.imgWidth || obj.imgHeight)
+		{
+			if(!isNaN(obj.imgWidth)) obj.imgWidth = obj.imgWidth;
+			if(!isNaN(obj.imgHeight)) obj.imgHeight = obj.imgHeight;
+
+			if(isNaN(obj.imgWidth)) obj.imgWidth = obj.imgHeight;
+			if(isNaN(obj.imgHeight)) obj.imgHeight = obj.imgWidth;
+		}
 
 		if(obj.shapes)
 		{
@@ -647,24 +661,19 @@ JSUI.createDialog = function( obj )
 			{
 				if((typeof obj.shapes[0]) == "string")
 				{
-					img = imageContainer.addVectorGraphics( obj );
-					if(obj.imgWidth || obj.imgHeight)
-					{
-						if(!obj.imgHeight) obj.imgHeight = obj.imgWidth;
-						if(!obj.imgWidth) obj.imgWidth = obj.imgHeight;
-						imageSize = [ obj.imgWidth, obj.imgHeight ];
-					}
-					else
-					{
-						imageSize = [ 32, 32 ];
-					}
+					img = imageContainer.addVectorGraphics( { 
+						shapes: obj.shapes, 
+						width: obj.imgWidth, 
+						height: obj.imgHeight
+					} );
+
+					imageSize = [ obj.imgWidth, obj.imgHeight ];
 				}
 			}
 			else
 			{
 				img = imageContainer.addImage( obj );
 			}
-
 		}
 		else
 		{
@@ -680,25 +689,58 @@ JSUI.createDialog = function( obj )
 		}
 		catch(e)
 		{
-
+			// JSUI.quickLog(imageSize +"\n"+ e);
 		}
 	}
 
-	dlg.addColumn( { width: (dlg.preferredSize.width - ( img != null ? imageSize[0] : 0 ) ), alignChildren: "fill", margins: obj.margins ? obj.margins : 0, spacing: obj.spacing != undefined ? obj.spacing : 20} );
-	var header = dlg.addRow( { margins: [0,0,0,0], spacing: 0, alignChildren: ['left','top'], alignment: 'fill' } );
-	var messageContainer = dlg.addColumn( { margins: [0,0,0,0], spacing: 0, alignChildren: ['left','top'], alignment: 'fill' } );
-	var footer = dlg.addRow( { margins: [0,0,0,0], spacing: 0, alignChildren: ['left','top'], alignment: 'fill' } );
+	var messageContainer = dlg.addColumn( { margins: [0,0,0,0], spacing: 0, alignChildren: 'fill', alignment: ['left','top'] } );
+	var footer = dlg.addRow( { margins: [0,0,0,0], spacing: 0, alignChildren: 'fill', alignment: ['left','top'] } );
 	var messageText = null;
 
-	if(obj.message)
+	if(typeof obj.message === "string")
 	{
-		var strW = dlg.preferredSize.width;
+		var strW = obj.maxMessageWidth;
 		var strH = 40;
+		var lines = 1;
+
+		// hack: 
+		// Dialog.graphics.measureString() does not seem to take linebreaks into account (?)
 		try{
-			var msgTextSize = dlg.graphics.measureString(obj.message, dlg.graphics.font, strW);
+			var linebreaks = obj.message.indexesOf('\n');
+			var strReturns = obj.message.indexesOf('\r');
+			strReturns.map(function( r ){ linebreaks.push(r); });
+			// JSUI.quickLog(" linebreaks indexes: " + linebreaks);
+
+			if(linebreaks.length) lines = linebreaks.length+1;
+
+			var msgTextSize = dlg.graphics.measureString(obj.message, dlg.graphics.font, obj.maxMessageWidth);
 			strW = msgTextSize[0]; 
-			strH = msgTextSize[1]; 
-		}catch(e){}
+			strH = lines * msgTextSize[1];
+			if(strW > obj.maxMessageWidth) strW = obj.maxMessageWidth;
+		}catch(e){
+			// JSUI.quickLog(" ... failed measuring");
+
+			// if the above failed, fallback to estimating widths based on character length
+			var msgLines = obj.message.split('\n');
+			var lwidth = 0;
+			if(msgLines instanceof Array)
+			{
+				if(msgLines.length) lines = msgLines.length+1;
+				msgLines.map( function(mline){
+					if(mline.length > lwidth) lwidth = mline.length;
+				});
+			}
+
+			if(lwidth>0)
+			{
+				var dummyCharSize = dlg.graphics.measureString("E", dlg.graphics.font)				
+				strW = dummyCharSize.width * lwidth;
+				strH = lines * dummyCharSize.height;
+			}
+
+			if(strW > obj.maxMessageWidth) strW = obj.maxMessageWidth;
+		}
+
 		messageText = messageContainer.addStaticText( { 
 			text: obj.message, 
 			multiline: true, 
@@ -706,12 +748,19 @@ JSUI.createDialog = function( obj )
 			height: strH, 
 			alignment: img ? "left" : "center"
 		} );
+
+		messageText.preferredSize = [ strW, strH ];
 	}
 	
 	dlg._header = header;
 	dlg._container = messageContainer;
-	dlg._containerText = messageText; // update message 
+	dlg._containerText = messageText; // update with dlg._containerText = "updated text"
 	dlg._footer = footer;
+
+	// these must be handled after general layout has been established
+	dlg.preferredSize.width = obj.width != undefined ? obj.width : 500;
+	dlg.preferredSize.height = obj.height != undefined ? obj.height : 200;
+	messageContainer.preferredSize.width = dlg.preferredSize.width-(dlg.margins[0]+dlg.margins[2]);
 
 	//
 	// DIALOG WINDOW PROFILES
@@ -719,15 +768,22 @@ JSUI.createDialog = function( obj )
 	// alert status
 	if(obj.alert)
 	{	
-		// var buttons = messageContainer.addRow( { spacing: 20 } );
-		var buttons = dlg.addRow( { spacing: 20 } );
+		var buttons = dlg.addRow( { spacing: 20, alignment: ['center', 'bottom'] } );
 
 		if(obj.url)
 		{
+			// // for a custom button
+			// buttons.addUrlButton( {
+			// 	url: obj.url
+			// });
+
 			buttons.addButton( { 
-				imgFile: "img/Info_48px.png", 
+				// imgFile: "img/Info_48px.png", 
+				label: "Info...",
+				width: 90,
+				height: 32,
 				alignment: "right", 
-				helpTip: "See documentation:\n\n"+obj.url, url: obj.url } );
+				helpTip: "More info:\n\n"+obj.url, url: obj.url } );
 		}
 
 		buttons.addCloseButton();
@@ -738,8 +794,8 @@ JSUI.createDialog = function( obj )
 	else if(obj.confirm)
 	{
 		var confirm = null;
+		var buttons = dlg.addRow( { spacing: 20, alignment: ['center', 'bottom'] } );
 
-		var buttons = dlg.addRow( { spacing: 20 } );
 		var no = buttons.addButton( { label: obj.dismissLabel ? obj.dismissLabel : "No", name: "cancel", width: 125, height: 26, alignment: "right" });
 		var yes = buttons.addCustomButton( { label: obj.label ? obj.label : "Yes", name: "ok", height: 26, helpTip: obj.helpTip ? obj.helpTip : undefined }); // better results without a defined w+h (?)
 
@@ -755,7 +811,6 @@ JSUI.createDialog = function( obj )
 			dlg.close();
 		};
 
-		// dlg.center();
 
 		if (dlg.show() == 1)
 		{ 
@@ -772,8 +827,12 @@ JSUI.createDialog = function( obj )
 		messageContainer.spacing = 15;
 		messageContainer.alignChildren = 'fill';
 		var textfield = messageContainer.add("edittext", undefined, obj.text != undefined ? obj.text : "");
+		if(obj.characters == undefined) textfield.characters = 40;
+		if(obj.textWidth != undefined) textfield.preferredSize.width = obj.textWidth;
+		if(obj.textHeight != undefined) textfield.preferredSize.height = obj.textHeight;
 		
-		var buttons = dlg.addRow( { spacing: 20 } );
+		var buttons = dlg.addRow( { spacing: 20, alignment: ['center', 'bottom'] } );
+
  		var cancel = buttons.addButton( { label: obj.dismissLabel ? obj.dismissLabel : "Dismiss", name: "cancel", width: 125, height: 26, alignment: "right" });
 		var ok = buttons.addCustomButton( { label: (obj.confirmLabel ? obj.confirmLabel : ( obj.label ? obj.label : "Accept")), height: 26, name: "ok", helpTip: obj.helpTip ? obj.helpTip : undefined});
 
@@ -788,8 +847,6 @@ JSUI.createDialog = function( obj )
 				return textfield.text;
 			}
 		}
-
-		// dlg.center();
 
 		if (dlg.show() == 1)
 		{ 
@@ -923,7 +980,7 @@ JSUI.showInfo = function( messageStr, urlStr, imgFile )
 		obj.url = urlStr;
 	}	
 
-	obj.width = 400; 
+	obj.width = 350; 
 	obj.height = 100; 
 
 	JSUI.alert( obj );
@@ -948,13 +1005,13 @@ JSUI.confirm = function( obj )
 	obj.confirm = true;
 	obj.title = obj.title ? obj.title : "Confirm";
 
-	obj.width = obj.width != undefined ? obj.width : 400; 
+	obj.width = obj.width != undefined ? obj.width : 300; 
 	obj.height = obj.height != undefined ? obj.height : 100; 
 
 	if(obj.shapes) obj.imgFile = obj.shapes;
 
-	obj.orientation = "column";
-	obj.alignChildren = "left";
+	// obj.orientation = "column";
+	// obj.alignChildren = "left";
 
 	var confirmDlg = null;
 
@@ -987,7 +1044,7 @@ JSUI.prompt = function( obj )
 	}
 
 	obj.prompt = true;
-	obj.title = obj.title ? obj.title : "Prompt Dialog";
+	obj.title = obj.title ? obj.title : "User Prompt";
 	obj.text = obj.text != undefined ? obj.text : "";
 
 	obj.width = obj.width != undefined ? obj.width : 400; 
@@ -1001,6 +1058,7 @@ JSUI.prompt = function( obj )
 	var promptDlg = null;
 	try
 	{
+		// forceerror = forceerror;
 		promptDlg = JSUI.createDialog( obj );
 	}
 	catch(e)
@@ -3649,12 +3707,12 @@ Object.prototype.addVectorGraphicsButton = function ( obj )
 
 	// must use container as a workaround for updating graphics
     var containerGroup = this.add('group');
-	containerGroup.margins = 0;
-	containerGroup.preferredSize.width = obj.width;
-    containerGroup.preferredSize.height = obj.height;
+	containerGroup.margins = [0,0,0,0];
     containerGroup.alignment = ['fill', 'fill'];
     // containerGroup.alignChildren = ['fill', 'fill'];
     containerGroup.alignChildren = ['center', 'center'];
+	containerGroup.preferredSize.width = obj.width;
+    containerGroup.preferredSize.height = obj.height;
 
 	// { style: "toolbutton" } may be the issue with Windows version onhover
     var c = containerGroup.add('iconbutton', undefined, undefined, { name: obj.name, style: 'toolbutton' });
@@ -4542,7 +4600,9 @@ Object.prototype.addInfoButton = function( obj )
 	var obj = obj ? obj : {};
 	obj.message = obj.message ? obj.message : "Press this button for more detailed information on our wiki.";
 	obj.url = obj.url ? obj.url : JSUI.TOOLHELP;
-	obj.imgFile = obj.imgFile ? obj.imgFile : "/img/Info_48px.png";
+	//obj.imgFile = obj.imgFile ? obj.imgFile : "/img/Info_48px.png";
+	if(!obj.label) obj.label = "Info...";
+	if(!obj.helpTip) obj.helpTip = "More info:\n\n"+obj.url;
 
 	var c = this.addButton( obj );
 
@@ -4688,7 +4748,7 @@ Object.prototype.addIconButton = function(obj)
 			var scriptUIStatesObj = this.scriptUIstates;
 		}
 
-		if($.level) $.writeln(propName + ": Using " + scriptUIStatesObj.active);
+		// if($.level) $.writeln(propName + ": Using " + scriptUIStatesObj.active);
 
 		if(JSUI.isCS6)
 		{
@@ -5803,6 +5863,7 @@ JSUI.addScrollableList = function( obj )
 // wrapper for prefab textedit window
 // should support simple enum definitions such as 
 //	"portrait", "landscape", "thin", "fat", "columns"
+// TODO: works best with arrays, fix object collision :D
 JSUI.createTextDisplayDialog = function( obj, str )
 {
 	if(!obj) return;
@@ -5814,7 +5875,8 @@ JSUI.createTextDisplayDialog = function( obj, str )
 			items: obj, 
 			text: JSON.stringify( obj, null, '\t'), 
 			count: obj.length,
-			message: (str ? ("\n" + str):''),
+			// message: (str == undefined) ? '':(str+'\n'),
+			message: str
 		};
 	}
 	// if XMP object, auto-serialize
@@ -5838,14 +5900,32 @@ JSUI.createTextDisplayDialog = function( obj, str )
 		// such as Document.artboards
 
 		// if(obj.length) return;
-
-		var jsonStr = JSON.stringify(obj, null, '\t');
-		var obj = { 
-			items: [ jsonStr ], 
-			text: jsonStr, 
-			message: null, 
-			count: 0 
-		};
+		if(typeof str === "string")
+		{
+			var jsonStr = JSON.stringify(obj, null, '\t');
+			var obj = { 
+				items: [ jsonStr ], 
+				text: jsonStr, 
+				message: str, 
+				count: 0 
+			};
+		}
+		else if(obj.items instanceof Array)
+		{
+			var jsonStr = JSON.stringify(obj.items, null, '\t');
+			var obj = { 
+				items: obj.items, 
+				text: jsonStr, 
+				message: null, 
+				count: obj.items.length 
+			};
+		}
+		else if( typeof obj.text == "string")
+		{
+			var obj = {  
+				text: obj.text, 
+			};
+		}
 	}
 	// basic text
 	else if( typeof obj == "string")
@@ -5857,30 +5937,31 @@ JSUI.createTextDisplayDialog = function( obj, str )
 			count: 0 
 		};
 	}
+	else
+	{
+		// catch all: include object as part of array
+		var obj = { 
+			items: [ obj ], 
+			text: null, 
+			message: str, 
+			count: 0 
+		};
+	}
+	if(!obj) return;
 
 	if(obj.count == undefined) obj.count = 0;
 	if(obj.doShow == undefined) obj.doShow = true;
-	
+	if(obj.items == undefined) obj.items = [];
+
+	if(isNaN(obj.width)) obj.width = 500;
+	if(isNaN(obj.height)) obj.height = 700;
 
 	var win = new JSUI.createDialog( { 
 		title: obj.title ? obj.title : ' ', 
-		orientation: 'column', 
-		alignChildren: [ 'left', 'top'],
-		// message: "Hai this is message",
 		message: (obj.message != undefined) ? obj.message : ((obj.count !== 0) ? (obj.items.length + " item" + (obj.items.length>1?'s':'')) : undefined),
-		// text: JSON.stringify( specs, null, '\t'),
-		// margins: 15, 
-		// spacing: 10, 
-		// alignChildren: [ "center", "center" ], 
-		
-		// // lightweight
-		// width: 300, 
-		// height: 400, 
-
-		// // medium
-		width: obj.width ? obj.width : 500, 
-		height: obj.height ? obj.height : 700, 
-
+		spacing: 10,
+		width: obj.width, 
+		height: obj.height, 
 		debugInfo: false 
 	} );
 
@@ -5899,23 +5980,9 @@ JSUI.createTextDisplayDialog = function( obj, str )
 	//     }
 	// }
 
-// possibility of adding multiple columns?
-// this will complicate callback functions
-
 	var text = win._container.addEditText( undefined, { 
 		text: obj.text,
 		multiline: true,
-		// characters: 30,
-
-		// width: 275,
-		// height: 375,
-
-		// width: 475,
-		// height: 675,
-
-		// width: obj.width-25, 
-		// height: obj.height-25, 
-
 		width: obj.width ? obj.width-25 : 475, 
 		height: obj.height ? obj.height-25 : 675, 
 
@@ -5941,6 +6008,7 @@ JSUI.createTextDisplayDialog = function( obj, str )
 	// {
 		// var buttonName = obj.doReturnContent ? 'ok' : 'cancel';
 		// var buttonLabel = //obj.doReturnContent ? 'Commit' : 'Dismiss';
+win._footer.alignment= [ 'center', 'bottom'];
 
 		win._footer.addCloseButton( { 
 			name: obj.doReturnContent ? 'ok' : 'cancel', 
@@ -5948,6 +6016,7 @@ JSUI.createTextDisplayDialog = function( obj, str )
 			helpTip: 'Close dialog', 
 			width: 125, 
 			height: 26, 
+			alignment: [ 'center', 'bottom'],
 			onClickFunction: obj.doReturnContent ? function(){
 				var str = text.text;
 				// check if string different?
@@ -5959,6 +6028,8 @@ JSUI.createTextDisplayDialog = function( obj, str )
 	// }
 
 	win._textStr = text.text;
+
+	if(obj.makeTextActive) text.active = true;
 
 	win.onShow = function(){
 
@@ -6996,6 +7067,17 @@ if(!String.prototype.trim) { String.prototype.trim = function()
 	return this.replace(/^[\s]+|[\s]+$/g,'');
 }}
 
+// get array of indexes for given string (case-sensitive, don't use RegExp here)
+// e.g: var stringWithLinebreaks.indexesOf('\n'); // [52,103]
+if(!String.prototype.indexesOf) { String.prototype.indexesOf = function( str )
+{
+	if(typeof str !== "string") return [];
+	var arr = [];
+	var i = -1;
+	while((i = this.indexOf(str, i+1)) >= 0) { arr.push(i);	}
+	return arr;
+}}
+
 // this does not like zeroes!
 if(!String.prototype.padStart) { String.prototype.padStart = function(num, pad)
 {
@@ -7970,6 +8052,7 @@ if(JSUI.isPhotoshop)
 {
 	cTID = function(s){ if(JSUI.isPhotoshop) { return app.charIDToTypeID(s); } else { return;} };
 	sTID = function(s){ if(JSUI.isPhotoshop) { return app.stringIDToTypeID(s); } else { return;} };
+	tSID = function(t){ if(JSUI.isPhotoshop) { return app.typeIDToStringID(t); } else { return;} };
 }
 
 // workaround for Photoshop CS5/CS6 UI palette/dialog being weird on Windows

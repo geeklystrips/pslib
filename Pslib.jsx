@@ -110,7 +110,7 @@ if (typeof Pslib !== "object") {
 }
 
 // library version
-Pslib.version = 0.948;
+Pslib.version = 0.949;
 
 Pslib.isPhotoshop = app.name == "Adobe Photoshop";
 Pslib.isIllustrator = app.name == "Adobe Illustrator";
@@ -2204,6 +2204,19 @@ Pslib.getXMPfromFile = function( filepath, type )
 	return xmp;
 }
 
+Pslib.deleteIllustratorThumbnailData = function( xmp )
+{
+	if(!xmp) return null;
+	if(!(xmp instanceof XMPMeta)) return null;
+
+	var ns = "http://ns.adobe.com/xap/1.0/";
+	var prp = 'xmp:Thumbnails[1]/xmpGImg:image';
+	var exists = xmp.doesPropertyExist( ns, prp );
+	if(exists) xmp.deleteProperty( ns, prp );
+	
+	return xmp;
+}
+
 // standalone property write to offline file
 // allows specifying namespace
 Pslib.addXmpPropertiesToFile = function(file, xmp, namespace, arr)
@@ -2289,8 +2302,10 @@ Pslib.getXMPConstFileType = function(file)
 	switch(extension)
 	{
 		case ".psd" : { type = XMPConst.FILE_PHOTOSHOP; break; }
+		case ".psdt" : { type = XMPConst.FILE_PHOTOSHOP; break; }
 		case ".psb" : { type = XMPConst.FILE_PHOTOSHOP; break; }
 		case ".ai" : { type = XMPConst.FILE_ILLUSTRATOR; break; }
+		case ".ait" : { type = XMPConst.FILE_ILLUSTRATOR; break; }
 		case ".pdf" : { type = XMPConst.FILE_PDF; break; }
 		case ".png" : { type = XMPConst.FILE_PNG; break; }
 		case ".jpg" : { type = XMPConst.FILE_JPEG; break; }
@@ -2344,6 +2359,11 @@ Pslib.readFromFile = function(file, encoding)
 ////// illustrator item tags
 
 //  get entire array of tags assigned to item (Ps+ilst)
+// internal tags to filter out
+		//	"BBAccumRotation"
+		//	"ShapeBlendPathID"
+		//	"ShapeBlendPathType"
+		// 	"Dimension Art ID"
 Pslib.getAllTags = function( item, ns )
 {
 	if(!app.documents.length) return;
@@ -7457,9 +7477,8 @@ Pslib.createMipsLayout = function(scaleStylesBool, resizeArtboardBool, silentBoo
 
 	var doc = app.activeDocument;
 	var artboard = Pslib.getActiveArtboard(); 
-	// var coords = Pslib.getArtboardSpecs();
+	if(app.coordinateSystem != CoordinateSystem.ARTBOARDCOORDINATESYSTEM) app.coordinateSystem = CoordinateSystem.ARTBOARDCOORDINATESYSTEM;
 	var coords = Pslib.getArtboardCoordinates(artboard);
-	// var indexNum =
 
 	var mips = Pslib.getMipsCount(coords, multNum);
 	if(mips == 0) return false;
@@ -7480,16 +7499,14 @@ Pslib.createMipsLayout = function(scaleStylesBool, resizeArtboardBool, silentBoo
 		}
 		else
 		{
-			// placeholder = Pslib.addArtboardRectangle( { artboard: artboard, tags: [ ["name", artboard.name], ["index", coords.index], ["page", coords.page], ["assetID", ""] ] }); // , layer: doc.layers.getByName("Placeholders") } );
-			// , sendToBack: true
-
 			var artboard = Pslib.getActiveArtboard();
             var indexNum = doc.artboards.getActiveArtboardIndex();
             var pageNum = indexNum+1;
 			var layer;
 			try{ layer = doc.layers.getByName("Placeholders"); }
 			catch(e){}
-            var rectObj = { artboard: artboard, name: "#", hex: hex, tags: [ ["name", artboard.name], ["index", indexNum], ["page", pageNum], ["assetID", ""] ], hex: undefined, opacity: undefined, layer: layer, sendToBack: true };
+            // var rectObj = { artboard: artboard, name: "#", hex: hex, tags: [ ["name", artboard.name], ["index", indexNum], ["page", pageNum], ["assetID", ""] ], hex: undefined, opacity: undefined, layer: layer };
+            var rectObj = { artboard: artboard, name: "#", hex: hex, tags: [ ["name", artboard.name], ["index", indexNum], ["page", pageNum], ["assetID", ""] ], hex: undefined, opacity: undefined, sendToBack: true };
             var placeholder = Pslib.addArtboardRectangle( rectObj );
  
             doc.selection = placeholder;
@@ -11296,6 +11313,7 @@ Pslib.getArtboardItem = function( artboard, nameStr, itemCollection, activate, t
 	return targetItem;
 }
 
+
 Pslib.getInfosForTaggedItems = function( obj )
 {
     if(!app.documents.length) return;
@@ -11304,18 +11322,24 @@ Pslib.getInfosForTaggedItems = function( obj )
 
     if(Pslib.isIllustrator)
     {
+		// internal tags to filter out
+		//	"BBAccumRotation"
+		//	"ShapeBlendPathID"
+		//	"ShapeBlendPathType"
+		// 	"Dimension Art ID"
+
 		if(!obj) var obj = {};
-		if(!obj.items) obj.items = doc.pageItems;
+		if(obj.items == undefined) obj.items = doc.pageItems;
 		if(!obj.pageItemType) obj.pageItemType = "PathItem";
 		if(!obj.nameStr) obj.nameStr = "#";
-		if(!obj.tags) obj.tags = [];
+		if(obj.tags == undefined) obj.tags = [];
 		if(obj.onlyTagged == undefined) obj.onlyTagged = false;
 		if(obj.matchArtboards == undefined) obj.matchArtboards = true;
-		if(!obj.indexes) obj.indexes = Pslib.getAllArtboardIndexes();
+		if(obj.indexes == undefined) obj.indexes = Pslib.getAllArtboardIndexes();
 		if(obj.searchGroupItems == undefined) obj.searchGroupItems = obj.pageItemType != "GroupItem";
 		if(obj.flatten == undefined) obj.flatten = false;
 		if(obj.mergeInfos == undefined) obj.mergeInfos = true;
-		if(!obj.existingInfos) obj.existingInfos = [];
+		if(obj.existingInfos == undefined) obj.existingInfos = [];
 
         var doMatchType = false;
         if(obj.pageItemType) doMatchType = true;    
@@ -11327,11 +11351,11 @@ Pslib.getInfosForTaggedItems = function( obj )
     
         if(obj.items)
         {
-			var targetItem;
+			var targetItem = null;
 
             function _filterItems( item )
             {
-                var targetItem;
+                var targetItem = null;
                 if( item.typename == "GroupItem" && obj.searchGroupItems)
                 {
                     var groupItems = item.pageItems;
@@ -11475,6 +11499,7 @@ Pslib.getInfosForTaggedItems = function( obj )
 							// replace / add properties
 							matched.name = existingInfo.name;
 							matched.id = existingInfo.index;
+							matched.page = existingInfo.page;
 							matched.x = existingInfo.x;
 							matched.y = existingInfo.y;
 							matched.width = existingInfo.width;
@@ -14788,6 +14813,17 @@ if(!String.prototype.trim) { String.prototype.trim = function()
 {
 	// return this.replace(/^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/g, '');
 	return this.replace(/^[\s]+|[\s]+$/g,'');
+}}
+
+// get array of indexes for given string (case-sensitive, don't use RegExp here)
+// e.g: var stringWithLinebreaks.indexesOf('\n'); // [52,103]
+if(!String.prototype.indexesOf) { String.prototype.indexesOf = function( str )
+{
+	if(typeof str !== "string") return [];
+	var arr = [];
+	var i = -1;
+	while((i = this.indexOf(str, i+1)) >= 0) { arr.push(i);	}
+	return arr;
 }}
 
 // this does not like zeroes!
