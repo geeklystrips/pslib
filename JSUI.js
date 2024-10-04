@@ -66,7 +66,7 @@ if(typeof JSUI !== "object")
 }
 
 // version
-JSUI.version = "1.1.4";
+JSUI.version = "1.1.5";
 
 // do some of the stuff differently depending on $.level and software version
 JSUI.isESTK = app.name == "ExtendScript Toolkit";
@@ -602,6 +602,7 @@ JSUI.backgroundColor = JSUI.getBackgroundColor();
 
 JSUI.createDialog = function( obj )
 {
+	JSUI.backgroundColor = JSUI.getBackgroundColor();
 	var obj = obj != undefined ? obj : {};
 
 	obj.title = obj.title != undefined ? obj.title : " ";
@@ -625,12 +626,13 @@ JSUI.createDialog = function( obj )
 	dlg.margins = obj.margins != undefined ? obj.margins : [15,0,15,15];
 	dlg.spacing = obj.spacing != undefined ? obj.spacing : 15;
 
-	// if message included, container should not be wider than (dialogWidth - margins[0]+margins[2])
-	if(obj.maxMessageWidth == undefined) obj.maxMessageWidth = 570;
+	// if message included, container should not be wider than (dialogWindowWidth - (L+R margins))
+	var refMaxWidth = 470;
+	if(dlg.margins.length) refMaxWidth = (obj.width != undefined) ? (obj.width-(dlg.margins[0]+dlg.margins[2])) : 470;
+	if(obj.maxMessageWidth == undefined) obj.maxMessageWidth = refMaxWidth;
 
-	// these can be accessed by other contexts
-	// var header = dlg.addRow( { margins: [0,0,0,0], spacing: 0, alignChildren: ['left','top'], alignment: 'fill' } );
-	var header = dlg.addRow( { margins: [0,0,0,0], spacing: 0, alignChildren: 'fill', alignment:['left','top'] } );
+	// header & footer can be modified by other contexts, e.g: dlg._header.alignment = ['left', 'center'];
+	var header = dlg.addRow( { margins: [0,0,0,0], spacing: 10, alignChildren: ['fill','fill'], alignment: ['center','center'] } );
 
 	var img = {};
 	var imageSize = [ 32, 32 ];
@@ -638,11 +640,14 @@ JSUI.createDialog = function( obj )
 	// display image?
 	if(obj.imgFile)
 	{
+		var groupMargins = [0,0,0,0];
+		if(obj.imgMargins instanceof Array) groupMargins = obj.imgMargins;
+
 		var imageContainerSpecs = { 
-				margins: obj.margins ? obj.margins : [0,0,0,0], 
-				spacing: obj.spacing != undefined ? obj.spacing : 0,
-				alignChildren: 'fill', 
-				alignment:['center','center']
+				margins: groupMargins, 
+				spacing: (obj.spacing != undefined) ? obj.spacing : 0,
+				alignChildren: ['fill','fill'], 
+				alignment: ['center','center']
 			};
 		var imageContainer = header.addColumn( imageContainerSpecs );
 
@@ -659,7 +664,7 @@ JSUI.createDialog = function( obj )
 		{
 			if(obj.shapes.length)
 			{
-				if((typeof obj.shapes[0]) == "string")
+				if(((!(typeof obj.shapes) == "string")) && (typeof obj.shapes[0] == "string"))
 				{
 					img = imageContainer.addVectorGraphics( { 
 						shapes: obj.shapes, 
@@ -693,38 +698,40 @@ JSUI.createDialog = function( obj )
 		}
 	}
 
-	var messageContainer = dlg.addColumn( { margins: [0,0,0,0], spacing: 0, alignChildren: 'fill', alignment: ['left','top'] } );
-	var footer = dlg.addRow( { margins: [0,0,0,0], spacing: 0, alignChildren: 'fill', alignment: ['left','top'] } );
+	var messageContainer = dlg.addColumn( { margins: [0,0,0,0], spacing: 10, alignChildren: ['fill','fill'], alignment: ['left','top'] } );
+	var footer = dlg.addRow( { margins: [0,0,0,0], spacing: 10, alignChildren: ['fill','bottom'], alignment: ['center','bottom'] } );
 	var messageText = null;
 
 	if(typeof obj.message === "string")
 	{
 		var strW = obj.maxMessageWidth;
-		var strH = 40;
-		var lines = 1;
+		var strH = 20;
+		var charWidth = dlg.graphics.measureString('w', dlg.graphics.font, obj.maxMessageWidth)[0];
+		var lineHeight = dlg.graphics.measureString('|', dlg.graphics.font, obj.maxMessageWidth)[1];
+		var lines = 2;
+		strH = lines * lineHeight;
 
-		// hack: 
 		// Dialog.graphics.measureString() does not seem to take linebreaks into account (?)
+		// hack: get list of carriage returns and linebreaks
 		try{
 			var linebreaks = obj.message.indexesOf('\n');
 			var strReturns = obj.message.indexesOf('\r');
 			strReturns.map(function( r ){ linebreaks.push(r); });
-			// JSUI.quickLog(" linebreaks indexes: " + linebreaks);
 
-			if(linebreaks.length) lines = linebreaks.length+1;
+			if(linebreaks.length) lines = linebreaks.length+2;
 
 			var msgTextSize = dlg.graphics.measureString(obj.message, dlg.graphics.font, obj.maxMessageWidth);
 			strW = msgTextSize[0]; 
-			strH = lines * msgTextSize[1];
+			strH = lines * lineHeight;
 			if(strW > obj.maxMessageWidth) strW = obj.maxMessageWidth;
 		}catch(e){
-			// JSUI.quickLog(" ... failed measuring");
-
 			// if the above failed, fallback to estimating widths based on character length
 			var msgLines = obj.message.split('\n');
-			var lwidth = 0;
+			var lwidth = obj.message.length; // used if no linebreaks
 			if(msgLines instanceof Array)
 			{
+				// get line with most amount of characters
+				lwidth = 0;
 				if(msgLines.length) lines = msgLines.length+1;
 				msgLines.map( function(mline){
 					if(mline.length > lwidth) lwidth = mline.length;
@@ -732,10 +739,9 @@ JSUI.createDialog = function( obj )
 			}
 
 			if(lwidth>0)
-			{
-				var dummyCharSize = dlg.graphics.measureString("E", dlg.graphics.font)				
-				strW = dummyCharSize.width * lwidth;
-				strH = lines * dummyCharSize.height;
+			{	
+				strW = charWidth * lwidth;
+				strH = lines * lineHeight;
 			}
 
 			if(strW > obj.maxMessageWidth) strW = obj.maxMessageWidth;
@@ -1983,7 +1989,13 @@ Object.prototype.addToggleIconGroup = function( obj )
 
 	// if obj.panel is provided, create panel 
 	// container is "this" if there is no panel.
-	var container = obj.panel ? this.addPanel( { label: obj.panel, orientation: obj.orientation != undefined ? obj.orientation : "column", alignment: obj.alignment != undefined ? obj.alignment : "left", margins: obj.margins != undefined ? obj.margins : 15, spacing: obj.spacing != undefined ? obj.spacing : 10 }) : this;
+	var container = obj.panel ? this.addPanel( { 
+		label: obj.panel, 
+		orientation: obj.orientation != undefined ? obj.orientation : "column", 
+		alignment: obj.alignment != undefined ? obj.alignment : "left", 
+		margins: obj.margins != undefined ? obj.margins : 0, 
+		spacing: obj.spacing != undefined ? obj.spacing : 0 
+		}) : this;
 	
 	// add text label
 	if(obj.label != undefined)
@@ -2154,7 +2166,7 @@ Object.prototype.addImageGrid = function(propName, obj)
 	var jsuiComponentArr = [];
 
 	// begin by adding main group
-	var grid = this.addColumn();
+	var grid = this.addColumn( { spacing: 0, margins: 0 } );
 
 	// You've got time!
 	// first pass: build array
@@ -2170,7 +2182,7 @@ Object.prototype.addImageGrid = function(propName, obj)
 	// second pass: now create actual components and feed them the array
 	for(var row = 0; row < obj.rows; row++)
 	{
-		var r = grid.addRow();
+		var r = grid.addRow( { spacing: 0, margins: 0 } );
 
 		for(var item = 0; item < obj.columns; item++)
 		{
@@ -2699,7 +2711,7 @@ Object.prototype.addEditText = function(propName, obj)
 				{
 					var defaultFolder = c.text;
 					var testFolder = new Folder(c.text);
-					if($.level) $.writeln("Browsing for directory. Default path: " + testFolder.fsName);
+					// if($.level) $.writeln("Browsing for directory. Default path: " + testFolder.fsName);
 					if(!testFolder.exists) defaultFolder = "~";
 
 					var chosenFolder = Folder.selectDialog(c.text, defaultFolder);
@@ -2729,7 +2741,7 @@ Object.prototype.addEditText = function(propName, obj)
 				{
 					var defaultFile = c.text;
 					var testFile = new File(c.text);
-					if($.level) $.writeln("Browsing for file to " + (openFile ? "open" : "save over") + ". Default path: " + testFile.parent.fsName);
+					// if($.level) $.writeln("Browsing for file to " + (openFile ? "open" : "save over") + ". Default path: " + testFile.parent.fsName);
 					if(!testFile.exists) defaultFile = "~";
 
 					if(File.myDefaultSave)
@@ -3631,7 +3643,7 @@ Object.prototype.addVectorGraphicsGroupButton = function ( obj )
 	var iconHexHoverValue = isDarkTheme ? "#46A0F5" : "#1473e6";
 	var iconHexDownValue = isDarkTheme ? "#FFFFFF" : "#000000";
 
-	var c = container.addVectorGraphicsButton( { simpleImage: false, hexValue: hexValue, textHexValue: iconHexValue, hoverValue: iconHexHoverValue, downValue: iconHexDownValue, shapes: obj.shapes, width: obj.width, height: obj.height, onClickFunction: obj.onClickFunction, helpTip: obj.helpTip ? obj.helpTip : obj.label });
+	var c = container.addVectorGraphicsButton( { simpleImage: false, imgScale: obj.imgScale, hexValue: hexValue, textHexValue: iconHexValue, hoverValue: iconHexHoverValue, downValue: iconHexDownValue, shapes: obj.shapes, width: obj.width, height: obj.height, onClickFunction: obj.onClickFunction, helpTip: obj.helpTip ? obj.helpTip : obj.label });
 	container.addStaticText( { label: obj.label } );
 	return c;
 }
@@ -3665,10 +3677,13 @@ Object.prototype.addUrlButton = function ( obj )
 		obj.hoverValue = JSUI.backgroundColor[0] > 0.5 ? "#ffffff80" : "#00000080";
 	}
 
-
 	return this.addVectorGraphicsButton( obj );
 }
 
+// addVectorGraphicsButton() UI theme related info depends on JSUI.backgroundColor 
+// having been called at least once in current session: JSUI.backgroundColor = JSUI.getBackgroundColor();
+// ... can apparently use dlg.graphics.BrushType.THEME_COLOR instead of SOLID_COLOR (?)
+//	 Button.graphics.PenType.SOLID_COLOR
 Object.prototype.addVectorGraphicsButton = function ( obj )
 {
     if(!obj) obj = {};
@@ -3676,22 +3691,19 @@ Object.prototype.addVectorGraphicsButton = function ( obj )
 	if(!obj.name) obj.name = "svg-graphics-button";
 
 	// if no width/height provided, use default
-	if(!obj.width) obj.width = 150;
-	if(!obj.height) obj.height = 44;
+	if(!obj.width && !obj.imgWidth) obj.width = 150;
+	if(!obj.height && !obj.imgHeight) obj.height = 44;
 
-	// force foreground color based on UI theme?
+	// force foreground color based on UI theme
 	if(obj.simpleImage)
 	{
-		if(!obj.hexValue)
-		{
-			obj.hexValue = "#00000000"; // transparent background
-		}
-
-		if(!obj.textHexValue)
-		{
-			obj.textHexValue = JSUI.backgroundColor[0] > 0.5 ? "#3f3f3f" : "#c6c8c8";
-		}
+		if(!obj.hexValue){ obj.hexValue = "#00000000"; } // transparent background
+		if(!obj.textHexValue){ obj.textHexValue = JSUI.backgroundColor[0] > 0.5 ? "#3f3f3f" : "#c6c8c8"; }
 	}
+	// scaling automatically applied to vector graphics coordinates before drawing
+	var scale = 1.0;
+	if(obj.imgScale) scale = obj.imgScale;
+	if(obj.scale) scale = obj.scale;
 	
 	// "call to action" blue button scheme
 	if(!obj.hexValue) obj.hexValue = "#0F67D2"; // "#0F67D280" 50% opacity blue
@@ -3707,21 +3719,30 @@ Object.prototype.addVectorGraphicsButton = function ( obj )
 
 	// must use container as a workaround for updating graphics
     var containerGroup = this.add('group');
-	containerGroup.margins = [0,0,0,0];
-    containerGroup.alignment = ['fill', 'fill'];
-    // containerGroup.alignChildren = ['fill', 'fill'];
-    containerGroup.alignChildren = ['center', 'center'];
-	containerGroup.preferredSize.width = obj.width;
-    containerGroup.preferredSize.height = obj.height;
+	var groupMargins = [0,0,0,0];
+	if(obj.imgMargins instanceof Array) groupMargins = obj.imgMargins;
+	containerGroup.margins = groupMargins;
+
+    if(obj.alignment) containerGroup.alignment = obj.alignment;
+	else containerGroup.alignment = ['fill', 'fill'];
+	// else containerGroup.alignment = ['center', 'center'];
+
+	if(obj.alignChildren) containerGroup.alignChildren = obj.alignChildren;
+    else containerGroup.alignChildren = ['center', 'center'];
+
+	containerGroup.preferredSize.width = obj.width*scale;
+    containerGroup.preferredSize.height = obj.height*scale;
 
 	// { style: "toolbutton" } may be the issue with Windows version onhover
     var c = containerGroup.add('iconbutton', undefined, undefined, { name: obj.name, style: 'toolbutton' });
+	c.alignment = obj.alignment ? obj.alignment : ['center', 'center'];
 
 	if(obj.helpTip) c.helpTip = obj.helpTip;
 
-    c.size = [ obj.width, obj.height ];
-    c.artSize = [ obj.width, obj.height ];
+    c.size = [ obj.width*scale, obj.height*scale ];
+    c.artSize = [ obj.width*scale, obj.height*scale ];
     c.fillBrush = c.graphics.newBrush( c.graphics.BrushType.SOLID_COLOR, btnBackgroundRGB ); // allows transparency value between 0.0 and 1.0
+
 	// c.text = obj.text != undefined ? obj.text : "";
 	// if(c.text)
 	// {
@@ -3745,8 +3766,8 @@ Object.prototype.addVectorGraphicsButton = function ( obj )
 			{
 				n = sets[j].split(",");
 				coords[j] = n;
-				coords[j][0] = (parseFloat(coords[j][0]));
-				coords[j][1] = (parseFloat(coords[j][1]));
+				coords[j][0] = (parseFloat(coords[j][0])*scale);
+				coords[j][1] = (parseFloat(coords[j][1])*scale);
 			}
 			points.push(coords);
 		}
@@ -3762,7 +3783,6 @@ Object.prototype.addVectorGraphicsButton = function ( obj )
 			var fillBrush = this.graphics.newBrush(this.graphics.BrushType.SOLID_COLOR, btnBackgroundRGB);
 
 			graphics.fillPath( fillBrush );
-			if($.level) $.writeln("");
             try {
                 for (var i = 0; i < obj.shapes.length; i++)
 				{
@@ -3777,8 +3797,6 @@ Object.prototype.addVectorGraphicsButton = function ( obj )
 					for (var j = 0; j < line.length; j += 2) {
                         var x = line[j][0];
                         var y = line[j][1];
-
-                        // if($.level) $.writeln("x:" + x + "  y:" + y );
                         graphics.lineTo(x + (size[0] / 2 - artSize[0] / 2), y + (size[1] / 2 - artSize[1] / 2));
                     }
  					graphics.fillPath( fillBrush );
@@ -3801,10 +3819,7 @@ Object.prototype.addVectorGraphicsButton = function ( obj )
 				// }
 
             } catch (e) {
-                if($.level)
-                {
-                    $.writeln( "customDraw - " + e );
-                }
+
             }
 		}
 	}
@@ -3845,10 +3860,7 @@ Object.prototype.addVectorGraphicsButton = function ( obj )
 		}
 		catch (e)
 		{
-			if($.level)
-			{
-				// $.writeln("_drawVectors error:\n\n" + e );
-			}
+
 		}
 	}
 
@@ -3923,7 +3935,7 @@ Object.prototype.addVectorGraphicsButton = function ( obj )
 				// if($.level) $.writeln("control refreshed!");
 
 				// replace existing button with updated version
-				c = _addVectorButton(container, obj.shapes, [obj.width, obj.height], btnIconRGB, btnIconRGB, btnIconDownRGB, obj.text);
+				c = _addVectorButton(container, obj.shapes, [obj.width*scale, obj.height*scale], btnIconRGB, btnIconRGB, btnIconDownRGB, obj.text);
 				if(obj.helpTip) c.helpTip = obj.helpTip;
 				else if(obj.url) c.helpTip = obj.url;
 
@@ -4124,7 +4136,7 @@ Object.prototype.addCustomButton = function( obj )
 		c.addEventListener("mouseover", function(){ _updateButton(this, obj.label, obj.hoverValue, obj.textHexValue); });
 		c.addEventListener("mouseout", function(){ _updateButton(this, obj.label, obj.hexValue, obj.textHexValue); });
 		c.addEventListener("mouseup", function(){ _updateButton(this, obj.label, obj.hexValue, obj.textHexValue); });
-		c.addEventListener("mousedown", function(){ _updateButton(this, obj.label, obj.downValue, obj.textHexValue); });
+		c.addEventListener("mousedown", function(){ _updateButton(this, obj.label, obj.downValue, obj.textHexValue); });		
 	} catch (e) {
 	}
 
@@ -4519,7 +4531,7 @@ Object.prototype.addButton = function(imgNameStr, obj)
 			{
 				var defaultFolder = obj.specs.textfield.text;
 				var testFolder = new Folder(obj.specs.textfield.text);
-				if($.level) $.writeln("Browsing for output directory. Default path: " + testFolder.fsName);
+				// if($.level) $.writeln("Browsing for output directory. Default path: " + testFolder.fsName);
 				if(!testFolder.exists) defaultFolder = "~";
 
 				var chosenFolder = Folder.selectDialog(obj.specs.textfield.text, defaultFolder);
@@ -4536,7 +4548,7 @@ Object.prototype.addButton = function(imgNameStr, obj)
 			{
 				var defaultFile = obj.specs.textfield.text;
 				var testFile = new File(obj.specs.textfield.text);
-				if($.level) $.writeln("Browsing for file. Default path: " + testFile.parent.fsName);
+				// if($.level) $.writeln("Browsing for file. Default path: " + testFile.parent.fsName);
 				if(!testFile.exists) defaultFile = "~";
 		
 				if(File.myDefaultSave)
@@ -4619,49 +4631,82 @@ Object.prototype.addImage = function(obj)
 	// if no object is passed, return as simple image placeholder
 	if(obj == undefined)
 	{
-		var c = this.add('image', undefined, undefined);
-		c.preferredSize.width = 100;
-		c.preferredSize.height = 100;
+		var c = this.addRectangle( "rect", { hexValue: 'd0d0d0', strokeWidth: 4, width: 100, height: 100, text: 'image' });
 		return c;
 	}
 
-	// if obj.shapes provided, bypass and get 
-	if(obj.shapes)
+	// if obj.shapes provided along with obj.imgWidth && obj.imgHeight, delegate to vector graphics
+	if(obj.shapes instanceof Array)
 	{
 		return this.addVectorGraphics( obj );
 	}
 
-	// var scriptUIstates = JSUI.getScriptUIStates( obj );
-		// component constructor should support valid scriptUIStates
-		var scriptUIstates;
-		// c.scriptUIstates = scriptUIstates; 
-
-		if(obj.imgFile != undefined && obj.imgFile != null)
+	// obj.imgFile may be used to piggyback a custom svg struct
+	// detect custom svg object: { 
+		// shapes: ['0 0 48 0 48 48 0 48 0 0'], 
+		// width: 48,
+		// height: 48,
+		// label: null,
+		// helpTip: null,
+		// color: "#ffffff",
+		// scale: 1.0
+	// }
+	if(obj.imgFile)
+	{
+		var hasSvgShapesArr = (obj.imgFile.shapes instanceof Array);
+		hasSvgShapesArr = hasSvgShapesArr ? (typeof obj.imgFile.shapes[0] == 'string') : false;
+		var hasSvgWidth = (typeof obj.imgFile.width == 'number');
+		var hasSvgHeight = (typeof obj.imgFile.height == 'number');
+		// if(obj.imgFile.shapes instanceof Array)
+		if(hasSvgShapesArr && hasSvgWidth && hasSvgHeight)
 		{
-			scriptUIstates = obj.imgFile.active != undefined ? obj.imgFile : JSUI.getScriptUIStates( obj );
+			// imgScale: .scale
+			return this.addVectorGraphics( obj.imgFile );
+		}
+	}
+
+	var scriptUIstates;
+	var placeholderStr = "image";
+
+	if((obj.imgFile != undefined) && (obj.imgFile != null))
+	{
+		if((typeof obj.imgFile) == "string") placeholderStr = obj.imgFile;
+		scriptUIstates = obj.imgFile.active != undefined ? obj.imgFile : JSUI.getScriptUIStates( obj );
+	}
+	else
+	{
+		scriptUIstates = JSUI.getScriptUIStates( obj );
+	}
+
+	if(scriptUIstates != undefined)
+	{
+		var c = this.add('image', undefined, scriptUIstates.active);
+	}
+	else
+	{	
+		// detect svg coords array
+		if(obj.imgFile.length && (typeof obj.imgFile[0] == "string"))
+		{
+			if(obj.imgWidth || obj.imgHeight)
+			{
+				if(!isNaN(obj.imgWidth)) obj.imgWidth = obj.imgWidth;
+				if(!isNaN(obj.imgHeight)) obj.imgHeight = obj.imgHeight;
+
+				if(isNaN(obj.imgWidth)) obj.imgWidth = obj.imgHeight;
+				if(isNaN(obj.imgHeight)) obj.imgHeight = obj.imgWidth;
+			}
+
+			var c = this.addVectorGraphics( { 
+					shapes: obj.imgFile, 
+					width: obj.imgWidth, 
+					height: obj.imgHeight
+				} );
 		}
 		else
 		{
-			scriptUIstates = JSUI.getScriptUIStates( obj );
+			// label fallback in case image does not exist
+			var c = this.addRectangle( "rect", { hexValue: 'd0d0d0', strokeWidth: 4, width: obj.width, height: obj.height, text: placeholderStr });
 		}
-
-	// if(scriptUIstates.active != undefined)
-	if(scriptUIstates != undefined)
-	// if(scriptUIstates != null)
-	{
-		var c = this.add('image', undefined, scriptUIstates.active);
-		// c.scriptUIstates = scriptUIstates; 
-	}
-	else
-	{		
-		// fallback in case image does not exist
-		//var c = this.add('statictext', undefined, "[Invalid URI: " + obj.imgFile + "]");
-		var c = this.addRectangle( "rect", { hexValue: undefined, width: obj.width, height: obj.height });
-
-		// fix for invalid image uri
-		// this.add('statictext', undefined, "[Invalid URI: " + ( obj.imgFile instanceof Object ? ( obj.imgFile instanceof File ? obj.imgFile.fsName : obj.imgFile.toString()) : obj.imgFile.toString()) + "]");
-		this.add('statictext', undefined, "[Invalid URI" + ( obj.imgFile ? ": " + ( obj.imgFile instanceof Object ? ( obj.imgFile instanceof File ? obj.imgFile.fsName : obj.imgFile.toString()) : obj.imgFile.toString()) : "")+ "]");
-		// this.add('statictext', undefined, "[Invalid URI: " + obj.imgFile + "]");
 	}
 
 	if(obj.width) c.preferredSize.width = obj.width;
@@ -5524,6 +5569,7 @@ JSUI.componentsFromObject = function (obj, container, array, preferRadiobuttons)
 
 //     onConfirmFunction: function(){}	// invoked when pressing confirm button
 // }
+// TODO: Scrollbar.jumpdelta: 20% default
 
 JSUI.addScrollableList = function( obj )
 {
@@ -5646,7 +5692,6 @@ JSUI.addScrollableList = function( obj )
 				strWidth = colWidth;
 				continue;
 			}
-
 
             if((typeof item == "number")) item = item.toString();
             if(typeof item == "string")
@@ -7878,6 +7923,22 @@ function Dictionary( allowOverwrite )
 			func(__k[i], __v[i]);
 		}
 	}
+}
+
+// similar to ScriptUIStates
+function ScriptUICustomVectorGraphics( )
+{
+	this.shapes = ['0 0 48 0 48 48 0 48 0 0'];
+	this.width = 48;
+	this.height = 48;
+	this.label = null;
+	this.helpTip = null;
+	this.color = null;
+
+	// handle states if needed
+	this.states = [];
+
+	return this;
 }
 
 if(!Array.prototype.convertToObject) { Array.prototype.convertToObject = function( allowNullOrUndef, recursive )
